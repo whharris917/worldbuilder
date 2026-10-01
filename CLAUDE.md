@@ -32,7 +32,7 @@ The director is the creative director: does not code, reviews builds by walking 
 - `open(path, "w")` empties the file before it checks its other arguments. Commit work in progress before any bulk edit, and keep patch scripts until their work is committed.
 - Before writing a new script, grep for its `class_name` and filename: Write overwrites silently.
 - Godot 4.7.2: `C:\Users\wilha\AppData\Local\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Microsoft.Winget.Source_8wekyb3d8bbwe\Godot_v4.7.2-stable_win64.exe` (`godot` on PATH in fresh PowerShell shells, not in Bash). Claude writes `.gd`, `.tscn`, `.tres` and `.gdshader` as text; the director opens `game/project.godot`.
-- Survey sources live outside the repo: the Twain house's HABS sheets and photographs in `C:\Users\wilha\projects\habs\twain\` (named in `game/data/buildings/twain.json`).
+- Survey sources live outside the repo: the Twain house's HABS sheets and photographs in `C:\Users\wilha\projects\habs\twain\`, the Middaugh house's in `C:\Users\wilha\projects\habs\middaugh\` (named in each building's json).
 - Reference scenes for "realistic" (outside the repo): `godot-demos`, `grass-demo`, `jungle-demo` under `C:\Users\wilha\projects`.
 
 ### Checks
@@ -40,7 +40,7 @@ The director is the creative director: does not code, reviews builds by walking 
 - **Per change:** `& $exe --headless --path <repo>\game --import`, then one headless smoke, `--quit-after 600` with the world named (the default scene is the title menu, which quits at once headless): `res://world/town.tscn`, `courthouse.tscn`, `twain.tscn`, `twain_data.tscn`. Each prints its build report (and the town its self-check), a startup time and the main loop's cost. Watch the exit output for "resources still in use".
 - **Building data or generator:** `.venv\Scripts\python.exe tools\building\build.py <name>` (writes the `.bld` only when clean) and `.venv\Scripts\python.exe -m pytest tests -q`.
 - If `--import` reports only `Could not resolve class "X"`, run `--check-only -s res://path/to/changed.gd` on each changed script to find the real error.
-- **Windowed probes** take minutes; run them once per batch of related edits and before a delivery that needs a screenshot: `town_probe.tscn` (`VERIBUILDER_TOWN_SHOTS`), `courthouse_probe.tscn` (`VERIBUILDER_CH_SHOTS`), `twain_probe.tscn` (`VERIBUILDER_TW_SHOTS`, `VERIBUILDER_TW_VIEWS`, `VERIBUILDER_TW_ORTHO` for the elevations, `VERIBUILDER_TW_BUILDER=data` for the generated house), `twain_audit.tscn`. The director launches the game to check; do not add automated tests beyond what a change needs.
+- **Windowed probes** take minutes; run them once per batch of related edits and before a delivery that needs a screenshot: `town_probe.tscn` (`VERIBUILDER_TOWN_SHOTS`), `courthouse_probe.tscn` (`VERIBUILDER_CH_SHOTS`), `twain_probe.tscn` (`VERIBUILDER_TW_SHOTS`, `VERIBUILDER_TW_VIEWS`, `VERIBUILDER_TW_ORTHO` for the elevations, `VERIBUILDER_TW_BUILDER=data` for the generated house), `twain_audit.tscn`, `middaugh_probe.tscn` (`VERIBUILDER_MD_SHOTS`, `VERIBUILDER_MD_VIEWS`). The director launches the game to check; do not add automated tests beyond what a change needs.
 - Every probe sets `MouseMode.probe = true` first in `_ready`. All mouse capture goes through `MouseMode.capture()` (`player/mouse_mode.gd`); never write `Input.MOUSE_MODE_CAPTURED` directly.
 - A temporary probe to look at one thing several times is fine; delete it before committing.
 
@@ -114,12 +114,14 @@ A real building is generated from architectural decisions and validated as a sol
 - **Harbor town** (`town.tscn`, `town_probe.tscn`): a 1940s town on the Maine coast (`harbor_town.gd`, `full_house.gd`, `main_street.gd`, `water_street.gd`, `harbor.gd`, `weather.gd`, `town_coast.gd` on `maine_coast.gd`). Water Street is pinned by the director (`HOUSE_DRAWS`); Main Street after Montpelier; real night sky, stars as points.
 - **Monroe courthouse** (`courthouse.tscn`, `courthouse_probe.tscn`): the Union County courthouse (1886), its square and blocks (`union_courthouse.gd`, `courthouse_*.gd`). Its stage (`stage*.gd`, `actor*.gd`) hosts actors driven over `http://127.0.0.1:47886`, documented in `data/actor_handbook.md`. Films are scripted top-down by Claude, no agent actors; pipeline in `tools/film/`, rendered by `take_render.tscn`.
 - **Mark Twain house** (`twain.tscn`, `twain_probe.tscn`): the Clemens house, Hartford (1874), from the HABS drawings (CT-359), with its grounds (`twain_*.gd`). The plain entry is hand-built; FROM ITS DATA (`twain_data.tscn`) is generated (see Real buildings). `TwainInterior.snap` places pieces against a wall.
+- **Middaugh house** (`middaugh.tscn`, `middaugh_probe.tscn`): the Henry C. Middaugh house, Clarendon Hills, Illinois (1888-1892), generated from `data/buildings/middaugh.json` (HABS IL-1213: three plans, four elevations, a section; no roof plan, no photographs; demolished about 2003). Plans run x south, z west; the world turns it half round so the front faces south. The second building for the method. A building in progress goes into the menu at its first clean build.
 
 **Open for the director:**
 1. **Twain house, generated from its data**: clean and fitted to the survey and photographs; awaits the director's look and the judgment calls in `docs/history.md` (2026-09-30). Next: stair, finishes and furniture, then retire the hand-built house.
 2. **Monroe courthouse:** the monument's inscriptions (modelled plain).
 3. **Harbor town:** the domed hall, the sign names, the town's name, the moon's phase (`SkyClock.MOON_AGE`), the noon sun's height (60°).
-4. **The title screen's subtitle** ("real buildings, generated and checked"), a draft.
+4. **Middaugh house**: shell, windows and porches, clean; not yet fitted to the sheets (`overlay.py`); one large room per block and floor; no ornament. The menu note and arrival message are drafts. Next: fit, then the tower's top floor (as its own floor it left a leak; the third-floor tower room rises open to its roof).
+5. **The title screen's subtitle** ("real buildings, generated and checked"), a draft.
 
 **Known gaps:**
 - The town and the courthouse are hand-built, not generated from data; they predate the method.
