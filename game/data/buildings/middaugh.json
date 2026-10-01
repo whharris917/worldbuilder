@@ -372,7 +372,7 @@
    "floor": -0.3,
    "poly": {
     "rect": [
-     74.0,
+     72.8,
      "porch_e",
      116.8,
      "main_e"
@@ -391,7 +391,7 @@
      "main_s",
      "main_e",
      116.8,
-     53.5
+     48.5
     ]
    }
   },
@@ -695,7 +695,7 @@
    "id": "porch_e",
    "footprint": {
     "rect": [
-     74.0,
+     72.8,
      "porch_e",
      116.8,
      "main_e"
@@ -703,8 +703,8 @@
    },
    "porch": "porch_e",
    "cover": "tin",
-   "plate": 11.9,
-   "pitch": 0.23,
+   "plate": 10.9,
+   "pitch": 0.2,
    "overhang": 0.8,
    "sides": {
     "z1": {
@@ -719,19 +719,24 @@
      "main_s",
      "porch_e",
      116.8,
-     53.5
+     48.5
     ]
    },
    "porch": "porch_s",
    "cover": "tin",
-   "plate": 11.9,
-   "pitch": 0.23,
+   "plate": 10.9,
+   "pitch": 0.2,
    "overhang": 0.8,
    "sides": {
     "x0": {
      "kind": "abut"
+    },
+    "z1": {
+     "kind": "gable",
+     "rake": 0.5
     }
-   }
+   },
+   "note": "the porch ends under the pediment's side (first floor plan: the last post at z 48.4)"
   },
   {
    "id": "entry",
@@ -740,12 +745,12 @@
      "main_s",
      37.0,
      116.8,
-     48.5
+     49.3
     ]
    },
    "cover": "tin",
-   "plate": 11.9,
-   "pitch": 0.65,
+   "plate": 10.9,
+   "pitch": 0.4,
    "overhang": 0.6,
    "sides": {
     "x0": {
@@ -756,7 +761,7 @@
      "rake": 0.6
     }
    },
-   "note": "the pediment over the front steps (south elevation, sheet 10)"
+   "note": "the pediment over the front steps (south elevation, sheet 10), its ridge under the sills of the windows over it"
   },
   {
    "id": "addition",
@@ -809,5 +814,602 @@
    "note": "east and west elevations (top 45.6 to 46.4), on the wing's ridge (north elevation)"
   }
  ],
- "openings": []
+ "openings": [
+  {
+   "at": [
+    "main_s",
+    53.0
+   ],
+   "w": 3.6,
+   "sill": 0.7,
+   "head": 8.7
+  },
+  {
+   "at": [
+    "main_s",
+    42.25
+   ],
+   "w": 5.0,
+   "sill": 0.0,
+   "head": 8.4,
+   "kind": "door",
+   "note": "the front doors under the porch's arch"
+  },
+  {
+   "at": [
+    "main_s",
+    29.75
+   ],
+   "w": 3.3,
+   "sill": 0.7,
+   "head": 8.7
+  },
+  {
+   "at": [
+    "main_s",
+    25.75
+   ],
+   "w": 3.3,
+   "sill": 0.7,
+   "head": 8.7
+  },
+  {
+   "at": [
+    "main_s",
+    52.75
+   ],
+   "w": 3.6,
+   "sill": 13.2,
+   "head": 20.2
+  },
+  {
+   "at": [
+    "main_s",
+    43.25
+   ],
+   "w": 3.6,
+   "sill": 13.7,
+   "head": 20.2
+  },
+  {
+   "at": [
+    "main_s",
+    38.6
+   ],
+   "w": 3.6,
+   "sill": 13.7,
+   "head": 20.2
+  },
+  {
+   "at": [
+    "main_s",
+    30.0
+   ],
+   "w": 3.6,
+   "sill": 13.2,
+   "head": 20.2
+  },
+  {
+   "at": [
+    "main_s",
+    25.25
+   ],
+   "w": 3.6,
+   "sill": 13.2,
+   "head": 20.2
+  },
+  {
+   "at": [
+    "main_s",
+    44.75
+   ],
+   "w": 3.0,
+   "sill": 23.7,
+   "head": 28.2
+  },
+  {
+   "at": [
+    "main_s",
+    41.25
+   ],
+   "w": 3.0,
+   "sill": 23.7,
+   "head": 28.2
+  },
+  {
+   "at": [
+    "main_s",
+    37.75
+   ],
+   "w": 3.0,
+   "sill": 23.7,
+   "head": 28.2
+  },
+  {
+   "at": [
+    109.0,
+    64.6
+   ],
+   "w": 5.6,
+   "sill": 0.7,
+   "head": 8.7
+  },
+  {
+   "at": [
+    110.4,
+    58.4
+   ],
+   "w": 2.3,
+   "sill": 1.2,
+   "head": 8.2
+  },
+  {
+   "at": [
+    103.55,
+    66.45
+   ],
+   "w": 2.6,
+   "sill": 1.2,
+   "head": 8.2
+  },
+  {
+   "at": [
+    109.0,
+    64.6
+   ],
+   "w": 5.6,
+   "sill": 13.2,
+   "head": 20.2
+  },
+  {
+   "at": [
+    110.4,
+    58.4
+   ],
+   "w": 2.3,
+   "sill": 13.7,
+   "head": 20.2
+  },
+  {
+   "at": [
+    103.55,
+    66.45
+   ],
+   "w": 2.6,
+   "sill": 13.7,
+   "head": 20.2
+  },
+  {
+   "at": [
+    109.075,
+    64.525
+   ],
+   "w": 5.0,
+   "sill": 32.0,
+   "head": 35.0,
+   "note": "the belvedere's windows, one to a face (elevations: three lights to a face)"
+  },
+  {
+   "at": [
+    110.85,
+    58.85
+   ],
+   "w": 3.0,
+   "sill": 32.0,
+   "head": 35.0
+  },
+  {
+   "at": [
+    101.625,
+    57.075
+   ],
+   "w": 5.0,
+   "sill": 32.0,
+   "head": 35.0
+  },
+  {
+   "at": [
+    103.275,
+    66.175
+   ],
+   "w": 3.0,
+   "sill": 32.0,
+   "head": 35.0
+  },
+  {
+   "at": [
+    93.85,
+    "main_e"
+   ],
+   "w": 4.2,
+   "sill": 13.2,
+   "head": 20.7
+  },
+  {
+   "at": [
+    88.35,
+    "main_e"
+   ],
+   "w": 2.4,
+   "sill": 14.7,
+   "head": 19.7
+  },
+  {
+   "at": [
+    81.6,
+    "main_e"
+   ],
+   "w": 3.6,
+   "sill": 13.2,
+   "head": 20.7
+  },
+  {
+   "at": [
+    77.1,
+    "main_e"
+   ],
+   "w": 3.6,
+   "sill": 13.2,
+   "head": 20.7
+  },
+  {
+   "at": [
+    66.85,
+    "main_e"
+   ],
+   "w": 4.0,
+   "sill": 13.2,
+   "head": 20.7
+  },
+  {
+   "at": [
+    62.0,
+    "main_e"
+   ],
+   "w": 2.4,
+   "sill": 13.2,
+   "head": 20.7
+  },
+  {
+   "at": [
+    51.6,
+    "wing_e"
+   ],
+   "w": 3.6,
+   "sill": 13.2,
+   "head": 20.7
+  },
+  {
+   "at": [
+    93.85,
+    "main_e"
+   ],
+   "w": 4.0,
+   "sill": 1.7,
+   "head": 10.2
+  },
+  {
+   "at": [
+    79.85,
+    "main_e"
+   ],
+   "w": 3.2,
+   "sill": 0.0,
+   "head": 9.2,
+   "kind": "door",
+   "note": "the east door off the porch, a window either side"
+  },
+  {
+   "at": [
+    85.1,
+    "main_e"
+   ],
+   "w": 2.0,
+   "sill": 3.2,
+   "head": 8.7
+  },
+  {
+   "at": [
+    75.2,
+    "main_e"
+   ],
+   "w": 2.0,
+   "sill": 3.2,
+   "head": 8.7
+  },
+  {
+   "at": [
+    69.6,
+    "main_e"
+   ],
+   "w": 3.0,
+   "sill": 1.7,
+   "head": 10.2
+  },
+  {
+   "at": [
+    63.35,
+    "main_e"
+   ],
+   "w": 4.9,
+   "sill": 5.4,
+   "head": 9.2,
+   "note": "the dining room's stained glass, 4'-11\" by 3'-9\" (sheet 9)"
+  },
+  {
+   "at": [
+    54.6,
+    "wing_e"
+   ],
+   "w": 2.6,
+   "sill": 1.5,
+   "head": 9.7
+  },
+  {
+   "at": [
+    49.6,
+    "wing_e"
+   ],
+   "w": 2.6,
+   "sill": 1.5,
+   "head": 9.7
+  },
+  {
+   "at": [
+    42.3,
+    "wing_e"
+   ],
+   "w": 2.6,
+   "sill": 1.5,
+   "head": 9.7
+  },
+  {
+   "at": [
+    80.35,
+    "main_e"
+   ],
+   "w": 3.0,
+   "sill": 24.6,
+   "head": 27.4,
+   "note": "the east gable's window"
+  },
+  {
+   "at": [
+    44.35,
+    "wing_w"
+   ],
+   "w": 3.6,
+   "sill": 13.2,
+   "head": 20.7
+  },
+  {
+   "at": [
+    44.35,
+    "wing_w"
+   ],
+   "w": 3.6,
+   "sill": 2.2,
+   "head": 10.2
+  },
+  {
+   "at": [
+    51.35,
+    "wing_w"
+   ],
+   "w": 3.6,
+   "sill": 2.2,
+   "head": 10.2
+  },
+  {
+   "at": [
+    57.9,
+    "wing_w"
+   ],
+   "w": 2.4,
+   "sill": 15.7,
+   "head": 21.2,
+   "note": "the back stair's windows"
+  },
+  {
+   "at": [
+    57.9,
+    "wing_w"
+   ],
+   "w": 2.4,
+   "sill": 6.2,
+   "head": 10.2
+  },
+  {
+   "at": [
+    65.85,
+    "main_w"
+   ],
+   "w": 4.2,
+   "sill": 13.2,
+   "head": 20.7
+  },
+  {
+   "at": [
+    67.35,
+    "add_w"
+   ],
+   "w": 4.5,
+   "sill": 3.5,
+   "head": 8.6
+  },
+  {
+   "at": [
+    78.1,
+    "bay_w"
+   ],
+   "w": 4.0,
+   "sill": 13.2,
+   "head": 20.7
+  },
+  {
+   "at": [
+    85.1,
+    "bay_w"
+   ],
+   "w": 4.0,
+   "sill": 13.2,
+   "head": 20.7
+  },
+  {
+   "at": [
+    78.1,
+    "bay_w"
+   ],
+   "w": 4.0,
+   "sill": 1.7,
+   "head": 10.2
+  },
+  {
+   "at": [
+    85.1,
+    "bay_w"
+   ],
+   "w": 4.0,
+   "sill": 1.7,
+   "head": 10.2
+  },
+  {
+   "at": [
+    81.7,
+    "bay_w"
+   ],
+   "w": 4.0,
+   "sill": 24.2,
+   "head": 26.9,
+   "note": "the west gable's window"
+  },
+  {
+   "at": [
+    92.6,
+    "main_w"
+   ],
+   "w": 2.6,
+   "sill": 12.6,
+   "head": 20.9
+  },
+  {
+   "at": [
+    96.35,
+    "main_w"
+   ],
+   "w": 2.4,
+   "sill": 15.7,
+   "head": 20.2
+  },
+  {
+   "at": [
+    93.85,
+    "main_w"
+   ],
+   "w": 3.0,
+   "sill": 1.7,
+   "head": 10.7
+  },
+  {
+   "at": [
+    "main_n",
+    24.3
+   ],
+   "w": 3.4,
+   "sill": 13.7,
+   "head": 20.7
+  },
+  {
+   "at": [
+    "main_n",
+    24.3
+   ],
+   "w": 3.4,
+   "sill": 2.2,
+   "head": 10.2
+  },
+  {
+   "at": [
+    "wing_n",
+    38.8
+   ],
+   "w": 3.6,
+   "sill": 13.7,
+   "head": 20.7
+  },
+  {
+   "at": [
+    "wing_n",
+    52.9
+   ],
+   "w": 3.4,
+   "sill": 13.7,
+   "head": 20.7
+  },
+  {
+   "at": [
+    "wing_n",
+    39.3
+   ],
+   "w": 3.2,
+   "sill": 2.2,
+   "head": 9.2
+  },
+  {
+   "at": [
+    "wing_n",
+    52.55
+   ],
+   "w": 2.8,
+   "sill": 0.0,
+   "head": 8.0,
+   "kind": "door",
+   "note": "the kitchen door to the back steps"
+  },
+  {
+   "at": [
+    "wing_n",
+    40.8
+   ],
+   "w": 3.4,
+   "sill": 25.2,
+   "head": 30.2
+  },
+  {
+   "at": [
+    "wing_n",
+    45.3
+   ],
+   "w": 3.4,
+   "sill": 25.2,
+   "head": 30.2
+  },
+  {
+   "at": [
+    "main_n",
+    59.8
+   ],
+   "w": 3.6,
+   "sill": 13.7,
+   "head": 20.7
+  },
+  {
+   "at": [
+    "main_n",
+    59.8
+   ],
+   "w": 3.6,
+   "sill": 2.2,
+   "head": 10.7
+  },
+  {
+   "at": [
+    "main_n",
+    66.8
+   ],
+   "w": 3.6,
+   "sill": 3.5,
+   "head": 8.6
+  }
+ ]
 }

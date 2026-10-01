@@ -12,6 +12,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/twain.tscn"},
 	{"title": "MARK TWAIN HOUSE, FROM ITS DATA", "note": "The same house built by the general builder from its data file, for comparison; its outside only so far.",
 		"scene": "res://world/twain_data.tscn"},
+	{"title": "MIDDAUGH HOUSE", "note": "The Middaugh house of 1888 in Clarendon Hills, Illinois, built by the general builder from its survey drawings while the work is under way; its outside only so far.",
+		"scene": "res://world/middaugh.tscn"},
 ]
 
 
