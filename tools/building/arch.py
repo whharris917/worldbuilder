@@ -995,6 +995,9 @@ class Model:
                 pq, pt = inset(prev, 0.0)
             h0 = _hit(pq, pt, q0, t0)
             nq, nt = inset(nxt, t if nxt["on"] else 0.0)
+            if abs(t0[0] * nt[1] - t0[1] * nt[0]) < 1e-9:
+                # the line runs straight on into another's wall: a square end
+                nq = (s["b"][0] - t0[1] * t, s["b"][1] + t0[0] * t)
             h1 = _hit(q0, t0, nq, nt)
             if h0 is None or h1 is None:
                 raise GenError("wall at level %s: corner at %s does not close" % (lv, s["a"]))

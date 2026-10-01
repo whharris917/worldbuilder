@@ -48,6 +48,11 @@ def triangulate(p: list) -> list[list]:
     guard = 0
     while len(pts) > 3 and guard < 10000:
         guard += 1
+        # Clipping can leave a point on the line between its neighbours (a
+        # bay's corners on the wall it stands out from): it bounds nothing.
+        pts = simplify(pts)
+        if len(pts) <= 3:
+            break
         n = len(pts)
         for i in range(n):
             a, b, c = pts[i - 1], pts[i], pts[(i + 1) % n]

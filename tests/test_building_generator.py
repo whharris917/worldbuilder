@@ -72,3 +72,10 @@ def test_a_porch_over_a_room_is_found():
 def test_bad_parameters_are_refused(change):
     with pytest.raises(arch.GenError):
         arch.Model(mutate(change)).generate()
+
+
+def test_a_room_with_a_bay_on_a_straight_wall_is_split():
+    import plan
+    room = [(0, 0), (40, 0), (40, 30), (28, 30), (28, 35), (12, 35), (12, 30), (0, 30)]
+    parts = plan.convex_parts(room)
+    assert abs(sum(plan.area(p) for p in parts) - (40 * 30 + 16 * 5)) < 1e-6

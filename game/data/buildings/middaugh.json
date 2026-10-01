@@ -1,0 +1,813 @@
+{
+ "name": "middaugh",
+ "title": "The Henry C. Middaugh house, 66 Norfolk Avenue, Clarendon Hills, Illinois (1888-1892)",
+ "note": "From HABS IL-1213 (2002): plans of three floors, four elevations, a section. No roof plan: the roofs are read from the elevations, the section and the third floor plan. Feet over the first floor; x runs south and z west, as the plans are drawn.",
+ "world": {
+  "origin": [
+   84.0,
+   44.0
+  ],
+  "first_floor_m": 1.15,
+  "ft_to_m": 0.3048,
+  "axes": "x_south_z_west"
+ },
+ "sheets": {
+  "dir": "C:/Users/wilha/projects/habs/middaugh",
+  "px_per_ft": 100,
+  "list": [
+   {
+    "id": "first",
+    "file": "sheet02.tif",
+    "kind": "plan",
+    "level": "first",
+    "offset": [
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "id": "second",
+    "file": "sheet03.tif",
+    "kind": "plan",
+    "level": "second",
+    "offset": [
+     30.4,
+     -60.15
+    ]
+   },
+   {
+    "id": "third",
+    "file": "sheet03.tif",
+    "kind": "plan",
+    "level": "third",
+    "offset": [
+     30.4,
+     6.45
+    ]
+   },
+   {
+    "id": "south",
+    "file": "sheet04.tif",
+    "kind": "elevation",
+    "view": "+x",
+    "sign": -1.0,
+    "offset": 112.5,
+    "ff": 73.2
+   },
+   {
+    "id": "north",
+    "file": "sheet05.tif",
+    "kind": "elevation",
+    "view": "-x",
+    "sign": 1.0,
+    "offset": 28.7,
+    "ff": 73.2
+   },
+   {
+    "id": "east",
+    "file": "sheet06.tif",
+    "kind": "elevation",
+    "view": "-z",
+    "sign": -1.0,
+    "offset": 145.85,
+    "ff": 73.2
+   },
+   {
+    "id": "west",
+    "file": "sheet07.tif",
+    "kind": "elevation",
+    "view": "+z",
+    "sign": 1.0,
+    "offset": -5.85,
+    "ff": 73.2
+   }
+  ]
+ },
+ "grid": {
+  "x": {
+   "wing_n": 39.15,
+   "main_n": 59.4,
+   "add_s": 73.8,
+   "bay_n": 74.6,
+   "bay_s": 88.8,
+   "main_s": 108.9
+  },
+  "z": {
+   "porch_e": 11.0,
+   "main_e": 19.85,
+   "wing_e": 27.6,
+   "wing_w": 56.4,
+   "main_w": 64.1,
+   "bay_w": 69.7,
+   "add_w": 71.0
+  }
+ },
+ "levels": [
+  {
+   "id": "first",
+   "floor": 0.0
+  },
+  {
+   "id": "second",
+   "floor": 12.1
+  },
+  {
+   "id": "third",
+   "floor": 22.4
+  }
+ ],
+ "groups": [
+  {
+   "id": "main",
+   "wall": 1.1,
+   "material": "brick"
+  },
+  {
+   "id": "wing",
+   "wall": 1.1,
+   "material": "brick"
+  },
+  {
+   "id": "tower",
+   "wall": 1.1,
+   "material": "brick"
+  },
+  {
+   "id": "frame",
+   "wall": 0.5,
+   "material": "clapboard"
+  },
+  {
+   "id": "porch",
+   "wall": 0.0,
+   "material": "none"
+  }
+ ],
+ "defaults": {
+  "wall": 1.1,
+  "partition": 0.5,
+  "slab": 1.0,
+  "roof_depth": 0.6,
+  "frame": 0.25,
+  "casing": 0.4
+ },
+ "site": {
+  "grade": -3.8,
+  "foundation": -9.0
+ },
+ "style": {
+  "materials": {
+   "brick": {
+    "color": [
+     0.72,
+     0.55,
+     0.33
+    ],
+    "kind": "brick"
+   },
+   "brown": {
+    "color": [
+     0.42,
+     0.26,
+     0.17
+    ],
+    "kind": "brick"
+   },
+   "stone": {
+    "color": [
+     0.62,
+     0.56,
+     0.46
+    ],
+    "kind": "stone"
+   },
+   "clapboard": {
+    "color": [
+     0.55,
+     0.47,
+     0.36
+    ],
+    "kind": "clapboard"
+   },
+   "trim": {
+    "color": [
+     0.36,
+     0.24,
+     0.16
+    ],
+    "kind": "paint"
+   },
+   "sash": {
+    "color": [
+     0.22,
+     0.12,
+     0.08
+    ],
+    "kind": "paint"
+   },
+   "slate": {
+    "color": [
+     0.33,
+     0.35,
+     0.36
+    ],
+    "kind": "slate"
+   },
+   "slate_dark": {
+    "color": [
+     0.26,
+     0.27,
+     0.28
+    ],
+    "kind": "slate"
+   },
+   "tin": {
+    "color": [
+     0.34,
+     0.36,
+     0.34
+    ],
+    "kind": "paint"
+   },
+   "asphalt": {
+    "color": [
+     0.22,
+     0.21,
+     0.2
+    ],
+    "kind": "tar"
+   },
+   "deck": {
+    "color": [
+     0.42,
+     0.38,
+     0.32
+    ],
+    "kind": "plank"
+   }
+  },
+  "bands": [
+   [
+    -9.0,
+    0.0,
+    "stone"
+   ],
+   [
+    11.6,
+    12.1,
+    "brown"
+   ],
+   [
+    21.9,
+    22.4,
+    "brown"
+   ]
+  ],
+  "courses": {
+   "height": 0.8,
+   "materials": [
+    "slate",
+    "slate",
+    "slate",
+    "slate_dark",
+    "slate",
+    "slate",
+    "slate",
+    "slate_dark"
+   ]
+  },
+  "note": "buff yellow brick with brown brick courses, a rough-faced limestone base (first floor plan, list of materials)"
+ },
+ "spaces": [
+  {
+   "id": "main1",
+   "name": "first floor rooms",
+   "level": "first",
+   "kind": "room",
+   "group": "main",
+   "poly": [
+    [
+     "main_n",
+     "main_e"
+    ],
+    [
+     "main_s",
+     "main_e"
+    ],
+    [
+     "main_s",
+     56.9
+    ],
+    [
+     112.8,
+     60.8
+    ],
+    [
+     105.35,
+     68.25
+    ],
+    [
+     101.2,
+     "main_w"
+    ],
+    [
+     "bay_s",
+     "main_w"
+    ],
+    [
+     "bay_s",
+     "bay_w"
+    ],
+    [
+     "bay_n",
+     "bay_w"
+    ],
+    [
+     "bay_n",
+     "main_w"
+    ],
+    [
+     "main_n",
+     "main_w"
+    ]
+   ],
+   "note": "the main block, its west bay and the tower's corner (first floor plan)"
+  },
+  {
+   "id": "wing1",
+   "name": "kitchen and pantries",
+   "level": "first",
+   "kind": "room",
+   "group": "wing",
+   "poly": {
+    "rect": [
+     "wing_n",
+     "wing_e",
+     "main_n",
+     "wing_w"
+    ]
+   }
+  },
+  {
+   "id": "addition",
+   "name": "wood framed addition",
+   "level": "first",
+   "kind": "room",
+   "group": "frame",
+   "poly": {
+    "rect": [
+     "main_n",
+     "main_w",
+     "add_s",
+     "add_w"
+    ]
+   }
+  },
+  {
+   "id": "porch_e",
+   "name": "east porch",
+   "level": "first",
+   "kind": "porch",
+   "group": "porch",
+   "floor": -0.3,
+   "poly": {
+    "rect": [
+     74.0,
+     "porch_e",
+     116.8,
+     "main_e"
+    ]
+   }
+  },
+  {
+   "id": "porch_s",
+   "name": "south porch",
+   "level": "first",
+   "kind": "porch",
+   "group": "porch",
+   "floor": -0.3,
+   "poly": {
+    "rect": [
+     "main_s",
+     "main_e",
+     116.8,
+     53.5
+    ]
+   }
+  },
+  {
+   "id": "main2",
+   "name": "second floor rooms",
+   "level": "second",
+   "kind": "room",
+   "group": "main",
+   "poly": [
+    [
+     "main_n",
+     "main_e"
+    ],
+    [
+     "main_s",
+     "main_e"
+    ],
+    [
+     "main_s",
+     56.9
+    ],
+    [
+     112.8,
+     60.8
+    ],
+    [
+     105.35,
+     68.25
+    ],
+    [
+     101.2,
+     "main_w"
+    ],
+    [
+     "bay_s",
+     "main_w"
+    ],
+    [
+     "bay_s",
+     "bay_w"
+    ],
+    [
+     "bay_n",
+     "bay_w"
+    ],
+    [
+     "bay_n",
+     "main_w"
+    ],
+    [
+     "main_n",
+     "main_w"
+    ]
+   ]
+  },
+  {
+   "id": "wing2",
+   "name": "wing bedrooms",
+   "level": "second",
+   "kind": "room",
+   "group": "wing",
+   "poly": {
+    "rect": [
+     "wing_n",
+     "wing_e",
+     "main_n",
+     "wing_w"
+    ]
+   }
+  },
+  {
+   "id": "main3",
+   "name": "ballroom and storage",
+   "level": "third",
+   "kind": "attic",
+   "group": "main",
+   "top": "roof",
+   "poly": [
+    [
+     "main_n",
+     "main_e"
+    ],
+    [
+     "main_s",
+     "main_e"
+    ],
+    [
+     "main_s",
+     56.9
+    ],
+    [
+     105.35,
+     53.35
+    ],
+    [
+     97.9,
+     60.8
+    ],
+    [
+     101.2,
+     "main_w"
+    ],
+    [
+     "bay_s",
+     "main_w"
+    ],
+    [
+     "bay_s",
+     "bay_w"
+    ],
+    [
+     "bay_n",
+     "bay_w"
+    ],
+    [
+     "bay_n",
+     "main_w"
+    ],
+    [
+     "main_n",
+     "main_w"
+    ]
+   ]
+  },
+  {
+   "id": "tower3",
+   "name": "tower room",
+   "level": "third",
+   "kind": "room",
+   "group": "tower",
+   "poly": [
+    [
+     105.35,
+     53.35
+    ],
+    [
+     112.8,
+     60.8
+    ],
+    [
+     105.35,
+     68.25
+    ],
+    [
+     97.9,
+     60.8
+    ]
+   ],
+   "note": "a square of 10.5 ft set diagonally on the south-west corner (first and third floor plans); open to its roof, the belvedere's windows high in its walls",
+   "top": "roof"
+  },
+  {
+   "id": "wing3",
+   "name": "wing attic",
+   "level": "third",
+   "kind": "attic",
+   "group": "wing",
+   "top": "roof",
+   "poly": {
+    "rect": [
+     "wing_n",
+     "wing_e",
+     "main_n",
+     "wing_w"
+    ]
+   }
+  }
+ ],
+ "roofs": [
+  {
+   "id": "main",
+   "footprint": {
+    "rect": [
+     "main_n",
+     "main_e",
+     "main_s",
+     "main_w"
+    ]
+   },
+   "plate": 23.7,
+   "pitch": 1.07,
+   "overhang": 1.6,
+   "note": "one hip over the main block, eaves at 23.7 and its short ridge at 47.4 (east and west elevations draw a top about 6 ft long at 46.5 to 48.6)"
+  },
+  {
+   "id": "wing",
+   "footprint": {
+    "rect": [
+     "wing_n",
+     "wing_e",
+     76.0,
+     "wing_w"
+    ]
+   },
+   "plate": 22.7,
+   "pitch": 1.08,
+   "overhang": 1.2,
+   "sides": {
+    "x0": {
+     "kind": "gable",
+     "rake": 0.8
+    },
+    "x1": {
+     "kind": "gable",
+     "rake": 0.0
+    }
+   },
+   "note": "the kitchen wing's gable to the north (north elevation), its ridge at 38.3 dying into the main roof"
+  },
+  {
+   "id": "east_gable",
+   "footprint": {
+    "rect": [
+     73.6,
+     "main_e",
+     87.1,
+     30.0
+    ]
+   },
+   "plate": 23.2,
+   "pitch": 1.1,
+   "overhang": 1.0,
+   "sides": {
+    "z0": {
+     "kind": "gable",
+     "rake": 0.8
+    },
+    "z1": {
+     "kind": "gable",
+     "rake": 0.0
+    }
+   },
+   "note": "the east wall rises into a gable, ridge 30'-8\" (east elevation)"
+  },
+  {
+   "id": "west_gable",
+   "footprint": {
+    "rect": [
+     "bay_n",
+     54.0,
+     "bay_s",
+     "bay_w"
+    ]
+   },
+   "plate": 23.2,
+   "pitch": 1.07,
+   "overhang": 1.0,
+   "sides": {
+    "z1": {
+     "kind": "gable",
+     "rake": 0.8
+    },
+    "z0": {
+     "kind": "gable",
+     "rake": 0.0
+    }
+   },
+   "note": "the west bay's two storeys rise into a gable, ridge 30'-8\" (west elevation)"
+  },
+  {
+   "id": "south_gable",
+   "footprint": {
+    "rect": [
+     95.0,
+     35.5,
+     "main_s",
+     47.5
+    ]
+   },
+   "plate": 31.2,
+   "pitch": 0.9,
+   "overhang": 0.8,
+   "sides": {
+    "x1": {
+     "kind": "gable",
+     "rake": 0.6
+    },
+    "x0": {
+     "kind": "gable",
+     "rake": 0.0
+    }
+   },
+   "note": "a wall dormer over the front door: the south wall rises through the cornice to eaves at 31.2, peak 36.9 (south elevation)"
+  },
+  {
+   "id": "tower",
+   "footprint": {
+    "space": "tower3"
+   },
+   "apex": [
+    105.35,
+    60.8
+   ],
+   "peak": 51.2,
+   "eave": 36.6,
+   "overhang": 1.4,
+   "note": "the tower's pyramid, peak 51'-2\" (south elevation's mark), eaves at 37 (elevations)"
+  },
+  {
+   "id": "porch_e",
+   "footprint": {
+    "rect": [
+     74.0,
+     "porch_e",
+     116.8,
+     "main_e"
+    ]
+   },
+   "porch": "porch_e",
+   "cover": "tin",
+   "plate": 11.9,
+   "pitch": 0.23,
+   "overhang": 0.8,
+   "sides": {
+    "z1": {
+     "kind": "abut"
+    }
+   }
+  },
+  {
+   "id": "porch_s",
+   "footprint": {
+    "rect": [
+     "main_s",
+     "porch_e",
+     116.8,
+     53.5
+    ]
+   },
+   "porch": "porch_s",
+   "cover": "tin",
+   "plate": 11.9,
+   "pitch": 0.23,
+   "overhang": 0.8,
+   "sides": {
+    "x0": {
+     "kind": "abut"
+    }
+   }
+  },
+  {
+   "id": "entry",
+   "footprint": {
+    "rect": [
+     "main_s",
+     37.0,
+     116.8,
+     48.5
+    ]
+   },
+   "cover": "tin",
+   "plate": 11.9,
+   "pitch": 0.65,
+   "overhang": 0.6,
+   "sides": {
+    "x0": {
+     "kind": "abut"
+    },
+    "x1": {
+     "kind": "gable",
+     "rake": 0.6
+    }
+   },
+   "note": "the pediment over the front steps (south elevation, sheet 10)"
+  },
+  {
+   "id": "addition",
+   "footprint": {
+    "rect": [
+     "main_n",
+     "main_w",
+     "add_s",
+     "add_w"
+    ]
+   },
+   "cover": "asphalt",
+   "plate": 9.6,
+   "pitch": 0.3,
+   "overhang": 0.8,
+   "sides": {
+    "z0": {
+     "kind": "abut"
+    }
+   }
+  }
+ ],
+ "chimneys": [
+  {
+   "id": "main",
+   "at": [
+    80.5,
+    48.0
+   ],
+   "size": [
+    4.0,
+    5.0
+   ],
+   "base": 0.0,
+   "top": 51.0,
+   "note": "the hall and sitting room fireplaces' stack; east, west, south and north elevations"
+  },
+  {
+   "id": "wing",
+   "at": [
+    43.1,
+    41.5
+   ],
+   "size": [
+    1.6,
+    2.0
+   ],
+   "base": 0.0,
+   "top": 45.8,
+   "note": "east and west elevations (top 45.6 to 46.4), on the wing's ridge (north elevation)"
+  }
+ ],
+ "openings": []
+}
