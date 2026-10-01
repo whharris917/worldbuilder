@@ -642,6 +642,9 @@ class Model:
                             if q:
                                 span.append(q)
                         hi = hi + self._higher(B, pl, A, span)
+                    # where B stands wholly over A's eave (a tower on A's corner),
+                    # A's eave stops with the wall it hangs from
+                    hi = hi + self._rooted_in(A, B, lowest)
                     if hi:
                         cut = subtract_all(cut, hi, "meet")
                     cut = subtract_all(cut, subtract_all(B.solid, self._hole_cells(B)), "meet")
@@ -658,6 +661,70 @@ class Model:
                 A.infield = self._keep_plane(subtract_all, A.infield, cutters, "hole")
                 A.eave = self._keep_plane(subtract_all, A.eave, cutters, "hole")
                 A.under = subtract_all(A.under, cutters)
+
+    def _rooted_in(self, A: Roof, B: Roof, lowest: float) -> list:
+        """The overhang beyond each stretch of A's eave edges that stands
+        inside B's footprint, where B's lowest eave is over A's plate
+        there: that eave has no wall left to hang from, and past B it
+        would stick out of B's walls. As vertical prisms."""
+        out = []
+        fp = A.footprint
+        n = len(fp)
+
+        def eave_over(i):
+            e = A.edges[i]
+            if e["kind"] != "eave" or self.y(e["plate"]) >= lowest:
+                return None
+            q, t = A.lines[i]
+            a = fp[i]
+            nrm = (t[1], -t[0])
+            return (q[0] - a[0]) * nrm[0] + (q[1] - a[1]) * nrm[1], nrm
+        for i in range(n):
+            eo = eave_over(i)
+            if eo is None or eo[0] <= 1e-6:
+                continue
+            over, nrm = eo
+            a, b = fp[i], fp[(i + 1) % n]
+            L = math.dist(a, b)
+            t = ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
+            for Q in B.parts:
+                # the stretch of the edge inside the convex piece Q
+                s0, s1 = 0.0, L
+                for k in range(len(Q)):
+                    p0, p1 = Q[k], Q[(k + 1) % len(Q)]
+                    # inside is left of p0 -> p1 (anticlockwise)
+                    ex, ez = p1[0] - p0[0], p1[1] - p0[1]
+                    f0 = ex * (a[1] - p0[1]) - ez * (a[0] - p0[0])
+                    df = ex * t[1] - ez * t[0]
+                    if abs(df) < 1e-12:
+                        if f0 < 0:
+                            s0, s1 = 1.0, 0.0
+                        continue
+                    s = -f0 / df
+                    if df > 0:
+                        s0 = max(s0, s)
+                    else:
+                        s1 = min(s1, s)
+                if s1 - s0 < 1e-3:
+                    continue
+                g = over + 0.05
+                p0 = (a[0] + t[0] * s0, a[1] + t[1] * s0)
+                p1 = (a[0] + t[0] * s1, a[1] + t[1] * s1)
+                out.append(prism(ccw([p0, p1, (p1[0] + nrm[0] * g, p1[1] + nrm[1] * g),
+                                      (p0[0] + nrm[0] * g, p0[1] + nrm[1] * g)]), LO, HI, "meet"))
+            # the corner where this edge's overhang meets the next one's
+            j = (i + 1) % n
+            ej = eave_over(j)
+            c = fp[(j + 1) % n]
+            turns_left = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]) > 0
+            if ej is not None and turns_left and any(P.point_in(b, Q) for Q in B.parts):
+                g, h = over + 0.05, ej[0] + 0.05
+                quad = [b, (b[0] + nrm[0] * g, b[1] + nrm[1] * g),
+                        (b[0] + nrm[0] * g + ej[1][0] * h, b[1] + nrm[1] * g + ej[1][1] * h),
+                        (b[0] + ej[1][0] * h, b[1] + ej[1][1] * h)]
+                if poly_area(quad) != 0.0:
+                    out.append(prism(ccw(quad), LO, HI, "meet"))
+        return [c_ for c_ in out if c_ is not None]
 
     def _above_underside(self, R: Roof) -> list:
         """Everything over a roof's underside within its outline, as cells."""

@@ -79,3 +79,16 @@ def test_a_room_with_a_bay_on_a_straight_wall_is_split():
     room = [(0, 0), (40, 0), (40, 30), (28, 30), (28, 35), (12, 35), (12, 30), (0, 30)]
     parts = plan.convex_parts(room)
     assert abs(sum(plan.area(p) for p in parts) - (40 * 30 + 16 * 5)) < 1e-6
+
+
+def test_an_eave_stops_at_a_tower_on_its_corner():
+    # a tower set diagonally over the main roof's corner: the main roof's
+    # overhang must not run on past the tower's far faces
+    d = mutate(lambda d: d["roofs"].append(
+        {"id": "tower", "footprint": [[38, 22], [44, 28], [38, 34], [32, 28]], "apex": [38, 28], "peak": 34.0,
+         "eave": 26.0, "overhang": 1.0}))
+    m = arch.Model(d).generate()
+    from arch import contains
+    for c in m.roofs["main"].eave:
+        for y in (17.4, 17.8, 18.2, 18.6, 19.0):
+            assert not contains(c, (41.2, y, 31.2), 1e-6), "the main eave sticks out past the tower"

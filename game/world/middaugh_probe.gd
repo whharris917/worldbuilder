@@ -44,6 +44,19 @@ func _run(world: MiddaughMap) -> void:
 	var cam := Camera3D.new()
 	add_child(cam)
 	cam.current = true
+	# VERIBUILDER_MD_VIEWS=name:fov:x,y,z:tx,ty,tz;... for looking at one
+	# thing closely.
+	var views := OS.get_environment("VERIBUILDER_MD_VIEWS")
+	if views != "":
+		for v: String in views.split(";"):
+			var parts := v.split(":")
+			var p := parts[2].split_floats(",")
+			var t := parts[3].split_floats(",")
+			cam.fov = float(parts[1])
+			cam.look_at_from_position(Vector3(p[0], p[1], p[2]), Vector3(t[0], t[1], t[2]), Vector3.UP)
+			await _shot("probe_md_%s" % parts[0])
+		get_tree().quit()
+		return
 	if which == "" or which == "corners":
 		cam.fov = 60.0
 		for c: Array in CORNERS:
