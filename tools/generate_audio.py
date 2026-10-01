@@ -20,6 +20,10 @@ Writes to game/audio/:
   thunder_near.wav, thunder_1..3.wav  a close stroke's crack and roll;
                   three distant rolls, darker with distance
   bell_1..2.wav   a bell buoy's bronze bell, struck hard and soft
+  leaves_loop.wav 14 s seamless wind in a summer wood's leaves
+  crickets_loop.wav  10 s seamless field crickets and tree crickets
+  bird_*.wav      white-throated sparrow, chickadee, robin, wood thrush
+                  (two), barred owl
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -604,6 +608,211 @@ def make_bells() -> None:
     make_bell(OUT_DIR / "bell_2.wav", 330.0, 0.55)
 
 
+def _bandpass(buf: list[float], low_alpha: float, high_alpha: float) -> list[float]:
+    """The band between two one-pole low-passes."""
+    hi = _lowpass(buf, high_alpha)
+    lo = _lowpass(buf, low_alpha)
+    return [h - l for h, l in zip(hi, lo)]
+
+
+def make_leaves() -> None:
+    """Wind in a summer wood's leaves: a soft roar of the canopy under a
+    fine rustle — countless short ticks of leaf on leaf in the upper
+    band, thick in the gusts and sparse between them. Two gust cycles
+    share the loop."""
+    r = random.Random(20261003)
+    dur = 14.0
+    n = int(SR * dur)
+    fade = int(0.7 * SR)
+    total = n + fade
+    white = _noise_r(r, total)
+    roar = _bandpass(white, 0.02, 0.09)
+    hiss = _bandpass(white, 0.25, 0.75)
+    gust = [0.0] * total
+    for i in range(total):
+        t = i / SR
+        g = 0.5 + 0.3 * math.sin(2.0 * math.pi * t * 2.0 / dur + 0.7) \
+            + 0.2 * math.sin(2.0 * math.pi * t * 5.0 / dur + 2.9)
+        gust[i] = max(0.05, g)
+    out = [roar[i] * (0.3 + 0.7 * gust[i]) * 1.6 + hiss[i] * gust[i] * 0.25 for i in range(total)]
+    # The rustle: ticks, each a few milliseconds of bright noise.
+    ticks = int(dur * 900)
+    for _k in range(ticks):
+        start = int(r.random() * total)
+        if r.random() > gust[start] ** 1.5:
+            continue
+        length = int(SR * r.uniform(0.002, 0.012))
+        amp = r.uniform(0.05, 0.3) * gust[start]
+        last = 0.0
+        for k in range(length):
+            env = math.sin(math.pi * k / length)
+            w = r.random() * 2.0 - 1.0
+            out[(start + k) % total] += (w - last) * env * amp
+            last = w
+    out = loop_crossfade(out, 0.7)
+    write_wav(OUT_DIR / "leaves_loop.wav", [out], normalize_to=0.35)
+
+
+def make_crickets() -> None:
+    """A summer night in a meadow: field crickets near and far, each
+    chirping three or four pulses of a pure note round 4.5 kHz at its
+    own steady rate, and under them the even, pulsing trill of snowy
+    tree crickets in the wood at 2.8 kHz. Every rate is a whole number
+    of chirps a loop, so the loop is seamless."""
+    r = random.Random(20261004)
+    dur = 10.0
+    n = int(SR * dur)
+    out = [0.0] * n
+    for _c in range(7):
+        freq = quantize(r.uniform(4200.0, 5000.0), dur)
+        chirps = r.randint(14, 26)
+        period = n // chirps
+        offset = r.randrange(period)
+        pulses = r.choice([3, 3, 4])
+        amp = r.uniform(0.15, 1.0) ** 2
+        pulse = int(SR * 0.016)
+        gap = int(SR * 0.014)
+        for c in range(chirps):
+            base = offset + c * period
+            for p in range(pulses):
+                start = base + p * (pulse + gap)
+                for k in range(pulse):
+                    env = math.sin(math.pi * k / pulse) ** 2
+                    idx = (start + k) % n
+                    out[idx] += math.sin(2.0 * math.pi * freq * idx / SR) * env * amp * 0.3
+    # The tree crickets: a soft trill, two or three to a second, all in step.
+    trill = quantize(2800.0, dur)
+    beats = int(dur * 2.4)
+    for i in range(n):
+        t = i / SR
+        swell = math.sin(math.pi * ((t * beats / dur) % 1.0)) ** 3
+        flutter = 0.5 + 0.5 * math.sin(2.0 * math.pi * 50.0 * t)
+        out[i] += math.sin(2.0 * math.pi * trill * t) * swell * flutter * 0.08
+    write_wav(OUT_DIR / "crickets_loop.wav", [out], normalize_to=0.35)
+
+
+def _whistle(out: list[float], at: float, f0: float, f1: float, length: float,
+             amp: float, vib: float = 0.0, harm: float = 0.0, attack: float = 0.02) -> None:
+    """One whistled note, gliding from f0 to f1, with an optional vibrato
+    (Hz) and a little second harmonic for a fluty tone."""
+    start = int(at * SR)
+    m = int(length * SR)
+    phase = 0.0
+    while len(out) < start + m + 1:
+        out.append(0.0)
+    for k in range(m):
+        t = k / m
+        tt = k / SR
+        f = f0 + (f1 - f0) * t
+        if vib > 0.0:
+            f *= 1.0 + 0.02 * math.sin(2.0 * math.pi * vib * tt)
+        phase += 2.0 * math.pi * f / SR
+        env = min(1.0, tt / attack) * min(1.0, (length - tt) / max(attack, 0.25 * length))
+        out[start + k] += (math.sin(phase) + harm * math.sin(2.0 * phase)) * env * amp
+
+
+def make_birds() -> None:
+    """Birds of a New England wood in June, as whistles: the
+    white-throated sparrow's 'old Sam Peabody, Peabody, Peabody', the
+    chickadee's 'fee-bee', the robin's carol, the wood thrush's
+    flute phrase and its double-voiced trill, and at night the barred
+    owl's 'who cooks for you, who cooks for you all'. Each from its own
+    RNG."""
+    r = random.Random(20261005)
+
+    # White-throated sparrow: a long note, a higher one, then three
+    # triplets on the higher pitch.
+    out: list[float] = []
+    lo = r.uniform(3000.0, 3200.0)
+    hi = lo * 1.26
+    _whistle(out, 0.05, lo, lo, 0.7, 0.8)
+    _whistle(out, 0.85, hi, hi * 0.995, 0.65, 0.9)
+    at = 1.6
+    for _t in range(3):
+        for _k in range(3):
+            _whistle(out, at, hi, hi, 0.13, 0.85, attack=0.01)
+            at += 0.16
+        at += 0.06
+    out.extend([0.0] * int(0.2 * SR))
+    write_wav(OUT_DIR / "bird_whitethroat.wav", [out], normalize_to=0.45)
+
+    # Chickadee: 'fee' and a lower 'bee' with a catch in it.
+    out = []
+    _whistle(out, 0.05, 4000.0, 3950.0, 0.38, 0.9)
+    _whistle(out, 0.5, 3450.0, 3400.0, 0.16, 0.8)
+    _whistle(out, 0.68, 3420.0, 3380.0, 0.18, 0.75)
+    out.extend([0.0] * int(0.2 * SR))
+    write_wav(OUT_DIR / "bird_chickadee.wav", [out], normalize_to=0.40)
+
+    # Robin: four phrases of two or three quick slurred notes.
+    out = []
+    at = 0.05
+    for _p in range(r.randint(4, 6)):
+        for _s in range(r.choice([2, 3])):
+            f0 = r.uniform(2200.0, 2900.0)
+            f1 = f0 * r.uniform(0.8, 1.2)
+            _whistle(out, at, f0, f1, r.uniform(0.12, 0.2), 0.8, vib=r.uniform(30.0, 60.0), harm=0.15, attack=0.01)
+            at += r.uniform(0.17, 0.24)
+        at += r.uniform(0.25, 0.45)
+    out.extend([0.0] * int(0.2 * SR))
+    write_wav(OUT_DIR / "bird_robin.wav", [out], normalize_to=0.40)
+
+    # Wood thrush: a few soft notes, a fluted 'ee-o-lay', then a trill of
+    # two voices at once.
+    for v in (1, 2):
+        out = []
+        at = 0.05
+        for _k in range(3):
+            f = r.uniform(1300.0, 1700.0)
+            _whistle(out, at, f, f, 0.07, 0.35, harm=0.3, attack=0.01)
+            at += 0.11
+        at += 0.08
+        for _k in range(3):
+            f = r.uniform(1800.0, 3000.0)
+            _whistle(out, at, f, f * r.uniform(0.95, 1.05), r.uniform(0.15, 0.24), 0.9, vib=8.0, harm=0.25)
+            at += r.uniform(0.2, 0.28)
+        start = int(at * SR)
+        m = int(0.35 * SR)
+        while len(out) < start + m + 1:
+            out.append(0.0)
+        pa = 0.0
+        pb = 0.0
+        fa = r.uniform(3500.0, 4500.0)
+        fb = r.uniform(5000.0, 6200.0)
+        for k in range(m):
+            tt = k / SR
+            env = min(1.0, tt / 0.02) * min(1.0, (0.35 - tt) / 0.1)
+            pa += 2.0 * math.pi * fa * (1.0 + 0.15 * math.sin(2.0 * math.pi * 55.0 * tt)) / SR
+            pb += 2.0 * math.pi * fb * (1.0 + 0.12 * math.sin(2.0 * math.pi * 70.0 * tt + 1.0)) / SR
+            out[start + k] += (math.sin(pa) * 0.4 + math.sin(pb) * 0.3) * env
+        out.extend([0.0] * int(0.4 * SR))
+        write_wav(OUT_DIR / f"bird_thrush_{v}.wav", [out], normalize_to=0.40)
+
+    # Barred owl: eight hoots in the rhythm of the phrase, the last sliding
+    # down. A hoot is a low note rich in harmonics, breathy at the start.
+    out = []
+    rhythm = [(0.0, 0.22, 1.0), (0.35, 0.18, 1.05), (0.6, 0.18, 1.08), (0.85, 0.5, 1.12),
+              (1.75, 0.22, 1.0), (2.1, 0.18, 1.05), (2.35, 0.18, 1.08), (2.6, 0.9, 1.15)]
+    for k, (at, length, lift) in enumerate(rhythm):
+        start = int(at * SR)
+        m = int(length * SR)
+        while len(out) < start + m + 1:
+            out.append(0.0)
+        phase = 0.0
+        last = k == len(rhythm) - 1
+        for i in range(m):
+            t = i / m
+            tt = i / SR
+            f = 380.0 * lift * (1.0 - (0.35 * t * t if last else 0.04 * t))
+            phase += 2.0 * math.pi * f / SR
+            env = min(1.0, tt / 0.04) * min(1.0, (length - tt) / (0.4 * length))
+            tone = math.sin(phase) + 0.4 * math.sin(2.0 * phase) + 0.15 * math.sin(3.0 * phase)
+            breath = (r.random() * 2.0 - 1.0) * 0.08 * (1.0 - t)
+            out[start + i] += (tone * 0.5 + breath) * env
+    out.extend([0.0] * int(0.3 * SR))
+    write_wav(OUT_DIR / "bird_owl.wav", [out], normalize_to=0.45)
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -621,6 +830,9 @@ def main() -> None:
     make_gale()
     make_thunders()
     make_bells()
+    make_leaves()
+    make_crickets()
+    make_birds()
     print("done")
 
 

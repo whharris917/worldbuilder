@@ -14,6 +14,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/twain_data.tscn"},
 	{"title": "MIDDAUGH HOUSE", "note": "The Middaugh house of 1888 in Clarendon Hills, Illinois, built by the general builder from its survey drawings while the work is under way; its outside only so far.",
 		"scene": "res://world/middaugh.tscn"},
+	{"title": "FOREST MEADOW", "note": "A meadow in a summer wood with a brook running through it, from dawn mist to fireflies; a study in mood.",
+		"scene": "res://world/meadow.tscn"},
 ]
 
 

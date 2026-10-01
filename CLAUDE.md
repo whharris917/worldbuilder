@@ -115,6 +115,7 @@ A real building is generated from architectural decisions and validated as a sol
 - **Monroe courthouse** (`courthouse.tscn`, `courthouse_probe.tscn`): the Union County courthouse (1886), its square and blocks (`union_courthouse.gd`, `courthouse_*.gd`). Its stage (`stage*.gd`, `actor*.gd`) hosts actors driven over `http://127.0.0.1:47886`, documented in `data/actor_handbook.md`. Films are scripted top-down by Claude, no agent actors; pipeline in `tools/film/`, rendered by `take_render.tscn`.
 - **Mark Twain house** (`twain.tscn`, `twain_probe.tscn`): the Clemens house, Hartford (1874), from the HABS drawings (CT-359), with its grounds (`twain_*.gd`). The plain entry is hand-built; FROM ITS DATA (`twain_data.tscn`) is generated (see Real buildings). `TwainInterior.snap` places pieces against a wall.
 - **Middaugh house** (`middaugh.tscn`, `middaugh_probe.tscn`): the Henry C. Middaugh house, Clarendon Hills, Illinois (1888-1892), generated from `data/buildings/middaugh.json` (HABS IL-1213: three plans, four elevations, a section; no roof plan, no photographs; demolished about 2003). Plans run x south, z west; the world turns it half round so the front faces south. The second building for the method. A building in progress goes into the menu at its first clean build.
+- **Forest meadow** (`meadow.tscn`, `meadow_probe.tscn` with `WORLDBUILDER_MEADOW_SHOTS`, `_VIEWS`, `_HIDE`, `_PRESET`): a study in atmosphere, not a real place. A summer meadow in a New England wood with a brook (`meadow.gd`, `meadow_land.gd` on `Landscape`, `grass_field.gd` and `grass.gdshader`, `meadow_ground.gdshader`, `mist.gdshader`, `air.gdshader`, `meadow_sound.gd`). One breeze value drives the grass, the trees and the leaves' sound; mist, birds, crickets and fireflies follow the clock. The wood is drawn with leaves along the meadow's edge and within 60 m of the camera, plain beyond.
 
 **Open for the director:**
 1. **Twain house, generated from its data**: clean and fitted to the survey and photographs; awaits the director's look and the judgment calls in `docs/history.md` (2026-09-30). Next: stair, finishes and furniture, then retire the hand-built house.
@@ -122,6 +123,7 @@ A real building is generated from architectural decisions and validated as a sol
 3. **Harbor town:** the domed hall, the sign names, the town's name, the moon's phase (`SkyClock.MOON_AGE`), the noon sun's height (60°).
 4. **Middaugh house**: shell, windows and porches, clean; not yet fitted to the sheets (`overlay.py`); one large room per block and floor; no ornament. The menu note and arrival message are drafts. Next: fit, then the tower's top floor (as its own floor it left a leak; the third-floor tower room rises open to its roof).
 5. **The title screen's subtitle** ("real buildings, generated and checked"), a draft.
+6. **Forest meadow**: first walkdown. The menu note and arrival message are drafts. Medium runs about 26 to 39 fps on the development machine (Low holds 60).
 
 **Known gaps:**
 - The town and the courthouse are hand-built, not generated from data; they predate the method.

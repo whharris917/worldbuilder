@@ -8,15 +8,16 @@ extends Node3D
 ## height_at() and coast_distance() and builds its landmarks in
 ## _build_landmarks().
 ##
-## The terrain is one mesh on a grid whose spacing grows from CELL at
+## The terrain is one mesh on a grid whose spacing grows from cell at
 ## the site to six times that at the edge, so it is fine underfoot
 ## and cheap on the horizon with no seams; its collision is the same
 ## triangles. The sea is a flat plane that follows the player; the
 ## waves are in its shader.
 
-const CELL := 2.0              # grid spacing at the site
-const GRID_N := 300            # cells per side
-const REACH := 800.0           # metres from the centre to the mesh edge
+var cell := 2.0                # grid spacing at the site
+var grid_n := 300              # cells per side
+var mesh_reach := 800.0        # metres from the centre to the mesh edge
+var ground_shader := "res://world/terrain.gdshader"
 const SEA_SIZE := 6000.0       # the water plane, following the player
 const TIDE_PERIOD_H := 12.42   # a lunar semi-diurnal tide
 
@@ -87,6 +88,12 @@ func stream_at(_x: float, _z: float) -> float:
 	return 0.0
 
 
+## What the ground shader is told at (x, z), as a vertex colour: for
+## terrain.gdshader, beach, graded and outcrop in red, green and blue.
+func ground_tint(x: float, z: float) -> Color:
+	return Color(beach_at(x, z), graded_at(x, z), outcrop_at(x, z), 1.0)
+
+
 ## Where a boulder may not lie: a street, a wharf. By default nowhere.
 func rock_blocked(_x: float, _z: float) -> bool:
 	return false
@@ -142,17 +149,17 @@ func set_tide(hours: float) -> void:
 
 
 ## Grid index to metres from the centre: linear at the site, cubic
-## toward the edge, so the spacing is CELL at the middle and about six
-## times that at REACH.
+## toward the edge, so the spacing is cell at the middle and grows
+## toward mesh_reach.
 func _axis(i: int) -> float:
-	var t := float(i) / GRID_N * 2.0 - 1.0
+	var t := float(i) / grid_n * 2.0 - 1.0
 	var a := absf(t)
-	var lin := GRID_N * CELL / 2.0
-	return signf(t) * (lin * a + (REACH - lin) * a * a * a)
+	var lin := grid_n * cell / 2.0
+	return signf(t) * (lin * a + (mesh_reach - lin) * a * a * a)
 
 
 func _build_terrain() -> void:
-	var n := GRID_N
+	var n := grid_n
 	var side := n + 1
 	var coords := PackedFloat32Array()
 	coords.resize(side)
@@ -173,7 +180,7 @@ func _build_terrain() -> void:
 			var k := j * side + i
 			heights[k] = y
 			verts[k] = Vector3(x, y, z)
-			colors[k] = Color(beach_at(x, z), graded_at(x, z), outcrop_at(x, z), 1.0)
+			colors[k] = ground_tint(x, z)
 			if y < sea_level:
 				below += 1
 	# Normals and tangents from the neighbouring heights, so the
@@ -231,7 +238,7 @@ func _build_terrain() -> void:
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	terrain_mat = ShaderMaterial.new()
-	terrain_mat.shader = load("res://world/terrain.gdshader")
+	terrain_mat.shader = load(ground_shader)
 	terrain_mat.set_shader_parameter("sea_y", sea_level)
 	var inst := MeshInstance3D.new()
 	inst.mesh = mesh

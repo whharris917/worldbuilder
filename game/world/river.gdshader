@@ -13,6 +13,8 @@ render_mode cull_disabled;
 uniform vec3 deep_color : source_color = vec3(0.034, 0.030, 0.012);
 uniform vec3 shallow_color : source_color = vec3(0.18, 0.14, 0.05);
 uniform float flow = 1.3;      // metres a second downstream
+uniform float foam_depth = 0.40;  // foam where the water is shallower than this over a stone
+uniform float foam_amount = 0.8;
 uniform sampler2D depth_tex : hint_depth_texture, filter_linear, repeat_disable;
 
 varying vec3 world_pos;
@@ -57,8 +59,8 @@ void fragment() {
 	float foam_n = value_noise(along * vec2(1.1, 0.9) + vec2(0.0, TIME * flow * 1.6)) * 0.6
 		+ value_noise(along * 3.3 + vec2(TIME * 0.2, TIME * flow * 2.5)) * 0.4;
 	// Foam where the water is a hand deep against a stone, torn by the current.
-	float foam = (1.0 - smoothstep(0.04, 0.40, vertical))
-		* smoothstep(0.45, 0.75, foam_n + 0.25 * (1.0 - smoothstep(0.0, 0.15, vertical))) * 0.8;
+	float foam = (1.0 - smoothstep(0.1 * foam_depth, foam_depth, vertical))
+		* smoothstep(0.45, 0.75, foam_n + 0.25 * (1.0 - smoothstep(0.0, 0.15, vertical))) * foam_amount;
 	vec3 color = mix(shallow_color, deep_color, 1.0 - exp(-vertical * 0.9));
 	color = mix(color, lin(vec3(0.80, 0.82, 0.80)), foam);
 	ALBEDO = color;

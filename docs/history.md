@@ -255,3 +255,13 @@ The director asked for the outside to be judged as a building in its own right: 
 ## 2026-10-01: renamed worldbuilder
 
 The director renamed the project from veribuilder to worldbuilder: the folder, the GitHub repository, the Godot project name (so its user data moved to `%APPDATA%\Godot\app_userdata\worldbuilder\`, copied from the old folder with its saves, settings and takes), the title screen, the log prefix and the probes' environment variables (`WORLDBUILDER_*`). Entries above keep the old name.
+
+## 2026-10-01: the forest meadow, a study in atmosphere
+
+- **Why**: the director asked to explore how a game builds mood, with a meadow in a forest and a stream through it. It is built as layers that can be judged one at a time: the land and the brook, grass the wind runs over, the light by the clock, mist, small lights in the air, and sound.
+- **Grass**: tufts of geometric blades in square tiles laid round the camera; four tile meshes of falling density and detail, the shader thinning tufts by distance at one rate so the tiles meet without a seam (a chunk takes the sparsest band that still carries the rate at its nearest point, re-laid each metre the camera moves). Ground height, grass height and flower ground come from one baked data texture. It costs about 3 ms on Medium.
+- **Trees cost the frame**: the first build drew the whole wood with leaves and ran at 11 fps on Medium, 34 M primitives a frame. Leafy trees now stand only along the meadow's edge and in 40 m cells within 60 m of the camera (visibility ranges), plain trees beyond, fewer silhouettes on the hills: 7.5 M primitives, Low at 60 fps, Medium 26 to 39.
+- **Mist**: Godot's height fog gives the same amount of fog to everything below a height whatever its distance, so it tinted the whole view. The mist is a full-screen quad that integrates exponential height fog along each line of sight to the depth buffer: thin close by, deep across the valley, trees standing out of it.
+- **Sound**: generated (`leaves_loop`, `crickets_loop`, `bird_*`): brook emitters louder at riffles, leaves as loud as the breeze, birds by the hour (dawn chorus, wood thrush at dusk, barred owl at night), crickets as the light goes.
+- **Shared code changed**: `Landscape` takes its grid (`cell`, `grid_n`, `mesh_reach`), its ground shader and its vertex colours (`ground_tint`) from the site; `river.gdshader` takes a foam depth and amount.
+
