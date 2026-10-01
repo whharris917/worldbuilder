@@ -38,8 +38,8 @@ extends Node
 ##   godot --headless --path game res://world/twain_audit.tscn
 ##   godot --path game res://world/twain_audit.tscn
 ## The report is printed and written to user://twain_audit.json; the
-## pictures to user://audit_tw_NN.png. FLOWSTATE_TW_AUDIT_ONLY=leak,clash
-## limits the checks; FLOWSTATE_TW_AUDIT_SHOTS=n takes up to n pictures.
+## pictures to user://audit_tw_NN.png. VERIBUILDER_TW_AUDIT_ONLY=leak,clash
+## limits the checks; VERIBUILDER_TW_AUDIT_SHOTS=n takes up to n pictures.
 
 const L_ARCH := 1 << 19
 const L_FURN := 1 << 20
@@ -64,8 +64,8 @@ var _t0 := 0
 
 func _ready() -> void:
 	MouseMode.probe = true
-	OS.set_environment("FLOWSTATE_TW_AUDIT", "1")
-	var o := OS.get_environment("FLOWSTATE_TW_AUDIT_ONLY")
+	OS.set_environment("VERIBUILDER_TW_AUDIT", "1")
+	var o := OS.get_environment("VERIBUILDER_TW_AUDIT_ONLY")
 	if o != "":
 		only = o.split(",")
 	world = (load("res://world/twain.tscn") as PackedScene).instantiate()
@@ -104,7 +104,7 @@ func _run() -> void:
 			"fight": _fights()
 		print("[audit] %s: %d findings (%d ms)" % [check, issues.size() - before, Time.get_ticks_msec() - _t0])
 	_report()
-	var shots := int(OS.get_environment("FLOWSTATE_TW_AUDIT_SHOTS")) if OS.get_environment("FLOWSTATE_TW_AUDIT_SHOTS") != "" else 40
+	var shots := int(OS.get_environment("VERIBUILDER_TW_AUDIT_SHOTS")) if OS.get_environment("VERIBUILDER_TW_AUDIT_SHOTS") != "" else 40
 	if DisplayServer.get_name() != "headless" and shots > 0:
 		await _pictures(shots)
 	get_tree().quit()
@@ -1030,7 +1030,7 @@ func _fights() -> void:
 		var f: Array = found[key]
 		if float(f[4]) < 0.01:
 			continue
-		if OS.get_environment("FLOWSTATE_TW_AUDIT_DEBUG") != "":
+		if OS.get_environment("VERIBUILDER_TW_AUDIT_DEBUG") != "":
 			for tr: Array in f[5]:
 				print("[audit]   face %s col %s: %s | %s | %s  (%.3f %.3f %.3f)" % [tr[5], str(tr[4]), where(tr[0]), where(tr[1]), where(tr[2]), (tr[0] as Vector3).x, (tr[0] as Vector3).y, (tr[0] as Vector3).z])
 		var p := f[0] as Vector3

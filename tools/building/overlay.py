@@ -33,7 +33,7 @@ from model import Building  # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
 R = 20.0                     # pixels to the foot the comparison works at
-OUT = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "flowstate")
+OUT = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "veribuilder")
 OPEN_KINDS = {"porch", "balcony", "deck"}
 
 

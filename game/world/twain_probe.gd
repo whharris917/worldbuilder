@@ -5,7 +5,7 @@ extends Node
 ## up every flight with real input.
 ## Run windowed:
 ##   godot --path game res://world/twain_probe.tscn
-## FLOWSTATE_TW_SHOTS=outside, inside, walk or night limits it.
+## VERIBUILDER_TW_SHOTS=outside, inside, walk or night limits it.
 
 const EYE := 1.6
 
@@ -31,19 +31,19 @@ func _run(world: TwainMap) -> void:
 	world.graphics.set_preset("Medium")
 	world.graphics.apply(world)
 	world.set_time_of_day(10.0)
-	var which := OS.get_environment("FLOWSTATE_TW_SHOTS")
+	var which := OS.get_environment("VERIBUILDER_TW_SHOTS")
 	player._fov_target = 70.0
-	if OS.get_environment("FLOWSTATE_TW_ORTHO") != "":
+	if OS.get_environment("VERIBUILDER_TW_ORTHO") != "":
 		await _orthos(world)
 		get_tree().quit()
 		return
-	var views := OS.get_environment("FLOWSTATE_TW_VIEWS")
+	var views := OS.get_environment("VERIBUILDER_TW_VIEWS")
 	if views != "":
 		# Pictures for comparison: no panels, hotbar or crosshair over them.
 		for layer: Node in get_tree().root.find_children("*", "CanvasLayer", true, false):
 			(layer as CanvasLayer).visible = false
-		# FLOWSTATE_TW_NOTREES: the trees out of the way, for elevations.
-		if OS.get_environment("FLOWSTATE_TW_NOTREES") != "":
+		# VERIBUILDER_TW_NOTREES: the trees out of the way, for elevations.
+		if OS.get_environment("VERIBUILDER_TW_NOTREES") != "":
 			for f: Node in get_tree().root.find_children("*", "Forest", true, false):
 				(f as Node3D).visible = false
 			for f: Node in get_tree().root.find_children("*", "", true, false):
@@ -155,7 +155,7 @@ func _orthos(world: TwainMap) -> void:
 			(f as Node3D).visible = false
 	world.grounds.visible = false
 	world.player.visible = false
-	var only := OS.get_environment("FLOWSTATE_TW_ORTHO")
+	var only := OS.get_environment("VERIBUILDER_TW_ORTHO")
 	if only.split(",").has("top") or only == "all":
 		await _ortho_top()
 	var ops_out: Array = []

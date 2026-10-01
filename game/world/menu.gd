@@ -1,18 +1,10 @@
 class_name MainMenu
 extends Control
-## The title screen: pick a world. Campaign is the game;
-## the blank map is the director's stress test; the sandbox is the
-## showcase; the hall is parked but bootable. Worlds are scenes
-## the editor can Play directly, so nothing here is required.
+## The title screen: pick a world. Worlds are scenes the editor can Play
+## directly, so nothing here is required.
 
 const WORLDS: Array[Dictionary] = [
-	{"title": "CAMPAIGN", "note": "Bare ground and a ladder of milestones the plant proves itself. The game.",
-		"scene": "res://world/campaign.tscn"},
-	{"title": "BLANK MAP", "note": "Bare ground, everything unlocked. Build whatever you like.",
-		"scene": "res://world/blank.tscn"},
-	{"title": "MAINE COAST", "note": "A graded site on a granite headland over the Gulf of Maine. Everything unlocked.",
-		"scene": "res://world/maine.tscn"},
-	{"title": "HARBOR TOWN", "note": "A 1940s Maine harbour town on the same coast, in whatever weather you choose.",
+	{"title": "HARBOR TOWN", "note": "A 1940s Maine harbour town on the coast, in whatever weather you choose.",
 		"scene": "res://world/town.tscn"},
 	{"title": "MONROE COURTHOUSE", "note": "The Union County courthouse of 1886 on its square in Monroe, North Carolina, outside and in.",
 		"scene": "res://world/courthouse.tscn"},
@@ -20,10 +12,6 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/twain.tscn"},
 	{"title": "MARK TWAIN HOUSE, FROM ITS DATA", "note": "The same house built by the general builder from its data file, for comparison; its outside only so far.",
 		"scene": "res://world/twain_data.tscn"},
-	{"title": "SHOWCASE", "note": "The commissioned plant: Unit 100 to Unit 500, running.",
-		"scene": "res://world/sandbox.tscn"},
-	{"title": "THE HALL", "note": "The manufacturing hall and aseptic annex, parked.",
-		"scene": "res://world/hall.tscn"},
 ]
 
 
@@ -43,13 +31,13 @@ func _ready() -> void:
 	add_child(column)
 
 	var title := Label.new()
-	title.text = "FLOWSTATE"
+	title.text = "VERIBUILDER"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 44)
 	title.add_theme_color_override("font_color", Color(0.88, 0.90, 0.86))
 	column.add_child(title)
 	var sub := Label.new()
-	sub.text = "a process plant, one wire at a time"
+	sub.text = "real buildings, generated and checked"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", Color(0.55, 0.58, 0.55))
@@ -71,7 +59,7 @@ func _ready() -> void:
 	quit.pressed.connect(func() -> void: get_tree().quit())
 	column.add_child(quit)
 	var hint := Label.new()
-	hint.text = "WASD move · E use · B build · C connect · M modify · X remove · J journal · L library · O options · F7 graphics · F5/F9 save/load"
+	hint.text = "WASD move · E use · O options · F7 graphics · F5/F9 save/load"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 11)
 	hint.add_theme_color_override("font_color", Color(0.45, 0.47, 0.45))
@@ -81,7 +69,7 @@ func _ready() -> void:
 	# Headless smoke runs boot the menu as the default scene: leave at
 	# once, there is nothing to check here.
 	if DisplayServer.get_name() == "headless":
-		print("[flowstate] menu: %d worlds" % WORLDS.size())
+		print("[veribuilder] menu: %d worlds" % WORLDS.size())
 		get_tree().quit()
 
 

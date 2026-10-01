@@ -10,7 +10,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "pylib"))
 import imageio_ffmpeg  # noqa: E402
 FF = imageio_ffmpeg.get_ffmpeg_exe()
-USER = os.path.expandvars(r"%APPDATA%\Godot\app_userdata\flowstate")
+USER = os.path.expandvars(r"%APPDATA%\Godot\app_userdata\veribuilder")
 OUT = os.path.join(USER, "voices")
 os.makedirs(OUT, exist_ok=True)
 RATE = 44100

@@ -223,7 +223,7 @@ func apply(world: WorldBase) -> void:
 		env.sdfgi_enabled = bool(values["sdfgi"])
 		env.sdfgi_use_occlusion = true
 		env.sdfgi_bounce_feedback = 0.5
-		if world.sky_mat != null:  # outdoors; the hall keeps its own fog either way
+		if world.sky_mat != null:
 			env.volumetric_fog_enabled = bool(values["volumetric_fog"])
 	var cast := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if bool(values["tree_shadows"]) \
 		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

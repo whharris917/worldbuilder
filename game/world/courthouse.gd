@@ -1,9 +1,8 @@
-extends "res://world/blank.gd"
+extends OutdoorWorld
 class_name CourthouseMap
 ## Monroe, North Carolina: the old Union County courthouse on its square
 ## downtown, outside and in, with the streets and shopfronts round the
-## square. The blank map's rules otherwise: everything unlocked, its own
-## save. The courthouse's clocks keep the world's time and its lamps
+## square. Its own save. The courthouse's clocks keep the world's time and its lamps
 ## come on at dusk.
 
 var courthouse: UnionCourthouse
@@ -18,7 +17,7 @@ var stage_takes: StageTakes
 
 func _init() -> void:
 	super()
-	plant_save_path = "user://save_courthouse.json"
+	save_path = "user://save_courthouse.json"
 	settings_prefix = "courthouse_"
 	time_of_day = 15.5
 
@@ -62,7 +61,7 @@ func _on_time_of_day(horizon: float, twilight: float) -> void:
 		square.set_darkness(1.0 - twilight)
 
 
-func _after_plant() -> void:
+func _after_build() -> void:
 	stage = Stage.new(self)
 	add_child(stage)
 	# The clerk waits on the west plaza by the monument, facing the porch.
@@ -81,13 +80,13 @@ func _after_plant() -> void:
 	stage_link.camera = stage_camera
 	stage_link.takes = stage_takes
 	add_child(stage_link)
-	if not FileAccess.file_exists(plant_save_path):
+	if not FileAccess.file_exists(save_path):
 		# On North Main Street's walk before the courthouse, looking east
 		# up the brick path to the west porch.
 		player.global_position = Vector3(-33.0, 0.3, 3.0)
 		player.rotation.y = -PI / 2.0 + 0.1
 	hud.toast("Monroe, North Carolina: the Union County courthouse (1886). The porches east and west open into the hall; the stairs at either end go up to the courtroom. O options · F5/F9 save/load")
-	print("[flowstate] courthouse: %d triangles, %d solids, built in %d ms; square %d triangles, %d solids, %d ms"
+	print("[veribuilder] courthouse: %d triangles, %d solids, built in %d ms; square %d triangles, %d solids, %d ms"
 		% [int(courthouse.stats["triangles"]), int(courthouse.stats["solids"]), int(courthouse.stats["ms"]),
 		int(square.stats.get("triangles", 0)), int(square.stats.get("solids", 0)), int(square.stats.get("ms", 0))])
 	if DisplayServer.get_name() == "headless":

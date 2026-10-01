@@ -3,8 +3,8 @@ dropped, never a word of the actors' changed; the cuts bridged by title
 cards and by setting the cast on their marks for the next scene."""
 import json, copy
 
-SRC = r"C:\Users\wilha\AppData\Roaming\Godot\app_userdata\flowstate\takes\the_four_faces.json"
-OUT = r"C:\Users\wilha\AppData\Roaming\Godot\app_userdata\flowstate\takes\the_four_faces_cut.json"
+SRC = r"C:\Users\wilha\AppData\Roaming\Godot\app_userdata\veribuilder\takes\the_four_faces.json"
+OUT = r"C:\Users\wilha\AppData\Roaming\Godot\app_userdata\veribuilder\takes\the_four_faces_cut.json"
 take = json.load(open(SRC))
 ev = take["events"]
 
@@ -24,7 +24,7 @@ def card(text, secs=3.5):
     t += secs + 0.3
 
 
-VOICES = json.load(open(r"C:\Users\wilha\AppData\Roaming\Godot\app_userdata\flowstate\voices\voices.json"))
+VOICES = json.load(open(r"C:\Users\wilha\AppData\Roaming\Godot\app_userdata\veribuilder\voices\voices.json"))
 last_spoken = [0.0]
 
 

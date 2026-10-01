@@ -6,7 +6,7 @@ porch): given at least five (pixel x, pixel y) -> (x, z, y in the
 building's feet), the camera's position, heading, tilt, roll and focal
 length are fitted by least squares, the eye held above the ground when
 the photograph was taken from it. The result is a probe view string for
-FLOWSTATE_TW_VIEWS ("cam_<name>:<vfov>:<pos>:<target>"), and the error at
+VERIBUILDER_TW_VIEWS ("cam_<name>:<vfov>:<pos>:<target>"), and the error at
 each point, which says whether the points agree.
 
     python tools/building/camera.py <building> <points.json> [--eye 1.6]
@@ -32,7 +32,7 @@ from scipy.optimize import least_squares
 sys.path.insert(0, os.path.dirname(__file__))
 from model import Building  # noqa: E402
 
-USER = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "flowstate")
+USER = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "veribuilder")
 
 
 def world(b: Building, x: float, z: float, y: float) -> np.ndarray:

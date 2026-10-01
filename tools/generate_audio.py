@@ -1,4 +1,4 @@
-"""Generate the game's placeholder audio as WAV files, procedurally.
+"""Generate the worlds' audio as WAV files, procedurally.
 
 Run from the project root:
 
@@ -8,8 +8,6 @@ Writes to game/audio/:
   music_loop.wav  40 s seamless clockwork sequencer piece in D minor:
                   a tick on every beat, a sixteenth-note pluck arpeggio,
                   a pulsing sub bass, detuned pads, a sparse lead
-  hum_loop.wav    8 s seamless ship hum — 55 Hz fundamental + harmonics
-                  and a whisper of low noise
   step_1..4.wav   footstep thumps (pitch-swept sine + noise burst)
   land.wav        heavier landing thump
   surf_loop.wav   16 s seamless surf on a ledge, swells breaking as hiss
@@ -17,12 +15,6 @@ Writes to game/audio/:
   gull_1..3.wav   herring gull cries: one long, a long call, a pair
   river_loop.wav  10 s seamless stream over stones: a low rush, a
                   chatter of eddies, bubbles now and then
-  drip_1..3.wav   a water drop landing: the bubble plink, a rising
-                  chirp that dies in a few hundredths of a second
-  pour_loop.wav   3 s seamless trickle into a vessel: a thin splash
-                  with bubbles under it
-  dosing_loop.wav 2 s seamless metering-pump drive: a small motor with
-                  the diaphragm's tick every half second
   rain_loop.wav   10 s seamless light drizzle: a soft hiss, a gentle drop
   gale_loop.wav   14 s seamless gale, gusting hard, a moan on an edge
   thunder_near.wav, thunder_1..3.wav  a close stroke's crack and roll;
@@ -300,32 +292,12 @@ def make_music() -> None:
     write_wav(OUT_DIR / "music_loop.wav", [left, right])
 
 
-def make_hum() -> None:
-    duration = 8.0
-    n = int(duration * SR)
-    left = [0.0] * n
-    right = [0.0] * n
-    for freq, amp in ((55.0, 0.090), (110.0, 0.045), (165.0, 0.018), (220.0, 0.008)):
-        add_partial(left, freq, amp, duration)
-        add_partial(right, freq, amp, duration)
-    # Slow loop-periodic breathing (2 cycles per loop).
-    for buf in (left, right):
-        for i in range(n):
-            buf[i] *= 1.0 + 0.15 * math.sin(2.0 * math.pi * 2.0 * i / n)
-    # A whisper of machinery noise, decorrelated per channel.
-    for buf in (left, right):
-        noise = loop_crossfade(brown_noise(n + int(0.5 * SR)), 0.5)
-        for i in range(n):
-            buf[i] += noise[i] * 0.35
-    write_wav(OUT_DIR / "hum_loop.wav", [left[:n], right[:n]])
-
-
 def make_step(path: Path, f0: float, decay: float, noise_amp: float,
               duration: float = 0.28, level: float = 0.30) -> None:
     """A soft sole on concrete: low pitch-swept thump, a whisper of
     lowpassed noise, a gentle attack ramp so there is no click, and
     quiet normalization. No clipping, no crunch. Tuned dull enough to
-    sit right even fully dry (the outdoor sandbox has almost no
+    sit right even fully dry (outdoors there is almost no
     reverb to hide behind)."""
     n = int(duration * SR)
     buf = [0.0] * n
@@ -347,60 +319,6 @@ def make_step(path: Path, f0: float, decay: float, noise_amp: float,
     write_wav(path, [buf], normalize_to=level)
 
 
-def make_motor() -> None:
-    """4 s seamless motor loop: mains-hum fundamental, rotor harmonics,
-    and a whisper of bearing noise. Pitch-shifted per machine."""
-    duration = 4.0
-    n = int(duration * SR)
-    buf = [0.0] * n
-    for freq, amp in ((60.0, 0.30), (120.0, 0.22), (180.0, 0.10),
-                      (240.0, 0.07), (300.0, 0.035), (417.0, 0.03)):
-        add_partial(buf, freq, amp, duration)
-    # Slow loop-periodic load wobble.
-    for i in range(n):
-        buf[i] *= 1.0 + 0.10 * math.sin(2.0 * math.pi * 3.0 * i / n)
-    noise = loop_crossfade(brown_noise(n + int(0.5 * SR), leak=0.95, gain=0.25), 0.5)
-    alpha = 1.0 - math.exp(-2.0 * math.pi * 700.0 / SR)
-    lp = 0.0
-    for i in range(n):
-        lp += alpha * (noise[i] - lp)
-        buf[i] += lp * 0.18
-    write_wav(OUT_DIR / "motor_loop.wav", [buf], normalize_to=0.5)
-
-
-def make_steam() -> None:
-    """4 s seamless steam hiss: bandpassed noise breathing slowly."""
-    duration = 4.0
-    n = int(duration * SR)
-    noise = loop_crossfade(brown_noise(n + int(0.5 * SR), leak=0.6, gain=0.8), 0.5)
-    # Highpass-ish: subtract a heavy lowpass to leave the hiss band.
-    alpha = 1.0 - math.exp(-2.0 * math.pi * 900.0 / SR)
-    lp = 0.0
-    buf = [0.0] * n
-    for i in range(n):
-        lp += alpha * (noise[i] - lp)
-        buf[i] = noise[i] - lp
-    for i in range(n):
-        buf[i] *= 1.0 + 0.18 * math.sin(2.0 * math.pi * 2.0 * i / n)
-    write_wav(OUT_DIR / "steam_loop.wav", [buf], normalize_to=0.4)
-
-
-def make_boiler() -> None:
-    """4 s seamless boiler rumble: low rolling boil under a soft roar."""
-    duration = 4.0
-    n = int(duration * SR)
-    buf = [0.0] * n
-    for freq, amp in ((31.0, 0.28), (47.0, 0.20), (62.0, 0.14), (89.0, 0.08)):
-        add_partial(buf, freq, amp, duration)
-    noise = loop_crossfade(brown_noise(n + int(0.5 * SR), leak=0.985, gain=0.15), 0.5)
-    for i in range(n):
-        # Bubbling: amplitude ripple at a few loop-periodic rates.
-        ripple = 1.0 + 0.25 * math.sin(2.0 * math.pi * 7.0 * i / n) \
-            + 0.15 * math.sin(2.0 * math.pi * 13.0 * i / n)
-        buf[i] = buf[i] * ripple + noise[i] * 0.5
-    write_wav(OUT_DIR / "boiler_loop.wav", [buf], normalize_to=0.45)
-
-
 def highpassed_noise(n: int, cutoff: float, leak: float = 0.6,
                      gain: float = 0.8) -> list[float]:
     """White-ish noise with the low band removed: the hiss register."""
@@ -413,181 +331,6 @@ def highpassed_noise(n: int, cutoff: float, leak: float = 0.6,
         out[i] = noise[i] - lp
     return out
 
-
-def make_valve_air() -> None:
-    """Pneumatic actuator stroke: a soft mechanical take-up thock, then
-    an air burst that decays as the diaphragm chamber equalizes."""
-    duration = 0.55
-    n = int(duration * SR)
-    buf = [0.0] * n
-    hiss = highpassed_noise(n, 1200.0)
-    for i in range(n):
-        t = i / SR
-        attack = min(1.0, t / 0.012)
-        thock = math.sin(2.0 * math.pi * (170.0 * math.exp(-t * 9.0) + 60.0) * t) \
-            * math.exp(-t * 26.0) * 0.7
-        air = hiss[i] * math.exp(-t * 7.5) * attack
-        buf[i] = thock + air
-    write_wav(OUT_DIR / "valve_air.wav", [buf], normalize_to=0.40)
-
-
-def make_clunk() -> None:
-    """Contactor / motor starter clunk: low armature thump, a metallic
-    tick, and one quieter mechanical bounce."""
-    duration = 0.30
-    n = int(duration * SR)
-    buf = [0.0] * n
-    tick = highpassed_noise(n, 2500.0, leak=0.4, gain=1.0)
-    for i in range(n):
-        t = i / SR
-        thump = math.sin(2.0 * math.pi * 88.0 * t) * math.exp(-t * 34.0)
-        ring = math.sin(2.0 * math.pi * 1380.0 * t) * math.exp(-t * 90.0) * 0.20
-        buf[i] = thump + ring + tick[i] * math.exp(-t * 240.0) * 0.5
-    bounce_at = int(0.055 * SR)
-    for i in range(bounce_at, n):
-        t = (i - bounce_at) / SR
-        buf[i] += math.sin(2.0 * math.pi * 96.0 * t) * math.exp(-t * 60.0) * 0.35
-    write_wav(OUT_DIR / "clunk.wav", [buf], normalize_to=0.48)
-
-
-def make_relay_click() -> None:
-    """Small ice-cube relay click: a 2 ms snap and a tiny ping."""
-    duration = 0.09
-    n = int(duration * SR)
-    buf = [0.0] * n
-    snap = highpassed_noise(n, 3000.0, leak=0.3, gain=1.0)
-    for i in range(n):
-        t = i / SR
-        buf[i] = snap[i] * math.exp(-t * 420.0) \
-            + math.sin(2.0 * math.pi * 2100.0 * t) * math.exp(-t * 160.0) * 0.25
-    write_wav(OUT_DIR / "relay_click.wav", [buf], normalize_to=0.30)
-
-
-def make_beep() -> None:
-    """Annunciator beep: a clean 1.9 kHz tone with cosine ramps, dry
-    and a little harsh on purpose — it has to read as an instrument,
-    not music."""
-    duration = 0.18
-    n = int(duration * SR)
-    buf = [0.0] * n
-    ramp = 0.012
-    for i in range(n):
-        t = i / SR
-        if t < ramp:
-            env = 0.5 * (1.0 - math.cos(math.pi * t / ramp))
-        elif t > duration - ramp:
-            env = 0.5 * (1.0 - math.cos(math.pi * (duration - t) / ramp))
-        else:
-            env = 1.0
-        buf[i] = (math.sin(2.0 * math.pi * 1900.0 * t)
-                  + 0.20 * math.sin(2.0 * math.pi * 3800.0 * t)) * env
-    write_wav(OUT_DIR / "beep.wav", [buf], normalize_to=0.32)
-
-
-def make_trap_burst() -> None:
-    """Steam trap discharge: hiss swells as the trap opens, chuffs
-    while condensate flashes through, and dies as the seat closes."""
-    duration = 1.3
-    n = int(duration * SR)
-    buf = [0.0] * n
-    hiss = highpassed_noise(n, 900.0)
-    for i in range(n):
-        t = i / SR
-        swell = min(1.0, t / 0.14)
-        decay = math.exp(-max(0.0, t - 0.45) * 4.5)
-        chuff = 1.0 + 0.45 * math.sin(2.0 * math.pi * 11.0 * t) \
-            + 0.20 * math.sin(2.0 * math.pi * 23.0 * t)
-        buf[i] = hiss[i] * swell * decay * chuff
-    write_wav(OUT_DIR / "trap_burst.wav", [buf], normalize_to=0.38)
-
-
-def make_vent_blast() -> None:
-    """Main air valve burst: a hard valve pop, then a big rush of air
-    that tails off as chamber pressure steps up. Bigger and rounder
-    than the actuator's valve_air."""
-    duration = 0.85
-    n = int(duration * SR)
-    buf = [0.0] * n
-    rush = highpassed_noise(n, 700.0)
-    for i in range(n):
-        t = i / SR
-        attack = min(1.0, t / 0.006)
-        pop = math.sin(2.0 * math.pi * (140.0 * math.exp(-t * 12.0) + 45.0) * t) \
-            * math.exp(-t * 30.0) * 0.9
-        body = rush[i] * math.exp(-t * 4.2) * attack
-        buf[i] = pop + body
-    write_wav(OUT_DIR / "vent_blast.wav", [buf], normalize_to=0.46)
-
-
-def make_gurgle() -> None:
-    """3 s seamless condensate gurgle: a soft water-noise bed with
-    upward-chirping bubble blips scattered through the loop (kept off
-    the seam so it wraps cleanly)."""
-    duration = 3.0
-    n = int(duration * SR)
-    buf = loop_crossfade(brown_noise(n + int(0.5 * SR), leak=0.92, gain=0.10), 0.5)
-    for _ in range(46):
-        start = rng.uniform(0.05, duration - 0.30)
-        blip_len = rng.uniform(0.05, 0.16)
-        f0 = rng.uniform(180.0, 420.0)
-        sweep = rng.uniform(1.6, 3.2)
-        amp = rng.uniform(0.25, 0.65)
-        i0 = int(start * SR)
-        for j in range(int(blip_len * SR)):
-            t = j / SR
-            frac = t / blip_len
-            env = math.sin(math.pi * frac) ** 2
-            buf[i0 + j] += amp * env * math.sin(
-                2.0 * math.pi * f0 * (1.0 + sweep * frac) * t)
-    write_wav(OUT_DIR / "gurgle_loop.wav", [buf[:n]], normalize_to=0.34)
-
-
-def make_servo() -> None:
-    """Servo index move: a quick rising whir that settles with a tiny
-    detent tick — one conveyor step."""
-    duration = 0.42
-    n = int(duration * SR)
-    buf = [0.0] * n
-    move_s = 0.30
-    for i in range(n):
-        t = i / SR
-        if t < move_s:
-            frac = t / move_s
-            f = 240.0 + 520.0 * math.sin(math.pi * frac)   # rev up, rev down
-            env = math.sin(math.pi * frac) ** 0.7
-            buf[i] = (math.sin(2.0 * math.pi * f * t)
-                      + 0.35 * math.sin(2.0 * math.pi * 2.0 * f * t)) * env * 0.5
-    tick_at = int((move_s + 0.02) * SR)
-    for i in range(tick_at, n):
-        t = (i - tick_at) / SR
-        buf[i] += math.sin(2.0 * math.pi * 1600.0 * t) * math.exp(-t * 300.0) * 0.4
-    write_wav(OUT_DIR / "servo.wav", [buf], normalize_to=0.30)
-
-
-def make_milestone() -> None:
-    """Milestone chime (campaign): three rising notes of a D
-    major triad with a soft octave under each, bell-like decays, a
-    touch under a second. Pure sines and no RNG, so every other file
-    stays byte-identical."""
-    duration = 1.1
-    n = int(duration * SR)
-    buf = [0.0] * n
-    notes = [(587.33, 0.00), (739.99, 0.16), (880.00, 0.32), (1174.66, 0.50)]
-    for freq, start in notes:
-        start_i = int(start * SR)
-        for i in range(start_i, n):
-            t = (i - start_i) / SR
-            attack = min(t / 0.012, 1.0)
-            env = attack * math.exp(-t * 3.2)
-            buf[i] += (math.sin(2.0 * math.pi * freq * t)
-                       + 0.35 * math.sin(2.0 * math.pi * freq * 2.0 * t) * math.exp(-t * 6.0)
-                       + 0.18 * math.sin(2.0 * math.pi * freq * 0.5 * t)) * env
-    write_wav(OUT_DIR / "milestone.wav", [buf], normalize_to=0.36)
-
-
-# ---- the coast --------------------------------------------------------------
-# The Maine coast's ambience. Each has its own RNG so the
-# files above stay byte-identical whatever is added here.
 
 def _noise_r(r: random.Random, n: int) -> list[float]:
     return [r.random() * 2.0 - 1.0 for _ in range(n)]
@@ -721,112 +464,6 @@ def make_gulls() -> None:
     make_gull(OUT_DIR / "gull_3.wav",
               [(1380.0, 900.0, 0.45, 0.12), (1300.0, 880.0, 0.45, 0.05)], r)
 
-
-def make_drip(path: Path, f0: float, rise: float, r: random.Random) -> None:
-    """One water drop landing: a bubble resonance, a sine that chirps
-    upward as the bubble shrinks and dies in a few hundredths of a
-    second, with a whisper of splash at the instant it lands."""
-    dur = 0.16
-    n = int(SR * dur)
-    buf = [0.0] * n
-    phase = 0.0
-    for i in range(n):
-        t = i / SR
-        freq = f0 * (1.0 + rise * (1.0 - math.exp(-t / 0.018)))
-        phase += 2.0 * math.pi * freq / SR
-        env = math.exp(-t / 0.040) * min(1.0, t / 0.002)
-        splash = (r.random() * 2.0 - 1.0) * 0.35 * math.exp(-t / 0.004)
-        buf[i] = math.sin(phase) * env + splash
-    write_wav(path, [buf], normalize_to=0.40)
-
-
-def make_drips() -> None:
-    r = random.Random(20260920)
-    make_drip(OUT_DIR / "drip_1.wav", 760.0, 1.1, r)
-    make_drip(OUT_DIR / "drip_2.wav", 940.0, 0.9, r)
-    make_drip(OUT_DIR / "drip_3.wav", 1120.0, 1.3, r)
-
-
-def make_pour() -> None:
-    """A trickle into a vessel: a thin band of splash noise, bubbles
-    under it now and then, seamless over three seconds."""
-    r = random.Random(20260921)
-    dur = 3.0
-    n = int(SR * dur)
-    fade = int(0.25 * SR)
-    total = n + fade
-    white = _noise_r(r, total)
-    low = _lowpass(white, 0.08)
-    high = _lowpass(white, 0.35)
-    band = [h - l for h, l in zip(high, low)]
-    out = [0.0] * total
-    for i in range(total):
-        t = i / SR
-        swell = 0.75 + 0.25 * math.sin(2.0 * math.pi * t * 2.0 / dur + 0.7)
-        out[i] = band[i] * swell * 1.6
-    # Bubbles: short rising chirps, a few a second.
-    for _ in range(int(dur * 4)):
-        start = int(r.random() * n)
-        f0 = 250.0 + r.random() * 500.0
-        length = int(SR * 0.05)
-        phase = 0.0
-        for k in range(length):
-            t = k / SR
-            freq = f0 * (1.0 + 0.8 * (1.0 - math.exp(-t / 0.015)))
-            phase += 2.0 * math.pi * freq / SR
-            env = math.exp(-t / 0.014)
-            idx = (start + k) % total
-            out[idx] += math.sin(phase) * env * 0.5
-    out = loop_crossfade(out, 0.25)
-    write_wav(OUT_DIR / "pour_loop.wav", [out], normalize_to=0.38)
-
-
-def make_dosing() -> None:
-    """A metering pump running: a small motor, quiet, and the diaphragm
-    tick every half second, four to the two-second loop."""
-    r = random.Random(20260922)
-    dur = 2.0
-    n = int(SR * dur)
-    out = [0.0] * n
-    f_motor = quantize(95.0, dur)
-    f_whine = quantize(1420.0, dur)
-    for i in range(n):
-        t = i / SR
-        out[i] = 0.35 * math.sin(2.0 * math.pi * f_motor * t) \
-            + 0.12 * math.sin(2.0 * math.pi * f_motor * 2.0 * t) \
-            + 0.03 * math.sin(2.0 * math.pi * f_whine * t)
-    for k in range(4):
-        start = int(k * SR * 0.5)
-        length = int(SR * 0.04)
-        for j in range(length):
-            t = j / SR
-            click = (r.random() * 2.0 - 1.0) * math.exp(-t / 0.004) * 0.9 \
-                + math.sin(2.0 * math.pi * 320.0 * t) * math.exp(-t / 0.012) * 0.6
-            out[(start + j) % n] += click
-    write_wav(OUT_DIR / "dosing_loop.wav", [out], normalize_to=0.34)
-
-
-def make_clink() -> None:
-    """A vial set down on steel (the filling line): a glass
-    tap, a handful of inharmonic partials ringing out at their own rates
-    over a click. Pure sines, no RNG, so no other file moves."""
-    duration = 0.4
-    n = int(duration * SR)
-    buf = [0.0] * n
-    partials = [(2630.0, 1.0, 22.0), (4180.0, 0.6, 30.0), (5870.0, 0.45, 38.0),
-                (7340.0, 0.3, 46.0), (1190.0, 0.25, 60.0)]
-    for i in range(n):
-        t = i / SR
-        v = 0.0
-        for f, a_, d in partials:
-            v += a_ * math.sin(2.0 * math.pi * f * t) * math.exp(-t * d)
-        v += math.sin(2.0 * math.pi * 900.0 * t) * math.exp(-t * 400.0) * 0.6
-        buf[i] = v
-    write_wav(OUT_DIR / "clink.wav", [buf], normalize_to=0.30)
-
-
-# The harbour town's weather and its harbour. Each has its own RNG, or
-# none, so every file above stays byte-identical.
 
 def make_rain() -> None:
     """A light drizzle: a soft, even hiss with the top rolled off, a
@@ -971,19 +608,6 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
     make_music()
-    make_hum()
-    make_motor()
-    make_steam()
-    make_boiler()
-    make_valve_air()
-    make_clunk()
-    make_relay_click()
-    make_beep()
-    make_trap_burst()
-    make_vent_blast()
-    make_gurgle()
-    make_servo()
-    make_milestone()
     make_surf()
     make_wind()
     make_gulls()
@@ -993,10 +617,6 @@ def main() -> None:
             start=1):
         make_step(OUT_DIR / f"step_{idx}.wav", f0, decay, noise_amp)
     make_step(OUT_DIR / "land.wav", 46.0, 7.0, 0.50, duration=0.55, level=0.42)
-    make_drips()
-    make_pour()
-    make_dosing()
-    make_clink()
     make_rain()
     make_gale()
     make_thunders()

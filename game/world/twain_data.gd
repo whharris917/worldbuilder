@@ -7,5 +7,5 @@ extends TwainMap
 func _init() -> void:
 	super()
 	from_data = true
-	plant_save_path = "user://save_twain_data.json"
+	save_path = "user://save_twain_data.json"
 	settings_prefix = "twain_data_"

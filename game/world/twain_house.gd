@@ -94,7 +94,7 @@ var stats: Dictionary = {}
 ## rooms {name, poly (survey plan), y0, y1 (feet; y1 < 0 up to the roof)},
 ## the furniture {name, xf (world, the box's middle), size, kind: "floor"
 ## or "wall"}, the doorways {center, normal, width, outside}; and, when
-## FLOWSTATE_TW_AUDIT is set, the meshes as built {outer, inner,
+## VERIBUILDER_TW_AUDIT is set, the meshes as built {outer, inner,
 ## furniture}.
 var rooms: Array[Dictionary] = []
 var items: Array[Dictionary] = []
@@ -159,7 +159,7 @@ func build() -> void:
 	TwainInterior.furnish()
 	var furniture := k.m
 	k.m = outer
-	if OS.get_environment("FLOWSTATE_TW_AUDIT") != "":
+	if OS.get_environment("VERIBUILDER_TW_AUDIT") != "":
 		meshes = {"outer": outer, "inner": inner, "furniture": furniture, "dress": dress_m}
 	var mats := {"wall": wall_mat, "glass": glass_mat, "iron": iron_mat, "lamp": lamp_mat, "stencil": stencil_mat,
 		"flame": flame_mat}

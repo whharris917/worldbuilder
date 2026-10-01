@@ -15,7 +15,7 @@ extends CharacterBody3D
 const SPEED := 4.0
 const MOUSE_SENS := 0.0022
 const GRAVITY := 9.8
-const JUMP_SPEED := 3.43       # a 0.6 m rise: clears a knee-high pipe
+const JUMP_SPEED := 3.43       # a 0.6 m rise
 const AIR_STEER := 4.0         # m/s² of steering while airborne
 const JUMP_GRACE := 0.12       # s: a jump pressed just before landing, or
                                # just after walking off an edge, still counts
@@ -35,7 +35,6 @@ const BASE_REACH := 3.0
 
 @onready var camera: Camera3D = $Camera3D
 @onready var ray: RayCast3D = $Camera3D/InteractRay
-var port_ray: RayCast3D
 
 var zoom_t: float = 0.0        # 0 = blade tip (first person), 1 = top of the curve
 var _zoom_now: float = 0.0     # smoothed follower
@@ -78,20 +77,10 @@ func set_body_scale(s: float) -> void:
 
 func _ready() -> void:
 	ray.add_exception(self)
-	# The ground and structures (1) and the plant's equipment and lines.
-	collision_mask = 1 | PlantSolids.SOLID_LAYER
-	# World (1) + interact volumes (4) + routed runs (8); connect mode
-	# adds port markers (2).
-	ray.collision_mask = 1 | 4 | 8
-	# A second ray that sees only port fittings. A fitting
-	# lies inside its equipment's interaction volume, and a ray that
-	# sees both stops at the volume; whenever the main ray admits
-	# fittings, this one is asked first.
-	port_ray = RayCast3D.new()
-	port_ray.collision_mask = 2
-	port_ray.target_position = ray.target_position
-	port_ray.add_exception(self)
-	camera.add_child(port_ray)
+	# The ground and structures (1).
+	collision_mask = 1
+	# World (1) + interact volumes (4).
+	ray.collision_mask = 1 | 4
 	MouseMode.capture()
 	figure = PlayerFigure.new()
 	add_child(figure)
@@ -196,7 +185,7 @@ func _update_camera(delta: float) -> void:
 	var head := to_global(eye)
 	var target := to_global(_zoom_point(_zoom_now))
 	var space := get_world_3d().direct_space_state
-	var query := PhysicsRayQueryParameters3D.create(head, target, 1 | PlantSolids.SOLID_LAYER)
+	var query := PhysicsRayQueryParameters3D.create(head, target, 1)
 	query.exclude = [get_rid()]
 	var hit := space.intersect_ray(query)
 	if not hit.is_empty():
@@ -204,37 +193,13 @@ func _update_camera(delta: float) -> void:
 	camera.position = to_local(target)
 	camera.fov = lerpf(camera.fov, _fov_target, 1.0 - exp(-12.0 * delta))
 	ray.target_position = Vector3(0, 0, -(BASE_REACH * body_scale + zoom_offset()))
-	port_ray.target_position = ray.target_position
 
 
-## What the crosshair is on. A port fitting under the crosshair wins
-## over the interaction volume it sits inside, in any mode (a click on
-## a fitting starts a line, a right-hold moves
-## a nozzle), unless the main ray stops well short of it — a fitting
-## behind a wall is not under the crosshair. Otherwise the main ray.
+## What the crosshair is on.
 func aimed_collider() -> Node:
-	if _fitting_in_front():
-		return port_ray.get_collider() as Node
 	if ray.is_colliding():
 		return ray.get_collider() as Node
 	return null
-
-
-## The ray that answered aimed_collider(), for its point and normal.
-func aimed_ray() -> RayCast3D:
-	if _fitting_in_front():
-		return port_ray
-	return ray
-
-
-func _fitting_in_front() -> bool:
-	if not port_ray.is_colliding():
-		return false
-	if not ray.is_colliding():
-		return true
-	var origin := camera.global_position
-	return port_ray.get_collision_point().distance_to(origin) \
-		<= ray.get_collision_point().distance_to(origin) + 0.5
 
 
 func _zoom_point(t: float) -> Vector3:
@@ -249,7 +214,7 @@ func _zoom_point(t: float) -> Vector3:
 
 
 ## How far the camera currently sits from the head. Reach-based systems
-## (interact ray, build ghost) add this so the crosshair keeps working
+## (the interact ray) add this so the crosshair keeps working
 ## from a zoomed-out vantage.
 func zoom_offset() -> float:
 	return camera.position.distance_to(eye)
@@ -278,7 +243,7 @@ func _play(stream: AudioStream, pitch: float) -> void:
 	_steps.play()
 
 
-## The equipment view under the crosshair, or null.
+## The view under the crosshair, or null.
 func look_view() -> Node3D:
 	if not ray.is_colliding():
 		return null

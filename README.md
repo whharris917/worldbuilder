@@ -1,25 +1,13 @@
-# flowstate
+# veribuilder
 
-First-person factory-building sim aboard a starship. Design bible: `docs/GDD.md`. Working agreement: `CLAUDE.md`.
+Real places built in 3D and walked in first person: historic buildings and towns modelled from their survey drawings and photographs, generated from architectural decisions and validated as sound buildings. Working agreement: `CLAUDE.md`. Method: `docs/real_buildings.md`.
 
-## Python kernel
+Open `game/project.godot` in Godot 4.7 and press play: the title screen offers the harbour town, the Monroe courthouse and the Mark Twain house. WASD and the mouse to move, E to use, O for options (time of day, weather, music, graphics), F7 to cycle graphics presets, F5/F9 to save and load where you stand.
 
 ```powershell
-# launch the live operator GUI (opens in your browser)
-.venv\Scripts\python.exe tools\demo_gui.py
+# generate a building from its data, validate it, write its .bld if clean
+.venv\Scripts\python.exe tools\building\build.py twain
 
-# run the tests
+# the generator and validator tests
 .venv\Scripts\python.exe -m pytest tests -q
 ```
-
-The GUI shows the supply-tank loop — tank, float switch, relay, pump — with an
-operator graphic and live trends of historized data. Try setting low trip = high
-trip and watch the relay cycle counter. Full history is downloadable as CSV from
-the page footer.
-
-## Godot first playable
-
-Open `game/project.godot` in Godot 4.3+ and press play. WASD + mouse to move,
-E to cycle the pump's Hand-Off-Auto selector, F5/F9 save/load, Esc releases the
-mouse. Look at any equipment for its live values; the wall HMI trends the tank
-level from historized samples.

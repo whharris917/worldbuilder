@@ -1,10 +1,9 @@
-extends "res://world/maine.gd"
+extends CoastWorld
 class_name TownMap
 ## The harbour town: the Maine coast with a 1940s town on its graded
 ## site, a waterfront at the head of the cove, boats in the harbour and
 ## a bell buoy off its mouth, under weather that runs from a fair day to
-## a storm off the sea. The blank map's rules otherwise: everything
-## unlocked, its own save. The clock and the weather are the town's
+## a storm off the sea. Its own save. The clock and the weather are the town's
 ## own (the options panel sets both); it opens on an early evening
 ## storm.
 
@@ -15,8 +14,7 @@ var weather: Weather
 
 func _init() -> void:
 	super()
-	plant_save_path = "user://save_town.json"
-	with_exercises = false
+	save_path = "user://save_town.json"
 	settings_prefix = "town_"
 	# A small town's lamps: the faintest stars are a little lost.
 	star_limit = 5.9
@@ -75,18 +73,18 @@ func _sky_cover() -> float:
 	return weather.overcast() if weather != null else 0.0
 
 
-func _after_plant() -> void:
-	if not FileAccess.file_exists(plant_save_path):
+func _after_build() -> void:
+	if not FileAccess.file_exists(save_path):
 		# On Main Street by the drug store, looking east up the street
 		# to the church.
 		player.global_position = Vector3(-6.0, coast.height_at(-6.0, 17.5) + 0.4, 17.5)
 		player.rotation.y = -PI / 2.0
-	hud.toast("The harbour town. Main Street runs east to the church; Harbor Street goes down to the wharf. O options: the time of day and the weather. B build · C connect · L library · F5/F9 save/load")
+	hud.toast("The harbour town. Main Street runs east to the church; Harbor Street goes down to the wharf. O options: the time of day and the weather. F5/F9 save/load")
 	var s := town.stats
-	print("[flowstate] harbour town: %d houses, %d street trees, %d lamps, %d signs, %d triangles, %d solids, built in %d ms; %d trees in the woods"
+	print("[veribuilder] harbour town: %d houses, %d street trees, %d lamps, %d signs, %d triangles, %d solids, built in %d ms; %d trees in the woods"
 		% [int(s["houses"]), int(s["trees"]), int(s["lamps"]), int(s["signs"]), int(s["triangles"]), int(s["solids"]), int(s["ms"]),
 		int(coast.stats.get("trees", 0))])
-	print("[flowstate] town ground: terrain %d ms, rocks %d ms, woods %d ms, %d lots on %d terraces"
+	print("[veribuilder] town ground: terrain %d ms, rocks %d ms, woods %d ms, %d lots on %d terraces"
 		% [int(coast.stats.get("ms_terrain", 0)), int(coast.stats.get("ms_rocks", 0)), int(coast.stats.get("ms_forest", 0)),
 		(coast as TownCoast).lots.size(), (coast as TownCoast).pads.size()])
 	if DisplayServer.get_name() == "headless":
@@ -174,7 +172,7 @@ func _town_check() -> void:
 	if weather.rain > 0.0 or weather.lamps_on:
 		problems.append("rain or lamps on a fair noon")
 	if problems.is_empty():
-		print("[flowstate] town self-check OK — %d lamps lit in the storm, the moored boat rode %.2f m, the bell rang %d times in ten seconds, thunder queued"
+		print("[veribuilder] town self-check OK — %d lamps lit in the storm, the moored boat rode %.2f m, the bell rang %d times in ten seconds, thunder queued"
 			% [lit, moved, harbor.bell_strikes - harbor_before])
 	else:
-		print("[flowstate] town self-check FAILED: " + ", ".join(problems))
+		print("[veribuilder] town self-check FAILED: " + ", ".join(problems))

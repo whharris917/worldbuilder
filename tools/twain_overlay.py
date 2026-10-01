@@ -1,7 +1,7 @@
 """Lay the Mark Twain house model over the survey's elevation drawings.
 
 Reads the model's straight-on pictures (user://ortho_<front>.png, written by
-world/twain_probe.tscn with FLOWSTATE_TW_ORTHO=all) and the survey's sheet
+world/twain_probe.tscn with VERIBUILDER_TW_ORTHO=all) and the survey's sheet
 masters (HABS CT-359 sheets 8-11, 100 px to the foot), and writes for each
 front user://overlay_<front>.png: the model faded, the drawing's lines over
 it in dark red, a grid every five feet. Where a red line has no model under
@@ -22,7 +22,7 @@ import sys
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
 Image.MAX_IMAGE_PIXELS = None
-USER = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "flowstate")
+USER = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "veribuilder")
 # Kept in step with twain_probe.gd's SHEETS / ORTHO_*.
 SHEETS = {"east": 8, "north": 9, "west": 10, "south": 11}
 ORTHO_X = (10.0, 170.0)
