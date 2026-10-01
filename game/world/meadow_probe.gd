@@ -6,7 +6,8 @@ extends Node
 ## WORLDBUILDER_MEADOW_SHOTS=name,name limits it to those views;
 ## WORLDBUILDER_MEADOW_VIEWS=name:hour:fov:x,y,z:tx,ty,tz;... takes its
 ## own (heights over the ground); WORLDBUILDER_MEADOW_PRESET picks the
-## graphics preset (Medium by default).
+## graphics preset (Medium by default); WORLDBUILDER_MEADOW_STYLES=0,1,...
+## photographs each view in those picture styles (style.gdshader).
 
 ## name, hour, fov, camera (x, height over ground, z), target (x, height over ground, z).
 const VIEWS := [
@@ -58,6 +59,20 @@ func _run(world: MeadowMap) -> void:
 		for part: String in hide.split(","):
 			for node in world.find_children(part, "", true, false):
 				(node as Node3D).visible = false
+	var styles: Array[int] = [-1]
+	var style_mat: ShaderMaterial = null
+	if OS.get_environment("WORLDBUILDER_MEADOW_STYLES") != "":
+		styles.clear()
+		for n: String in OS.get_environment("WORLDBUILDER_MEADOW_STYLES").split(","):
+			styles.append(int(n))
+		var layer := CanvasLayer.new()
+		add_child(layer)
+		var rect := ColorRect.new()
+		rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		style_mat = ShaderMaterial.new()
+		style_mat.shader = load("res://world/style.gdshader")
+		rect.material = style_mat
+		layer.add_child(rect)
 	var only := OS.get_environment("WORLDBUILDER_MEADOW_SHOTS")
 	for v: Array in views:
 		if only != "" and not (str(v[0]) in only.split(",")):
@@ -69,7 +84,12 @@ func _run(world: MeadowMap) -> void:
 		at.y += world.land.height_at(at.x, at.z)
 		to.y += world.land.height_at(to.x, to.z)
 		cam.look_at_from_position(at, to, Vector3.UP)
-		await _shot("probe_meadow_%s" % v[0])
+		for st in styles:
+			if st < 0:
+				await _shot("probe_meadow_%s" % v[0])
+			else:
+				style_mat.set_shader_parameter("style", st)
+				await _shot("probe_meadow_%s_style%d" % [v[0], st])
 	get_tree().quit()
 
 
