@@ -92,3 +92,17 @@ def test_an_eave_stops_at_a_tower_on_its_corner():
     for c in m.roofs["main"].eave:
         for y in (17.4, 17.8, 18.2, 18.6, 19.0):
             assert not contains(c, (41.2, y, 31.2), 1e-6), "the main eave sticks out past the tower"
+
+
+def test_a_face_less_one_sharing_its_edge_stays_within_it():
+    # a wall's slanted top less the one under the next storey's wall, the
+    # two edges along one line to rounding: no point thrown past the face
+    import solid
+    p = [(23.700000000001037, -62.96785886466206), (47.373749999998836, -31.678383797157334),
+         (46.77374999999999, -31.678383797157334), (23.099999999999078, -62.96785886466206)]
+    q = [(23.69999999999934, -62.96785886466206), (40.44549999999898, -40.83541661352312),
+         (39.845500000000214, -40.83541661352312), (23.10000000000004, -62.96785886466206)]
+    xs, zs = [v[0] for v in p], [v[1] for v in p]
+    for piece in solid.poly_less(p, q):
+        for x, z in piece:
+            assert min(xs) - 1e-6 <= x <= max(xs) + 1e-6 and min(zs) - 1e-6 <= z <= max(zs) + 1e-6

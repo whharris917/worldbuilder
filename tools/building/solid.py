@@ -436,18 +436,24 @@ def is_convex(p, tol: float = 1e-9) -> bool:
 def clip_poly(p, a, b) -> list:
     """The part of a plan polygon left of the line a -> b."""
     out = []
+    L = math.hypot(b[0] - a[0], b[1] - a[1]) or 1.0
 
     def s(q):
-        return (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0])
+        # distance (feet) left of the line
+        return ((b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0])) / L
 
+    eps = 1e-9
     n = len(p)
     for i in range(n):
         u, v = p[i], p[(i + 1) % n]
         su, sv = s(u), s(v)
-        if su >= -1e-12:
+        iu, iv = su >= -eps, sv >= -eps
+        if iu:
             out.append(u)
-        if (su < -1e-12 < sv) or (sv < -1e-12 < su):
-            t = su / (su - sv)
+        if iu != iv and su != sv:
+            # the crossing lies on the edge: a point within the tolerance
+            # of the line on the inside must not throw it past the ends
+            t = min(1.0, max(0.0, su / (su - sv)))
             out.append((u[0] + (v[0] - u[0]) * t, u[1] + (v[1] - u[1]) * t))
     return out
 
