@@ -40,7 +40,7 @@ func _after_build() -> void:
 		player.global_position = Vector3(13.4, 0.3, 17.1)
 		player.rotation.y = 0.665
 	hud.toast("Clarendon Hills, Illinois: the Middaugh house, from its survey drawings. O options · F5/F9 save/load")
-	print("[veribuilder] middaugh house from its data: %d faces, %d triangles, loaded in %d ms%s"
+	print("[worldbuilder] middaugh house from its data: %d faces, %d triangles, loaded in %d ms%s"
 		% [int(built.stats.get("faces", 0)), int(built.stats.get("triangles", 0)), int(built.stats.get("ms", 0)),
 		" (BROKEN: it fails its checks)" if built.broken else ""])
 	if DisplayServer.get_name() == "headless":

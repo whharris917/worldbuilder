@@ -41,7 +41,7 @@ func _ready() -> void:
 	if err != OK:
 		push_warning("StageLink: cannot listen on %d (%s)" % [PORT, error_string(err)])
 	else:
-		print("[veribuilder] stage link: listening on http://127.0.0.1:%d" % PORT)
+		print("[worldbuilder] stage link: listening on http://127.0.0.1:%d" % PORT)
 
 
 func _exit_tree() -> void:

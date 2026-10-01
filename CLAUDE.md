@@ -1,4 +1,4 @@
-# veribuilder
+# worldbuilder
 
 Real places built in 3D and walked in first person: historic buildings and towns modelled from their survey drawings and photographs, generated from architectural decisions and validated as sound buildings. Godot 4 for the worlds; Python for the building generator, its validator and the fitting tools.
 
@@ -23,7 +23,7 @@ The director is the creative director: does not code, reviews builds by walking 
 
 - Director: sets vision, reviews builds, reports what they saw. Never asked to write code.
 - Claude: the whole development team. Decide technical questions and explain briefly; ask only when a choice is creative.
-- Claude can see rendered output: each world's windowed probe saves screenshots to `user://*.png` (`%APPDATA%\Godot\app_userdata\veribuilder\`) and Claude reads them. Use this for visual work instead of guessing.
+- Claude can see rendered output: each world's windowed probe saves screenshots to `user://*.png` (`%APPDATA%\Godot\app_userdata\worldbuilder\`) and Claude reads them. Use this for visual work instead of guessing.
 
 ## Environment (Windows)
 
@@ -40,7 +40,7 @@ The director is the creative director: does not code, reviews builds by walking 
 - **Per change:** `& $exe --headless --path <repo>\game --import`, then one headless smoke, `--quit-after 600` with the world named (the default scene is the title menu, which quits at once headless): `res://world/town.tscn`, `courthouse.tscn`, `twain.tscn`, `twain_data.tscn`. Each prints its build report (and the town its self-check), a startup time and the main loop's cost. Watch the exit output for "resources still in use".
 - **Building data or generator:** `.venv\Scripts\python.exe tools\building\build.py <name>` (writes the `.bld` only when clean) and `.venv\Scripts\python.exe -m pytest tests -q`.
 - If `--import` reports only `Could not resolve class "X"`, run `--check-only -s res://path/to/changed.gd` on each changed script to find the real error.
-- **Windowed probes** take minutes; run them once per batch of related edits and before a delivery that needs a screenshot: `town_probe.tscn` (`VERIBUILDER_TOWN_SHOTS`), `courthouse_probe.tscn` (`VERIBUILDER_CH_SHOTS`), `twain_probe.tscn` (`VERIBUILDER_TW_SHOTS`, `VERIBUILDER_TW_VIEWS`, `VERIBUILDER_TW_ORTHO` for the elevations, `VERIBUILDER_TW_BUILDER=data` for the generated house), `twain_audit.tscn`, `middaugh_probe.tscn` (`VERIBUILDER_MD_SHOTS`, `VERIBUILDER_MD_VIEWS`). The director launches the game to check; do not add automated tests beyond what a change needs.
+- **Windowed probes** take minutes; run them once per batch of related edits and before a delivery that needs a screenshot: `town_probe.tscn` (`WORLDBUILDER_TOWN_SHOTS`), `courthouse_probe.tscn` (`WORLDBUILDER_CH_SHOTS`), `twain_probe.tscn` (`WORLDBUILDER_TW_SHOTS`, `WORLDBUILDER_TW_VIEWS`, `WORLDBUILDER_TW_ORTHO` for the elevations, `WORLDBUILDER_TW_BUILDER=data` for the generated house), `twain_audit.tscn`, `middaugh_probe.tscn` (`WORLDBUILDER_MD_SHOTS`, `WORLDBUILDER_MD_VIEWS`). The director launches the game to check; do not add automated tests beyond what a change needs.
 - Every probe sets `MouseMode.probe = true` first in `_ready`. All mouse capture goes through `MouseMode.capture()` (`player/mouse_mode.gd`); never write `Input.MOUSE_MODE_CAPTURED` directly.
 - A temporary probe to look at one thing several times is fine; delete it before committing.
 
@@ -58,7 +58,7 @@ The director is the creative director: does not code, reviews builds by walking 
 ## Layout
 
 ```
-veribuilder/
+worldbuilder/
   CLAUDE.md
   docs/            history.md, real_buildings.md
   tools/

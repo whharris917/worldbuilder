@@ -18,7 +18,7 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-USER = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "veribuilder")
+USER = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "worldbuilder")
 PX = 9.0          # pixels to the foot
 X0, X1 = 15.0, 160.0   # survey x (north), drawn upward
 Z0, Z1 = 15.0, 115.0   # survey z (east), drawn rightward

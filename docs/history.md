@@ -1,4 +1,4 @@
-# veribuilder: project history
+# worldbuilder: project history
 
 The session-by-session record: why each rule in CLAUDE.md exists, measurements, findings. This work began inside flowstate (the factory game) and moved to its own repository on 2026-10-01; flowstate's `docs/history.md` keeps the record of everything before the town. Paths below are as they were then: the worlds' base was flowstate's `blank.gd`/`maine.gd` (now `outdoor.gd`/`coast_world.gd`), environment variables were `FLOWSTATE_*` (now `VERIBUILDER_*`), and output went to `app_userdatalowstate` (now `app_userdataeribuilder`).
 
@@ -251,3 +251,7 @@ The director asked for the outside to be judged as a building in its own right: 
 - **Data choices**: the tower's top room as its own floor left the rooms open at the third floor, so the third-floor tower room rises to its roof; the porch roofs lowered to a plate of 10.9 so the second-floor sills clear them; the pediment's ridge kept under the windows above it, and the south porch ended under its side (a hipped back, or two eaves along one line, made level troughs); first-floor window heads at 10.2, under the second floor's slab.
 - **The director asked** to be able to open each building at every stage; the Middaugh house went into the menu at its first clean build.
 
+
+## 2026-10-01: renamed worldbuilder
+
+The director renamed the project from veribuilder to worldbuilder: the folder, the GitHub repository, the Godot project name (so its user data moved to `%APPDATA%\Godot\app_userdata\worldbuilder\`, copied from the old folder with its saves, settings and takes), the title screen, the log prefix and the probes' environment variables (`WORLDBUILDER_*`). Entries above keep the old name.

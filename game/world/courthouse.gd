@@ -86,7 +86,7 @@ func _after_build() -> void:
 		player.global_position = Vector3(-33.0, 0.3, 3.0)
 		player.rotation.y = -PI / 2.0 + 0.1
 	hud.toast("Monroe, North Carolina: the Union County courthouse (1886). The porches east and west open into the hall; the stairs at either end go up to the courtroom. O options · F5/F9 save/load")
-	print("[veribuilder] courthouse: %d triangles, %d solids, built in %d ms; square %d triangles, %d solids, %d ms"
+	print("[worldbuilder] courthouse: %d triangles, %d solids, built in %d ms; square %d triangles, %d solids, %d ms"
 		% [int(courthouse.stats["triangles"]), int(courthouse.stats["solids"]), int(courthouse.stats["ms"]),
 		int(square.stats.get("triangles", 0)), int(square.stats.get("solids", 0)), int(square.stats.get("ms", 0))])
 	if DisplayServer.get_name() == "headless":

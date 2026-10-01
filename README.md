@@ -1,4 +1,4 @@
-# veribuilder
+# worldbuilder
 
 Real places built in 3D and walked in first person: historic buildings and towns modelled from their survey drawings and photographs, generated from architectural decisions and validated as sound buildings. Working agreement: `CLAUDE.md`. Method: `docs/real_buildings.md`.
 

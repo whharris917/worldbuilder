@@ -64,7 +64,7 @@ func _ready() -> void:
 	hud.toast("WASD move · E use · wheel zoom (ctrl: optic) · O options · F5/F9 save/load")
 	_after_build()
 	load_player()
-	print("[veribuilder] startup %d ms — world %d" % [Time.get_ticks_msec() - t_start, ms_world])
+	print("[worldbuilder] startup %d ms — world %d" % [Time.get_ticks_msec() - t_start, ms_world])
 	_load_settings()
 
 
@@ -115,7 +115,7 @@ var _loop_n := 0
 
 
 func _headless_reports() -> void:
-	print("[veribuilder] main loop: %.1f ms a frame over %d headless frames"
+	print("[worldbuilder] main loop: %.1f ms a frame over %d headless frames"
 		% [_loop_acc / maxi(_loop_n, 1) * 1000.0, _loop_n])
 
 

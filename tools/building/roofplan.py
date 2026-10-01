@@ -23,7 +23,7 @@ import arch  # noqa: E402
 from validate import Validator  # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
-OUT = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "veribuilder")
+OUT = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "worldbuilder")
 COL = {"eave": (0, 70, 230), "rake": (0, 170, 200), "ridge": (0, 160, 0), "hip": (0, 100, 40),
        "valley": (140, 0, 170), "deck edge": (240, 130, 0), "abutment": (110, 110, 110),
        "tuck": (170, 170, 170), "well": (140, 80, 20), "seam": None}

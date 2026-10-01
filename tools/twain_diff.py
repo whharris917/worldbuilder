@@ -2,7 +2,7 @@
 
 For each front, the survey's elevation (HABS CT-359 sheets 8-11) and the
 model's straight-on picture of surface directions (user://ortho_<front>_n.png
-from world/twain_probe.tscn with VERIBUILDER_TW_ORTHO=all) are reduced to the
+from world/twain_probe.tscn with WORLDBUILDER_TW_ORTHO=all) are reduced to the
 same thing: the sky round the house, found by flooding in from the top edge.
 Where one has house and the other sky, the model is wrong:
 
@@ -30,7 +30,7 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 
 Image.MAX_IMAGE_PIXELS = None
-USER = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "veribuilder")
+USER = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "worldbuilder")
 SHEETS = {"east": 8, "north": 9, "west": 10, "south": 11}
 ORTHO_X = (10.0, 170.0)
 ORTHO_Y = (-12.0, 52.0)

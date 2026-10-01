@@ -7,7 +7,7 @@ class_name TwainMap
 var house: TwainHouse
 var built: BuildingMesh
 ## Generated from its data file and checked by tools/building/build.py
-## (twain_data.tscn, or VERIBUILDER_TW_BUILDER=data) rather than built by
+## (twain_data.tscn, or WORLDBUILDER_TW_BUILDER=data) rather than built by
 ## hand.
 var from_data := false
 var grounds: TwainGrounds
@@ -35,14 +35,14 @@ func _build_ground() -> void:
 		body.add_child(shape)
 	add_child(body)
 	house = TwainHouse.new()
-	# VERIBUILDER_TW_BUILDER=data: the house generated from its data file
+	# WORLDBUILDER_TW_BUILDER=data: the house generated from its data file
 	# (game/data/buildings/twain.json, written out as twain.bld) instead;
-	# VERIBUILDER_BLD_FILE names another generated building to stand here.
-	if from_data or OS.get_environment("VERIBUILDER_TW_BUILDER") == "data":
+	# WORLDBUILDER_BLD_FILE names another generated building to stand here.
+	if from_data or OS.get_environment("WORLDBUILDER_TW_BUILDER") == "data":
 		house.name = "TwainHouseUnbuilt"
 		house._materials()
 		add_child(house)
-		var bld := OS.get_environment("VERIBUILDER_BLD_FILE")
+		var bld := OS.get_environment("WORLDBUILDER_BLD_FILE")
 		built = BuildingMesh.open(bld if bld != "" else "res://data/buildings/twain.bld")
 		add_child(built)
 	else:
@@ -84,11 +84,11 @@ func _after_build() -> void:
 		player.rotation.y = PI * 0.82
 	hud.toast("Hartford, Connecticut: the Mark Twain house (1874) as the Clemenses knew it. The front door is under the porte-cochere; the stair in the hall climbs to the billiard room. O options · F5/F9 save/load")
 	if built != null:
-		print("[veribuilder] twain house from its data: %d faces, %d triangles, loaded in %d ms%s"
+		print("[worldbuilder] twain house from its data: %d faces, %d triangles, loaded in %d ms%s"
 			% [int(built.stats.get("faces", 0)), int(built.stats.get("triangles", 0)), int(built.stats.get("ms", 0)),
 			" (BROKEN: it fails its checks)" if built.broken else ""])
 	else:
-		print("[veribuilder] twain house: %d triangles (%d inside), %d solids, built in %d ms; grounds %d triangles, %d ms"
+		print("[worldbuilder] twain house: %d triangles (%d inside), %d solids, built in %d ms; grounds %d triangles, %d ms"
 			% [int(house.stats["triangles"]), int(house.stats["inside"]), int(house.stats["solids"]), int(house.stats["ms"]),
 			int(grounds.stats.get("triangles", 0)), int(grounds.stats.get("ms", 0))])
 	if DisplayServer.get_name() == "headless":

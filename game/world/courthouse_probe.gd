@@ -6,7 +6,7 @@ extends Node
 ## and the rooms inside, printing the frame rate with each.
 ## Run windowed:
 ##   godot --path game res://world/courthouse_probe.tscn
-## VERIBUILDER_CH_SHOTS=outside or inside limits it to those views.
+## WORLDBUILDER_CH_SHOTS=outside or inside limits it to those views.
 
 var _world: CourthouseMap
 
@@ -25,7 +25,7 @@ func _run(world: CourthouseMap) -> void:
 	world.graphics.set_preset("Medium")
 	world.graphics.apply(world)
 	world.set_time_of_day(15.5)
-	var which := OS.get_environment("VERIBUILDER_CH_SHOTS")
+	var which := OS.get_environment("WORLDBUILDER_CH_SHOTS")
 	if which == "lintels":
 		# Close to the west front either side of the porch, two frames a
 		# step apart, for anything that flickers.

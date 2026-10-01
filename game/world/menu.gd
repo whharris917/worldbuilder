@@ -33,7 +33,7 @@ func _ready() -> void:
 	add_child(column)
 
 	var title := Label.new()
-	title.text = "VERIBUILDER"
+	title.text = "WORLDBUILDER"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 44)
 	title.add_theme_color_override("font_color", Color(0.88, 0.90, 0.86))
@@ -71,7 +71,7 @@ func _ready() -> void:
 	# Headless smoke runs boot the menu as the default scene: leave at
 	# once, there is nothing to check here.
 	if DisplayServer.get_name() == "headless":
-		print("[veribuilder] menu: %d worlds" % WORLDS.size())
+		print("[worldbuilder] menu: %d worlds" % WORLDS.size())
 		get_tree().quit()
 
 

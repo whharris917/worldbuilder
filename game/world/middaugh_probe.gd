@@ -5,7 +5,7 @@ extends Node
 ## off), printing the frame rate with each.
 ## Run windowed:
 ##   godot --path game res://world/middaugh_probe.tscn
-## VERIBUILDER_MD_SHOTS=corners or faces limits it.
+## WORLDBUILDER_MD_SHOTS=corners or faces limits it.
 
 ## name, camera position, target (metres; +x east, +z south, where the front faces).
 const CORNERS := [
@@ -40,13 +40,13 @@ func _run(world: MiddaughMap) -> void:
 	for layer: Node in get_tree().root.find_children("*", "CanvasLayer", true, false):
 		(layer as CanvasLayer).visible = false
 	world.player.visible = false
-	var which := OS.get_environment("VERIBUILDER_MD_SHOTS")
+	var which := OS.get_environment("WORLDBUILDER_MD_SHOTS")
 	var cam := Camera3D.new()
 	add_child(cam)
 	cam.current = true
-	# VERIBUILDER_MD_VIEWS=name:fov:x,y,z:tx,ty,tz;... for looking at one
+	# WORLDBUILDER_MD_VIEWS=name:fov:x,y,z:tx,ty,tz;... for looking at one
 	# thing closely.
-	var views := OS.get_environment("VERIBUILDER_MD_VIEWS")
+	var views := OS.get_environment("WORLDBUILDER_MD_VIEWS")
 	if views != "":
 		for v: String in views.split(";"):
 			var parts := v.split(":")

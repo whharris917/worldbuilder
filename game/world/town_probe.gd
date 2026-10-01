@@ -6,7 +6,7 @@ extends Node
 ## rate with each and the showpiece's rate on each graphics preset.
 ## Run windowed:
 ##   godot --path game res://world/town_probe.tscn
-## VERIBUILDER_TOWN_SHOTS=storm limits it to the storm views.
+## WORLDBUILDER_TOWN_SHOTS=storm limits it to the storm views.
 
 
 func _ready() -> void:
@@ -29,27 +29,27 @@ func _run(world: TownMap) -> void:
 	world.set_time_of_day(18.1)
 	world.weather.wet = 1.0
 	world.weather._next_strike = 1000.0
-	if OS.get_environment("VERIBUILDER_TOWN_SHOTS") == "sky":
+	if OS.get_environment("WORLDBUILDER_TOWN_SHOTS") == "sky":
 		await _sky(world, player)
 		get_tree().quit()
 		return
-	if OS.get_environment("VERIBUILDER_TOWN_SHOTS") == "main":
+	if OS.get_environment("WORLDBUILDER_TOWN_SHOTS") == "main":
 		await _main_street(world, player)
 		get_tree().quit()
 		return
-	if OS.get_environment("VERIBUILDER_TOWN_SHOTS") == "trees":
+	if OS.get_environment("WORLDBUILDER_TOWN_SHOTS") == "trees":
 		await _trees(world, player)
 		get_tree().quit()
 		return
-	if OS.get_environment("VERIBUILDER_TOWN_SHOTS") == "row":
+	if OS.get_environment("WORLDBUILDER_TOWN_SHOTS") == "row":
 		await _row(world, player)
 		get_tree().quit()
 		return
-	if OS.get_environment("VERIBUILDER_TOWN_SHOTS") == "street":
+	if OS.get_environment("WORLDBUILDER_TOWN_SHOTS") == "street":
 		await _water_street(world, player)
 		get_tree().quit()
 		return
-	if OS.get_environment("VERIBUILDER_TOWN_SHOTS") == "house":
+	if OS.get_environment("WORLDBUILDER_TOWN_SHOTS") == "house":
 		await _house(world, player)
 		get_tree().quit()
 		return
@@ -91,7 +91,7 @@ func _run(world: TownMap) -> void:
 		await _shot("user://probe_town_storm_%s.png" % preset.to_lower())
 	world.graphics.set_preset("Medium")
 	world.graphics.apply(world)
-	if OS.get_environment("VERIBUILDER_TOWN_SHOTS") == "storm":
+	if OS.get_environment("WORLDBUILDER_TOWN_SHOTS") == "storm":
 		get_tree().quit()
 		return
 	# The bell buoy close to, in the storm.

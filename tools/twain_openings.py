@@ -1,7 +1,7 @@
 """Draw the Mark Twain house model's windows and doors over the survey's elevations.
 
 Reads user://twain_openings.json (every opening as built, written by
-world/twain_probe.tscn with VERIBUILDER_TW_ORTHO) and the sheet masters, and for
+world/twain_probe.tscn with WORLDBUILDER_TW_ORTHO) and the sheet masters, and for
 each front draws, over the drawing, a box for each opening of the model that
 faces the viewer: green for a window, blue for a door. An opening drawn in the
 survey with no box on it is missing from the model; a box on bare wall is one
@@ -19,7 +19,7 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 Image.MAX_IMAGE_PIXELS = None
-USER = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "veribuilder")
+USER = os.path.join(os.environ.get("APPDATA", ""), "Godot", "app_userdata", "worldbuilder")
 # sheet, the survey direction the viewer looks from (nx, nz), and how the
 # sheet's horizontal maps: sheet = sign * (survey x or z) + offset.
 FRONTS = {
