@@ -39,8 +39,11 @@ void fragment() {
 	vec2 p = world_pos.xz;
 	// The turf's own patches: drier and fresher drifts, and its grain at
 	// every scale, so a far hillside is never a lawn.
-	float dry = smoothstep(0.45, 0.85, value_noise(p * 0.08) * 0.7 + value_noise(p * 0.31 + 4.0) * 0.3);
-	vec3 c = mix(green, yellow_green, 0.35 + 0.3 * value_noise(p * 0.6 + 3.0));
+	// Patterns finer than a pixel far off would sparkle: each fades
+	// to its mean before then.
+	float mid = 1.0 - smoothstep(150.0, 500.0, dist);
+	float dry = smoothstep(0.45, 0.85, value_noise(p * 0.08) * 0.7 + mix(0.15, value_noise(p * 0.31 + 4.0) * 0.3, mid));
+	vec3 c = mix(green, yellow_green, 0.35 + 0.3 * mix(0.5, value_noise(p * 0.6 + 3.0), mid));
 	c = mix(c, seed_tan, dry * 0.45);
 	vec3 turf = mix(root_dark, c, lit_share) * turf_tone;
 	// The grain fades with distance before it is finer than a pixel.
@@ -51,8 +54,9 @@ void fragment() {
 	vec3 floor_col = root_dark * (0.8 + 0.4 * value_noise(p * 3.0 + 2.0));
 	float seen = smoothstep(reach * 0.55, reach, dist);
 	vec3 col = mix(floor_col, turf, seen);
-	// The gusts, as on the shells.
-	float gust = gust_at(p);
+	// The gusts, fading to a steady mean where a band is under a few
+	// pixels across.
+	float gust = mix(0.3 * (0.45 + 0.55 * wind), gust_at(p), 1.0 - smoothstep(500.0, 1100.0, dist));
 	col = mix(col, sheen * mix(1.0, sheen_far, seen), clamp(ripple * gust * 0.6 * seen, 0.0, 1.0));
 	col *= 0.85 + 0.15 * smoothstep(0.0, 0.3, gust) + 0.25 * ripple * gust * seen;
 	ALBEDO = col;

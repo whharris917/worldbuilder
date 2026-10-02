@@ -30,6 +30,9 @@ func _run(world: GrassHills) -> void:
 	var preset := OS.get_environment("WORLDBUILDER_HILLS_PRESET")
 	world.graphics.set_preset(preset if preset != "" else "Medium")
 	world.graphics.apply(world)
+	# WORLDBUILDER_HILLS_SKY=n: the air, as in the options' Sky row.
+	if OS.get_environment("WORLDBUILDER_HILLS_SKY") != "":
+		world._apply_sky(int(OS.get_environment("WORLDBUILDER_HILLS_SKY")))
 	if OS.get_environment("WORLDBUILDER_HILLS_GRASS") != "":
 		world.grass.set_model(OS.get_environment("WORLDBUILDER_HILLS_GRASS"))
 	for layer: Node in get_tree().root.find_children("*", "CanvasLayer", true, false):

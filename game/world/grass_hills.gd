@@ -14,6 +14,13 @@ class_name GrassHills
 const WIND_DIR := Vector2(0.8, 0.6)
 const GRASS_KEY := "hills_grass"
 const FIELD := 512.0                 # the grass's baked square, metres
+const SKY_KEY := "hills_sky"
+## The air, chosen in the options: name, fog density, sun scatter,
+## aerial perspective, the sky's haze, its zenith and horizon by day.
+const SKIES: Array = [
+	["Summer haze", 0.0011, 0.25, 0.5, 0.5, Color(0.19, 0.36, 0.72), Color(0.62, 0.72, 0.84)],
+	["Clear autumn", 0.00022, 0.06, 0.12, 0.06, Color(0.10, 0.26, 0.66), Color(0.46, 0.62, 0.84)],
+]
 
 var land: HillsLand
 var grass: GrassField
@@ -36,11 +43,31 @@ func _init() -> void:
 
 func _build_environment() -> void:
 	super()
-	# Clear summer air with the distance going blue, the sun's glow in it.
-	sky_env.fog_density = 0.0011
-	sky_env.fog_sun_scatter = 0.25
-	sky_env.fog_aerial_perspective = 0.5
-	(sky_mat as ShaderMaterial).set_shader_parameter("haze", 0.5)
+	_apply_sky(int(_read_settings().get(SKY_KEY, 1)))
+
+
+## The air: summer haze, the distance going blue and the sun's glow in
+## it; or a clear autumn day, a deep blue overhead and the far hills
+## sharp.
+func _apply_sky(index: int) -> void:
+	var air: Array = SKIES[clampi(index, 0, SKIES.size() - 1)]
+	sky_env.fog_density = float(air[1])
+	sky_env.fog_sun_scatter = float(air[2])
+	sky_env.fog_aerial_perspective = float(air[3])
+	var painted := sky_mat as ShaderMaterial
+	painted.set_shader_parameter("haze", float(air[4]))
+	painted.set_shader_parameter("zenith_day", air[5])
+	painted.set_shader_parameter("horizon_day", air[6])
+
+
+func _change_sky(index: int) -> void:
+	_apply_sky(index)
+	set_time_of_day(time_of_day)
+	var saved := _read_settings()
+	saved[SKY_KEY] = index
+	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(saved))
 
 
 func _build_ground() -> void:
@@ -122,6 +149,10 @@ func _process(delta: float) -> void:
 
 
 func _after_build() -> void:
+	var skies: Array[String] = []
+	for air: Array in SKIES:
+		skies.append(str(air[0]))
+	settings.add_choice("Sky", skies, clampi(int(_read_settings().get(SKY_KEY, 1)), 0, SKIES.size() - 1), _change_sky)
 	settings.add_choice("Grass", ["Full", "Light", "Fluffy", "Shells", "None"],
 		GrassField.MODEL_NAMES.find(grass.model), _change_grass)
 	if not FileAccess.file_exists(save_path):
