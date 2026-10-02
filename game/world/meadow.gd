@@ -39,7 +39,7 @@ const STYLES: Array = [
 	["anime", "Painted", "res://world/meadow_anime.tscn"],
 	["diorama", "Model", "res://world/meadow_diorama.tscn"],
 ]
-const GRASS_NAMES: Array[String] = ["Full", "Light", "None"]
+const GRASS_NAMES: Array[String] = ["Full", "Light", "Fluffy", "Shells", "None"]
 const GRASS_KEY := "meadow_grass"
 const LOOK_KEY := "meadow_look"
 

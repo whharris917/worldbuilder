@@ -20,20 +20,31 @@ extends Node3D
 ## The field is drawn in one of MODELS (`set_model`), changeable while
 ## the world runs: "full", the dense blades; "light", fewer and broader
 ## blades of fewer segments, an eighth of the near field's triangles;
-## "off", none.
+## "fluffy", clumps of a few crossed cards cut into blades and lit as
+## one mass (grass_fluffy.gdshader); "shells", the ground drawn again in
+## thin layers that keep only the strands' cross-sections
+## (grass_shell.gdshader); "off", none.
 
 const CHUNK := 8.0
 const TEXEL := 0.5
-## Each model: its bands (density in tufts a square metre, blades a
-## tuft, segments a blade), full density out to full_r, gone by far,
-## blades widen times the usual width.
+## Each model of blades or clumps: its bands (density in tufts a square
+## metre, blades a tuft or cards a clump, segments a blade), full
+## density out to full_r, gone by far, blades widen times the usual
+## width. Shells: how many layers, strands gone by reach.
 const MODELS: Dictionary = {
 	"full": {"bands": [[14.0, 10, 4], [7.0, 8, 3], [3.5, 6, 2], [1.4, 5, 1]],
 		"full_r": 7.0, "far": 64.0, "widen": 1.0},
 	"light": {"bands": [[6.0, 6, 2], [4.0, 5, 1], [2.5, 4, 1], [1.2, 3, 1]],
 		"full_r": 7.0, "far": 64.0, "widen": 1.8},
+	"fluffy": {"kind": "clumps", "bands": [[2.4, 2, 0], [1.2, 2, 0], [0.6, 2, 0], [0.3, 2, 0]],
+		"full_r": 7.0, "far": 56.0, "widen": 1.0},
+	"shells": {"kind": "shells", "layers": 16, "reach": 32.0},
 }
-const MODEL_NAMES: Array[String] = ["full", "light", "off"]
+const MODEL_NAMES: Array[String] = ["full", "light", "fluffy", "shells", "off"]
+## A clump's cards: how wide, in metres at full size.
+const CARD_W := 0.7
+## The shell mesh's grid, in metres.
+const SHELL_CELL := 1.0
 
 var origin := Vector2(-128.0, -128.0)
 var size := 256.0
@@ -46,6 +57,7 @@ var _style := "real"
 var _bands: Array = []
 var _full_r := 7.0
 var _far := 64.0
+var _shell: MeshInstance3D
 
 var _meshes: Array[MultiMesh] = []
 var _slots: Array[MultiMeshInstance3D] = []
@@ -97,6 +109,9 @@ func set_model(which: String) -> void:
 	for slot in _slots:
 		slot.queue_free()
 	_slots.clear()
+	if _shell != null:
+		_shell.queue_free()
+		_shell = null
 	_offsets.clear()
 	_meshes.clear()
 	materials.clear()
@@ -106,6 +121,10 @@ func set_model(which: String) -> void:
 	if model == "off":
 		return
 	var spec: Dictionary = MODELS[model]
+	var kind := str(spec.get("kind", "blades"))
+	if kind == "shells":
+		_make_shells(int(spec["layers"]), float(spec["reach"]))
+		return
 	_bands = spec["bands"]
 	_full_r = float(spec["full_r"])
 	_far = float(spec["far"])
@@ -115,6 +134,8 @@ func set_model(which: String) -> void:
 		shader_path = "res://world/grass_toon.gdshader"
 	elif _style == "diorama":
 		shader_path = "res://world/grass_lowpoly.gdshader"
+	if kind == "clumps":
+		shader_path = "res://world/grass_fluffy.gdshader"
 	var shader := load(shader_path) as Shader
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261002
@@ -129,36 +150,49 @@ func set_model(which: String) -> void:
 		mat.set_shader_parameter("full_density", full_density)
 		mat.set_shader_parameter("full_r", _full_r)
 		mat.set_shader_parameter("grass_far", _far)
-		match _style:
-			"cartoon":
-				mat.set_shader_parameter("green", Color(0.27, 0.52, 0.16))
-				mat.set_shader_parameter("yellow_green", Color(0.44, 0.64, 0.20))
-				mat.set_shader_parameter("seed_tan", Color(0.80, 0.72, 0.40))
-			"anime":
-				mat.set_shader_parameter("green", Color(0.16, 0.46, 0.20))
-				mat.set_shader_parameter("yellow_green", Color(0.46, 0.72, 0.22))
-				mat.set_shader_parameter("seed_tan", Color(0.84, 0.80, 0.44))
-				mat.set_shader_parameter("toon_step", 0.3)
-				mat.set_shader_parameter("height_scale", 1.15)
-			"diorama":
-				mat.set_shader_parameter("green", Color(0.46, 0.68, 0.32))
-				mat.set_shader_parameter("yellow_green", Color(0.62, 0.80, 0.38))
-				mat.set_shader_parameter("seed_tan", Color(0.86, 0.80, 0.56))
-				mat.set_shader_parameter("height_scale", 0.4)
+		_style_colours(mat)
 		materials.append(mat)
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		# A model's grass: single wide triangles standing nearly upright.
 		var flat := _style == "diorama"
 		var segs := 1 if flat else int(band[2])
-		mm.mesh = _tuft(int(band[1]), segs, band == _bands[0] or band == _bands[1], rng,
-			(3.0 if flat else 1.0) * widen, 0.25 if flat else 1.0)
+		if kind == "clumps":
+			mm.mesh = _clump(int(band[1]))
+		else:
+			mm.mesh = _tuft(int(band[1]), segs, band == _bands[0] or band == _bands[1], rng,
+				(3.0 if flat else 1.0) * widen, 0.25 if flat else 1.0)
 		var count := int(float(band[0]) * CHUNK * CHUNK)
 		mm.instance_count = count
 		for k in count:
 			mm.set_instance_transform(k, Transform3D(Basis.IDENTITY,
 				Vector3(rng.randf_range(0.0, CHUNK), 0.0, rng.randf_range(0.0, CHUNK))))
 		_meshes.append(mm)
+	_lay_slots(full_density)
+
+
+## The look's colours for the grass, the same names in every grass shader.
+func _style_colours(mat: ShaderMaterial) -> void:
+	match _style:
+		"cartoon":
+			mat.set_shader_parameter("green", Color(0.27, 0.52, 0.16))
+			mat.set_shader_parameter("yellow_green", Color(0.44, 0.64, 0.20))
+			mat.set_shader_parameter("seed_tan", Color(0.80, 0.72, 0.40))
+		"anime":
+			mat.set_shader_parameter("green", Color(0.16, 0.46, 0.20))
+			mat.set_shader_parameter("yellow_green", Color(0.46, 0.72, 0.22))
+			mat.set_shader_parameter("seed_tan", Color(0.84, 0.80, 0.44))
+			mat.set_shader_parameter("toon_step", 0.3)
+			mat.set_shader_parameter("height_scale", 1.15)
+		"diorama":
+			mat.set_shader_parameter("green", Color(0.46, 0.68, 0.32))
+			mat.set_shader_parameter("yellow_green", Color(0.62, 0.80, 0.38))
+			mat.set_shader_parameter("seed_tan", Color(0.86, 0.80, 0.56))
+			mat.set_shader_parameter("height_scale", 0.4)
+
+
+## The chunk slots round the camera for the bands just made.
+func _lay_slots(full_density: float) -> void:
 	# A band is wanted out to where the thinning falls to the next band's
 	# density; the last to the model's reach.
 	for b in _bands.size():
@@ -179,6 +213,56 @@ func set_model(which: String) -> void:
 	stats["slots"] = _slots.size()
 
 
+## The shell mesh: `layers` layers of a grid round the camera, the top
+## first so the layers below are hidden behind it where they can be;
+## each layer a disc, the higher ones smaller, as the strands that
+## reach them thin out with distance. UV2.x is the layer's height.
+func _make_shells(layers: int, reach: float) -> void:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://world/grass_shell.gdshader") as Shader
+	mat.set_shader_parameter("ground", ground_tex)
+	mat.set_shader_parameter("ground_origin", origin)
+	mat.set_shader_parameter("ground_size", size)
+	mat.set_shader_parameter("reach", reach)
+	_style_colours(mat)
+	materials.append(mat)
+	var verts := PackedVector3Array()
+	var uv2 := PackedVector2Array()
+	var index := PackedInt32Array()
+	for i in range(layers, 0, -1):
+		var t := float(i) / layers
+		var r := reach * (1.0 - 0.55 * t)
+		var n := int(ceil(r / SHELL_CELL))
+		var first := verts.size()
+		for j in range(-n, n + 1):
+			for k in range(-n, n + 1):
+				verts.append(Vector3(k * SHELL_CELL, 0.0, j * SHELL_CELL))
+				uv2.append(Vector2(t, 0.0))
+		var row := 2 * n + 1
+		for j in 2 * n:
+			for k in 2 * n:
+				var centre := Vector2(k - n + 0.5, j - n + 0.5) * SHELL_CELL
+				if centre.length() > r:
+					continue
+				var a := first + j * row + k
+				index.append_array([a, a + row, a + 1, a + 1, a + row, a + row + 1])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_TEX_UV2] = uv2
+	arrays[Mesh.ARRAY_INDEX] = index
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_shell = MeshInstance3D.new()
+	_shell.name = "Shells"
+	_shell.mesh = mesh
+	_shell.material_override = mat
+	_shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_shell.custom_aabb = AABB(Vector3(-reach - 2.0, -500.0, -reach - 2.0), Vector3(2.0 * reach + 4.0, 1000.0, 2.0 * reach + 4.0))
+	add_child(_shell)
+	stats["shell_quads"] = index.size() / 6
+
+
 ## The nearest distance between the camera's chunk and the chunk at
 ## offset o from it, wherever in its chunk the camera stands.
 func _gap(o: Vector2i) -> float:
@@ -195,6 +279,10 @@ func follow(camera_pos: Vector3, player_pos: Vector3, wind: float, wind_dir: Vec
 		mat.set_shader_parameter("player_pos", player_pos)
 		mat.set_shader_parameter("wind", wind)
 		mat.set_shader_parameter("wind_dir", wind_dir)
+	if _shell != null:
+		# On whole cells, so the grid's corners stay on the same ground.
+		_shell.position = Vector3(snappedf(camera_pos.x, SHELL_CELL), 0.0, snappedf(camera_pos.z, SHELL_CELL))
+		return
 	var cam := Vector2(camera_pos.x, camera_pos.z)
 	if cam.distance_to(_placed_at) < 1.0:
 		return
@@ -291,6 +379,21 @@ func _tuft(blades: int, segs: int, with_flower: bool, rng: RandomNumberGenerator
 				st.add_vertex(top + (u * cos(a0) + v * sin(a0)) * head_r)
 				st.set_uv(Vector2(1.0, 1.0))
 				st.add_vertex(top + (u * cos(a1) + v * sin(a1)) * head_r)
+	st.index()
+	return st.commit()
+
+
+## A clump of `cards` upright cards CARD_W wide and a metre tall,
+## crossed through the centre at even angles; UV.x runs across a card,
+## UV.y root to top; normals up (the shader lights the clump as one).
+func _clump(cards: int) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for c in cards:
+		var a := PI * c / cards
+		var side := Vector3(cos(a), 0.0, sin(a)) * CARD_W * 0.5
+		_quad(st, -side, side, side + Vector3.UP, -side + Vector3.UP, 0.0, 1.0,
+			Vector3.UP, Color(0.0, 0.0, 0.0, 1.0))
 	st.index()
 	return st.commit()
 
