@@ -75,6 +75,30 @@ func _run(world: MeadowMap) -> void:
 		style_mat.shader = load("res://world/style.gdshader")
 		rect.material = style_mat
 		layer.add_child(rect)
+	# WORLDBUILDER_MEADOW_EVENT=1: from the first view, start the lights
+	# over the trees and photograph them as they go.
+	if OS.get_environment("WORLDBUILDER_MEADOW_EVENT") == "1":
+		var v0: Array = views[0]
+		world.set_time_of_day(float(v0[1]))
+		cam.fov = float(v0[2])
+		var at0: Vector3 = v0[3]
+		var to0: Vector3 = v0[4]
+		at0.y += world.land.height_at(at0.x, at0.z)
+		to0.y += world.land.height_at(to0.x, to0.z)
+		cam.look_at_from_position(at0, to0, Vector3.UP)
+		for layer: Node in get_tree().root.find_children("*", "CanvasLayer", true, false):
+			(layer as CanvasLayer).visible = true
+		for i in 30:
+			await RenderingServer.frame_post_draw
+		world.start_orbs()
+		var last := 0.0
+		for when: float in [2.0, 5.5, 7.75, 9.0, 12.0, 15.0, 18.7, 19.4]:
+			await get_tree().create_timer(when - last).timeout
+			last = when
+			get_viewport().get_texture().get_image().save_png("user://probe_meadow_event_%04.1f.png" % when)
+			print("[probe] event at %.1f s" % when)
+		get_tree().quit()
+		return
 	var only := OS.get_environment("WORLDBUILDER_MEADOW_SHOTS")
 	for v: Array in views:
 		if only != "" and not (str(v[0]) in only.split(",")):
