@@ -30,7 +30,7 @@ uniform float grass_height = 0.7;    // the tallest strand at full growth, metre
 uniform float strands = 18.0;        // strands a metre each way
 uniform float reach = 32.0;          // strands are gone by here from the camera
 uniform float ripple = 1.0;          // how pale the grass turns where a gust leans it
-uniform float water_level = -1.0e6;  // no strand stands where the ground is under this
+uniform float water_level = -1.0e6;  // under this the wind does not reach the grass
 uniform float root_shade = 0.45;     // how far up the strands, 0 to 1 of the stack, their roots' shade reaches
 uniform vec3 sheen : source_color = vec3(0.62, 0.68, 0.48);   // leaning grass's pale side
 uniform float lattice_turn = 0.53;   // the lattice against the world's axes, radians
@@ -44,7 +44,6 @@ varying vec2 ground_xz;    // where the strand stands, before the wind moves the
 varying float layer;
 varying float growth;
 varying float gust;
-varying float ground_y;
 
 // A strand's own random numbers, 0 to 1, from its cell and a salt.
 float strand_hash(ivec2 c, uint salt) {
@@ -64,15 +63,18 @@ void vertex() {
 	float dist = length(w.xz - CAMERA_POSITION_WORLD.xz);
 	growth = g.g * inside * (1.0 - smoothstep(reach * 0.6, reach, dist));
 	ground_xz = w.xz;
-	ground_y = g.r;
 	float h = layer * grass_height * height_scale * growth;
 
 	vec2 wd = normalize(wind_dir);
 	// The gusts (gust.gdshaderinc); even a light breeze shows them.
 	float strength = 0.45 + 0.55 * wind;
-	gust = gust_at(w.xz);
+	// Under water the wind does not reach: the grass there stands still
+	// but for a slow drift, and only what rises above the surface leans.
+	float above = smoothstep(water_level - 0.05, water_level + 0.05, g.r + h);
+	gust = gust_at(w.xz) * above;
 	float flutter = sin(TIME * 2.1 + dot(w.xz, vec2(1.3, 0.9))) * 0.04;
-	vec2 sway = wd * (0.08 * strength + 0.8 * gust + flutter * wind);
+	vec2 sway = wd * (0.08 * strength + 0.8 * gust + flutter * wind) * above;
+	sway += vec2(sin(TIME * 0.4 + w.x * 0.3), cos(TIME * 0.33 + w.z * 0.3)) * 0.05 * (1.0 - above);
 	vec2 away = w.xz - player_pos.xz;
 	float near_leg = (1.0 - smoothstep(0.3, 1.0, length(away))) * (1.0 - smoothstep(1.2, 2.0, abs(w.y - player_pos.y)));
 	sway += normalize(away + vec2(0.001)) * near_leg * 0.8;
@@ -123,7 +125,7 @@ vec3 strand(vec2 p) {
 }
 
 void fragment() {
-	if (growth < 0.04 || ground_y < water_level + 0.03) {
+	if (growth < 0.04) {
 		discard;
 	}
 	vec3 hit = strand(ground_xz);

@@ -8,8 +8,8 @@ extends Landscape
 ## The pond fills a hollow near the start as rain would: of the hollows
 ## the land closes round within LAKE_SEARCH of the centre, the nearest
 ## that holds a pond worth the name, filled to just under the lowest gap
-## in its rim (find_lake). Under it the ground is its bed (vertex colour
-## red), and no grass grows below its edge.
+## in its rim (find_lake). The meadow runs on under it: the hollow is a
+## flooded field, its grass standing in the clear water.
 
 ## How far from the centre a hollow may lie, the grid it is searched on,
 ## and how much water makes a pond: its area and its depth.
@@ -27,7 +27,6 @@ var lake_level := -INF
 var lake_cells: Dictionary = {}
 var lake_centre := Vector2.ZERO
 var lake_depth := 0.0
-var lake_box := Rect2()               # the pond's cells' bounds, metres, a cell wider all round
 var lake_mat: ShaderMaterial          # lake.gdshader; the world keeps its wind current
 
 
@@ -54,31 +53,9 @@ func height_at(x: float, z: float) -> float:
 	return h + 0.00003 * pow(maxf(r - 250.0, 0.0), 2.0)
 
 
-## Grass everywhere but in the pond, to its edge.
-func grass_at(x: float, z: float) -> float:
-	if not near_lake(x, z):
-		return 1.0
-	return smoothstep(lake_level, lake_level + 0.2, height_at(x, z))
-
-
-## Whether (x, z) is in the pond's cells or beside them.
-func near_lake(x: float, z: float) -> bool:
-	if lake_cells.is_empty() or not lake_box.has_point(Vector2(x, z)):
-		return false
-	var c := Vector2i(floori(x / LAKE_STEP), floori(z / LAKE_STEP))
-	for dj in range(-1, 2):
-		for di in range(-1, 2):
-			if lake_cells.has(c + Vector2i(di, dj)):
-				return true
-	return false
-
-
-## Red: the pond's bed, to its wet edge.
-func ground_tint(x: float, z: float) -> Color:
-	var bed := 0.0
-	if near_lake(x, z):
-		bed = 1.0 - smoothstep(lake_level - 0.1, lake_level + 0.12, height_at(x, z))
-	return Color(bed, 0.0, 0.0, 1.0)
+## Grass everywhere, under the pond too.
+func grass_at(_x: float, _z: float) -> float:
+	return 1.0
 
 
 ## Find the pond. On a grid round the centre, fill every hollow as rain
@@ -138,10 +115,6 @@ func find_lake() -> void:
 		lake_cells = wet
 		lake_centre = Vector2((lo + m.x + 0.5) * LAKE_STEP, (lo + m.y + 0.5) * LAKE_STEP)
 		lake_depth = deepest
-		var box := Rect2(Vector2(wet.keys()[0]) * LAKE_STEP, Vector2.ZERO)
-		for c: Vector2i in wet:
-			box = box.expand(Vector2(c) * LAKE_STEP).expand(Vector2(c + Vector2i.ONE) * LAKE_STEP)
-		lake_box = box.grow(LAKE_STEP)
 		stats["lake_m2"] = wet.size() * LAKE_STEP * LAKE_STEP
 		return
 
@@ -223,8 +196,8 @@ func _build_sea() -> void:
 	pass
 
 
-## The pond is found before the terrain is drawn, so the ground's bed
-## colour and the grass both know it.
+## The pond is found before the terrain is drawn, so the world can ask
+## for it as it builds.
 func build() -> void:
 	find_lake()
 	super()

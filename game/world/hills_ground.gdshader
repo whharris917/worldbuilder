@@ -6,9 +6,8 @@ shader_type spatial;
 // the shells') run over it as they do over the shells: where a band
 // passes the grass turns pale, between bands it is darker, so the
 // wind can be watched crossing the far hillsides. World-space
-// throughout, so nothing swims. Vertex colour red is the pond's bed:
-// grey-gold gravel and small stones, dark and wet along the water's
-// edge, no grass and no wind on it.
+// throughout, so nothing swims. Under the pond (water_level) the turf
+// is still: the wind does not reach it.
 #include "res://world/granite.gdshaderinc"
 #include "res://world/gust.gdshaderinc"
 
@@ -30,15 +29,12 @@ uniform float turf_tone = 0.5;
 // shade: the sheen at this share.
 uniform float sheen_far = 0.25;
 
-uniform vec3 silt : source_color = vec3(0.46, 0.42, 0.33);
-uniform vec3 pebble : source_color = vec3(0.36, 0.35, 0.32);
+uniform float water_level = -1.0e6;
 
 varying vec3 world_pos;
-varying float bed;
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	bed = COLOR.r;
 }
 
 void fragment() {
@@ -64,15 +60,11 @@ void fragment() {
 	// The gusts, fading to a steady mean where a band is under a few
 	// pixels across.
 	float gust = mix(0.3 * (0.45 + 0.55 * wind), gust_at(p), 1.0 - smoothstep(500.0, 1100.0, dist));
+	gust *= step(water_level, world_pos.y);
 	col = mix(col, sheen * mix(1.0, sheen_far, seen), clamp(ripple * gust * 0.6 * seen, 0.0, 1.0));
 	col *= 0.85 + 0.15 * smoothstep(0.0, 0.3, gust) + 0.25 * ripple * gust * seen;
-	// The pond's bed: silt with stones in it, the edge wet and dark.
-	float stones = smoothstep(0.55, 0.75, value_noise(p * 2.2) * 0.6 + value_noise(p * 6.0 + 3.0) * 0.4);
-	vec3 bed_col = mix(silt, pebble, stones) * (0.8 + 0.3 * value_noise(p * 0.7 + 8.0));
-	bed_col = mix(bed_col, bed_col * 0.5, 1.0 - smoothstep(0.6, 0.95, bed));
-	col = mix(col, bed_col, smoothstep(0.0, 0.6, bed));
 	ALBEDO = col;
-	ROUGHNESS = mix(0.9, 0.7, bed);
+	ROUGHNESS = 0.9;
 	SPECULAR = 0.15;
-	BACKLIGHT = col * 0.3 * seen * (1.0 - bed);
+	BACKLIGHT = col * 0.3 * seen;
 }

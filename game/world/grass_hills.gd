@@ -185,13 +185,20 @@ func _after_build() -> void:
 ## not a pit; the ground under the shells the same.
 const ROOT_DARK := Color(0.11, 0.14, 0.06)
 
+
+## The pond's surface, or far below everything with no pond.
+var _water: float:
+	get:
+		return land.lake_level if not land.lake_cells.is_empty() else -1.0e6
+
 func _tune_grass() -> void:
 	for mat in grass.materials:
 		mat.set_shader_parameter("root_shade", 0.18)
 		mat.set_shader_parameter("root_dark", ROOT_DARK)
-		mat.set_shader_parameter("water_level", land.lake_level if not land.lake_cells.is_empty() else -1.0e6)
+		mat.set_shader_parameter("water_level", _water)
 		gusts.apply(mat)
 	land.terrain_mat.set_shader_parameter("root_dark", ROOT_DARK)
+	land.terrain_mat.set_shader_parameter("water_level", _water)
 	gusts.apply(land.terrain_mat)
 	if land.lake_mat != null:
 		gusts.apply(land.lake_mat)
