@@ -9,7 +9,11 @@ shader_type spatial;
 // blades. The layers slide downwind with the gusts, more the higher
 // they are, and the gusts brighten the grass as they pass. Strands
 // fall short toward the edge of the stack and where the ground grows
-// no grass.
+// no grass. Each strand stands anywhere in its own cell of a lattice
+// and reaches at most half a cell from its foot, so a layer's pixel
+// need look only at the four cells round its nearest corner; told
+// apart by an integer hash, the strands form no rows to line up into
+// stripes when looked along.
 render_mode cull_disabled;
 #include "res://world/granite.gdshaderinc"
 
@@ -24,6 +28,8 @@ uniform float grass_height = 0.7;    // the tallest strand at full growth, metre
 uniform float strands = 18.0;        // strands a metre each way
 uniform float reach = 32.0;          // strands are gone by here from the camera
 uniform float ripple = 0.6;
+uniform float gust_speed = 0.8;      // how fast the gusts' light runs downwind, metres a second, in a calm
+uniform float lattice_turn = 0.53;   // the lattice against the world's axes, radians
 
 uniform vec3 green : source_color = vec3(0.22, 0.32, 0.11);
 uniform vec3 yellow_green : source_color = vec3(0.40, 0.44, 0.18);
@@ -35,9 +41,13 @@ varying float layer;
 varying float growth;
 varying float gust;
 
-float gust_at(vec2 p, vec2 wd, float speed) {
-	return value_noise(p * 0.05 - wd * TIME * speed * 0.05) * 0.65
-		+ value_noise(p * 0.17 - wd * TIME * speed * 0.17) * 0.35;
+// A strand's own random numbers, 0 to 1, from its cell and a salt.
+float strand_hash(ivec2 c, uint salt) {
+	uint v = uint(c.x) * 1597334677u ^ uint(c.y) * 3812015801u ^ salt * 2654435769u;
+	v = v * 747796405u + 2891336453u;
+	v = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+	v = (v >> 22u) ^ v;
+	return float(v) / 4294967295.0;
 }
 
 void vertex() {
@@ -52,9 +62,13 @@ void vertex() {
 	float h = layer * grass_height * height_scale * growth;
 
 	vec2 wd = normalize(wind_dir);
-	float speed = 2.5 + 4.0 * wind;
-	float wave = gust_at(w.xz, wd, speed);
-	gust = smoothstep(0.3, 0.8, wave) * (0.3 + 0.7 * wind);
+	// The gusts: broad swells that carry the light, a finer ripple in
+	// the sway only.
+	float speed = gust_speed * (1.0 + 1.5 * wind);
+	float swell = value_noise(w.xz * 0.04 - wd * TIME * speed * 0.04);
+	float fine = value_noise(w.xz * 0.15 - wd * TIME * speed * 0.15);
+	gust = smoothstep(0.35, 0.85, swell) * (0.3 + 0.7 * wind);
+	float wave = swell * 0.7 + fine * 0.3;
 	vec2 sway = wd * wind * (0.15 + 0.6 * wave * wave);
 	vec2 away = w.xz - player_pos.xz;
 	float near_leg = (1.0 - smoothstep(0.3, 1.0, length(away))) * (1.0 - smoothstep(1.2, 2.0, abs(w.y - player_pos.y)));
@@ -65,29 +79,55 @@ void vertex() {
 	NORMAL = vec3(0.0, 1.0, 0.0);
 }
 
+// The strands at p: x positive where this layer is empty there, y the
+// height of the strand found (0 to 1 of the stack), z its colour's
+// random. A strand is a flat blade in section, turned its own way,
+// narrowing to a point at its top; it may stand anywhere in its cell.
+vec3 strand(vec2 p) {
+	float ct = cos(lattice_turn);
+	float st = sin(lattice_turn);
+	vec2 cell = vec2(ct * p.x - st * p.y, st * p.x + ct * p.y) * strands;
+	// The four cells round the nearest corner.
+	vec2 corner = floor(cell + 0.5);
+	vec3 best = vec3(1.0e3, 0.0, 0.0);
+	ivec2 best_id = ivec2(corner);
+	for (int j = -1; j <= 0; j++) {
+		for (int i = -1; i <= 0; i++) {
+			ivec2 id = ivec2(corner) + ivec2(i, j);
+			// One hash, four bytes: height, where in the cell, the turn.
+			uint v = uint(strand_hash(id, 1u) * 4294967295.0);
+			vec4 b = vec4(float(v & 255u), float((v >> 8u) & 255u),
+				float((v >> 16u) & 255u), float(v >> 24u)) / 255.0;
+			float tall = mix(0.35, 1.0, b.x);
+			if (layer > tall) {
+				continue;
+			}
+			vec2 d = cell - (vec2(id) + b.yz);
+			float a = b.w * 3.1416;
+			vec2 along = vec2(cos(a), sin(a));
+			float r = length(vec2(dot(d, along), dot(d, vec2(-along.y, along.x)) * 3.0));
+			float gap = r - 0.5 * pow(max(1.0 - layer / tall, 0.0), 0.6);
+			if (gap < best.x) {
+				best = vec3(gap, tall, 0.0);
+				best_id = id;
+			}
+		}
+	}
+	best.z = strand_hash(best_id, 5u);
+	return best;
+}
+
 void fragment() {
 	if (growth < 0.04) {
 		discard;
 	}
-	vec2 cell = ground_xz * strands;
-	vec2 id = floor(cell);
-	float h = hash2(id);
-	float tall = mix(0.35, 1.0, h);
-	if (layer > tall) {
+	vec3 hit = strand(ground_xz);
+	if (hit.x > 0.0) {
 		discard;
 	}
-	// A flat blade in section, turned its own way, narrowing to a
-	// point at the strand's own top.
-	vec2 off = vec2(hash2(id + 17.0), hash2(id + 31.0)) - 0.5;
-	vec2 d = fract(cell) - 0.5 - off * 0.3;
-	float a = hash2(id + 43.0) * 3.1416;
-	vec2 along = vec2(cos(a), sin(a));
-	float r = length(vec2(dot(d, along), dot(d, vec2(-along.y, along.x)) * 3.0));
-	if (r > 0.6 * pow(max(1.0 - layer / tall, 0.0), 0.6)) {
-		discard;
-	}
+	float tall = hit.y;
 	float dry = smoothstep(0.45, 0.85, value_noise(ground_xz * 0.08) * 0.7 + value_noise(ground_xz * 0.31 + 4.0) * 0.3);
-	vec3 c = mix(green, yellow_green, hash2(id + 5.0));
+	vec3 c = mix(green, yellow_green, hit.z);
 	c = mix(c, seed_tan, dry * 0.45);
 	vec3 col = mix(root_dark, c, smoothstep(0.0, 0.45, layer));
 	col = mix(col, yellow_green, 0.3 * smoothstep(0.6, 1.0, layer / tall));

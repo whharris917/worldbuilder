@@ -232,6 +232,10 @@ func _make_shells(layers: int, reach: float) -> void:
 	for i in range(layers, 0, -1):
 		var t := float(i) / layers
 		var r := reach * (1.0 - 0.55 * t)
+		# Past the middle distance every other layer is left out: the
+		# layers there are too close on screen to tell apart.
+		if i % 2 == 1:
+			r = minf(r, reach * 0.4)
 		var n := int(ceil(r / SHELL_CELL))
 		var first := verts.size()
 		for j in range(-n, n + 1):
