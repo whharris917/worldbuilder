@@ -23,7 +23,7 @@ extends Node3D
 ## "fluffy", clumps of a few crossed cards cut into blades and lit as
 ## one mass (grass_fluffy.gdshader); "shells", the ground drawn again in
 ## thin layers that keep only the strands' cross-sections
-## (grass_shell.gdshader); "off", none.
+## (grass_shell.gdshader, painted in the anime look); "off", none.
 
 const CHUNK := 8.0
 ## The baked ground's texel, metres, unless build is given another.
@@ -190,6 +190,7 @@ func _style_colours(mat: ShaderMaterial) -> void:
 			mat.set_shader_parameter("seed_tan", Color(0.84, 0.80, 0.44))
 			mat.set_shader_parameter("toon_step", 0.3)
 			mat.set_shader_parameter("height_scale", 1.15)
+			mat.set_shader_parameter("sheen", Color(0.80, 0.86, 0.48))
 		"diorama":
 			mat.set_shader_parameter("green", Color(0.46, 0.68, 0.32))
 			mat.set_shader_parameter("yellow_green", Color(0.62, 0.80, 0.38))
@@ -225,7 +226,7 @@ func _lay_slots(full_density: float) -> void:
 ## reach them thin out with distance. UV2.x is the layer's height.
 func _make_shells(layers: int, reach: float) -> void:
 	var mat := ShaderMaterial.new()
-	mat.shader = load("res://world/grass_shell.gdshader") as Shader
+	mat.shader = load("res://world/grass_shell_painted.gdshader" if _style == "anime" else "res://world/grass_shell.gdshader") as Shader
 	mat.set_shader_parameter("ground", ground_tex)
 	mat.set_shader_parameter("ground_origin", origin)
 	mat.set_shader_parameter("ground_size", size)

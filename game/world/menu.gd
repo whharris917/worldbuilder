@@ -2,7 +2,7 @@ class_name MainMenu
 extends Control
 ## The title screen: pick a world. Worlds are scenes the editor can Play
 ## directly, so nothing here is required. An entry with "last_look"
-## opens the meadow in the look it was last seen in.
+## opens that world in the look it was last seen in.
 
 ## Every button's width, in pixels.
 const BUTTON_W := 760
@@ -19,9 +19,9 @@ const WORLDS: Array[Dictionary] = [
 	{"title": "MIDDAUGH HOUSE", "note": "The Middaugh house of 1888 in Clarendon Hills, Illinois, built by the general builder from its survey drawings while the work is under way; its outside only so far.",
 		"scene": "res://world/middaugh.tscn"},
 	{"title": "FOREST MEADOW", "note": "A meadow in a summer wood with a brook running through it, from dawn mist to fireflies; a study in mood. Seen as it is, as a cartoon, painted, or as a model on a board: choose in the options (O).",
-		"scene": "res://world/meadow.tscn", "last_look": true},
+		"scene": "res://world/meadow.tscn", "last_look": "meadow"},
 	{"title": "OPEN HILLS", "note": "Rolling hills of long grass under a wide sky, the wind running over them in gusts; a study in wind.",
-		"scene": "res://world/grass_hills.tscn"},
+		"scene": "res://world/grass_hills.tscn", "last_look": "hills"},
 ]
 
 
@@ -106,7 +106,10 @@ func _world_button(world: Dictionary) -> Button:
 	button.add_theme_stylebox_override("pressed", hover)
 	button.pressed.connect(func() -> void:
 		var scene := str(world["scene"])
-		if world.get("last_look", false):
-			scene = MeadowMap.last_look_scene()
+		match str(world.get("last_look", "")):
+			"meadow":
+				scene = MeadowMap.last_look_scene()
+			"hills":
+				scene = GrassHills.last_look_scene()
 		get_tree().change_scene_to_file(scene))
 	return button

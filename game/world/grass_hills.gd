@@ -10,9 +10,24 @@ class_name GrassHills
 ## breeze, and the hiss of bending grass swelling as a band reaches
 ## the listener (Gusts, the bands on the CPU). Its own save, clock and
 ## grass model.
+##
+## Drawn in a look (`style`, set by its scene): "real", or "anime"
+## (grass_hills_painted.tscn), painted as the meadow's painted look is:
+## the painted sky of towering clouds, soft two-tone light warm in the
+## sun and cool in the shade, the grass and the far hillsides in flat
+## greens with the gusts laid on in strokes of pale gold-green. The
+## options' Look row builds the hills again in the other look with the
+## player where they stood; each look keeps its own save.
 
 const WIND_DIR := Vector2(0.8, 0.6)
+const ROOT_DARK := Color(0.11, 0.14, 0.06)
 const GRASS_KEY := "hills_grass"
+const LOOK_KEY := "hills_look"
+## look, its name in the options, its scene.
+const STYLES: Array = [
+	["real", "As it is", "res://world/grass_hills.tscn"],
+	["anime", "Painted", "res://world/grass_hills_painted.tscn"],
+]
 const FIELD := 512.0                 # the grass's baked square, metres
 const SKY_KEY := "hills_sky"
 ## The air, chosen in the options: name, fog density, sun scatter,
@@ -21,6 +36,12 @@ const SKIES: Array = [
 	["Summer haze", 0.0011, 0.25, 0.5, 0.5, Color(0.19, 0.36, 0.72), Color(0.62, 0.72, 0.84)],
 	["Clear autumn", 0.00022, 0.06, 0.12, 0.06, Color(0.10, 0.26, 0.66), Color(0.46, 0.62, 0.84)],
 ]
+
+@export var style := "real"
+
+## Where the player stood when the look was changed: position, turn,
+## the camera's tilt.
+static var _handoff: Array = []
 
 var land: HillsLand
 var grass: GrassField
@@ -31,6 +52,10 @@ var _hiss: AudioStreamPlayer
 var _hiss_level := 0.0
 var _wind_noise := FastNoiseLite.new()
 var _clock := 0.0
+## The pond's surface, or far below everything with no pond.
+var _water: float:
+	get:
+		return land.lake_level if not land.lake_cells.is_empty() else -1.0e6
 
 
 func _init() -> void:
@@ -44,7 +69,32 @@ func _init() -> void:
 
 func _build_environment() -> void:
 	super()
+	if style == "anime":
+		# The painted sky, and a clear summer air with blue distance.
+		var painted := ShaderMaterial.new()
+		painted.shader = load("res://world/sky_anime.gdshader")
+		sky_env.sky.sky_material = painted
+		sky_mat = painted
+		sun.light_energy = 1.5
+		_sun_base_energy = 1.5
+		sky_env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+		sky_env.tonemap_white = 6.0
+		sky_env.adjustment_enabled = true
+		sky_env.adjustment_saturation = 1.2
+		sky_env.fog_density = 0.0005
+		sky_env.fog_aerial_perspective = 0.7
+		sky_env.glow_intensity = 0.3
+		return
 	_apply_sky(int(_read_settings().get(SKY_KEY, 1)))
+
+
+## The painted look's shade: lit more by the sky by day, painted cool
+## blue against the warm sun.
+func _on_time_of_day(horizon: float, twilight: float) -> void:
+	super(horizon, twilight)
+	if style == "anime":
+		sky_env.ambient_light_color = sky_env.ambient_light_color.lerp(Color(0.48, 0.60, 0.95), 0.6 * twilight)
+		sky_env.ambient_light_energy *= lerpf(1.0, 1.5, twilight)
 
 
 ## The air: summer haze, the distance going blue and the sun's glow in
@@ -64,22 +114,22 @@ func _apply_sky(index: int) -> void:
 func _change_sky(index: int) -> void:
 	_apply_sky(index)
 	set_time_of_day(time_of_day)
-	var saved := _read_settings()
-	saved[SKY_KEY] = index
-	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
-	if file != null:
-		file.store_string(JSON.stringify(saved))
+	_store(SKY_KEY, index)
 
 
 func _build_ground() -> void:
 	land = HillsLand.new()
+	if style != "real":
+		save_path = "user://save_hills_%s.json" % style
+		moonlight_key = "hills_%s_moonlight" % style
+		land.ground_shader = "res://world/hills_ground_painted.gdshader"
 	add_child(land)
 	land.build()
 	grass = GrassField.new()
 	grass.name = "Grass"
 	add_child(grass)
 	grass.build(land, Vector2.ZERO, FIELD, land.grass_at, func(_x: float, _z: float) -> float: return 0.0,
-		"real", str(_read_settings().get(GRASS_KEY, "shells")), 1.0)
+		style, str(_read_settings().get(GRASS_KEY, "shells")), 1.0)
 	# The gusts' pull downhill, over the land as far as the eye follows them.
 	gusts.bake_flow(land, 2048.0, 8.0)
 	land.terrain_mat.set_shader_parameter("reach", float(GrassField.MODELS["shells"]["reach"]))
@@ -156,10 +206,20 @@ func _process(delta: float) -> void:
 
 
 func _after_build() -> void:
-	var skies: Array[String] = []
-	for air: Array in SKIES:
-		skies.append(str(air[0]))
-	settings.add_choice("Sky", skies, clampi(int(_read_settings().get(SKY_KEY, 1)), 0, SKIES.size() - 1), _change_sky)
+	var looks: Array[String] = []
+	var current := 0
+	for k in STYLES.size():
+		looks.append(str(STYLES[k][1]))
+		if STYLES[k][0] == style:
+			current = k
+	settings.add_choice("Look", looks, current, _change_look)
+	if not MouseMode.probe:
+		_store(LOOK_KEY, style)
+	if style == "real":
+		var skies: Array[String] = []
+		for air: Array in SKIES:
+			skies.append(str(air[0]))
+		settings.add_choice("Sky", skies, clampi(int(_read_settings().get(SKY_KEY, 1)), 0, SKIES.size() - 1), _change_sky)
 	settings.add_choice("Grass", ["Full", "Light", "Fluffy", "Shells", "None"],
 		GrassField.MODEL_NAMES.find(grass.model), _change_grass)
 	if not FileAccess.file_exists(save_path):
@@ -172,7 +232,10 @@ func _after_build() -> void:
 			look = (land.lake_centre - at).normalized()
 		player.global_position = Vector3(at.x, land.surface_height(at.x, at.y) + 0.4, at.y)
 		player.rotation.y = atan2(-look.x, -look.y)
-	hud.toast("Open hills of long grass. O options: the time of day, the grass. F5/F9 save/load")
+	if style == "anime":
+		hud.toast("Open hills of long grass, painted. O options: the time of day, the grass, the look. F5/F9 save/load")
+	else:
+		hud.toast("Open hills of long grass. O options: the time of day, the grass, the look. F5/F9 save/load")
 	print("[worldbuilder] hills: terrain %d ms, grass %d ms over %d chunks; pond %d m2, %.1f m deep at (%d, %d), level %.2f"
 		% [int(land.stats.get("ms_terrain", 0)), int(grass.stats.get("ms", 0)), int(grass.stats.get("chunks_with_grass", 0)),
 		int(land.stats.get("lake_m2", 0)), land.lake_depth, int(land.lake_centre.x), int(land.lake_centre.y), land.lake_level])
@@ -183,14 +246,6 @@ func _after_build() -> void:
 ## The hills' shells: sunlit grass with only its roots in shade, and
 ## that shade lit by the open sky, so upright grass between gusts is
 ## not a pit; the ground under the shells the same.
-const ROOT_DARK := Color(0.11, 0.14, 0.06)
-
-
-## The pond's surface, or far below everything with no pond.
-var _water: float:
-	get:
-		return land.lake_level if not land.lake_cells.is_empty() else -1.0e6
-
 func _tune_grass() -> void:
 	for mat in grass.materials:
 		mat.set_shader_parameter("root_shade", 0.18)
@@ -199,6 +254,12 @@ func _tune_grass() -> void:
 		gusts.apply(mat)
 	land.terrain_mat.set_shader_parameter("root_dark", ROOT_DARK)
 	land.terrain_mat.set_shader_parameter("water_level", _water)
+	if style == "anime":
+		# The painted turf in the painted grass's greens.
+		land.terrain_mat.set_shader_parameter("green", Color(0.20, 0.40, 0.17))
+		land.terrain_mat.set_shader_parameter("yellow_green", Color(0.40, 0.56, 0.21))
+		land.terrain_mat.set_shader_parameter("sheen", Color(0.80, 0.86, 0.48))
+		land.terrain_mat.set_shader_parameter("toon_step", 0.3)
 	gusts.apply(land.terrain_mat)
 	if land.lake_mat != null:
 		gusts.apply(land.lake_mat)
@@ -232,8 +293,58 @@ func _overlook(pond: Vector2) -> Vector2:
 func _change_grass(index: int) -> void:
 	grass.set_model(GrassField.MODEL_NAMES[index])
 	_tune_grass()
+	_store(GRASS_KEY, grass.model)
+
+
+## One value of the hills' own into the shared settings file.
+func _store(key: String, value: Variant) -> void:
 	var saved := _read_settings()
-	saved[GRASS_KEY] = grass.model
+	saved[key] = value
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify(saved))
+
+
+## Build the hills again in look `index` of STYLES, the player where
+## they stand.
+func _change_look(index: int) -> void:
+	if STYLES[index][0] == style:
+		return
+	_handoff = [player.global_position, player.rotation.y, player.camera.rotation.x]
+	_save_settings()
+	# The options close and the note shows before the build holds the
+	# screen for some seconds.
+	settings.visible = false
+	player.input_locked = false
+	hud.toast("Changing the look...")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	get_tree().change_scene_to_file(str(STYLES[index][2]))
+
+
+## Arriving from another look, the player stands where they stood in it;
+## otherwise where this look's save left them.
+func load_player() -> bool:
+	if _handoff.is_empty():
+		return super()
+	player.global_position = _handoff[0]
+	player.rotation.y = _handoff[1]
+	player.camera.rotation.x = _handoff[2]
+	_handoff = []
+	return true
+
+
+## The scene of the look the hills were last seen in, for the title
+## menu's one entry.
+static func last_look_scene() -> String:
+	var look := ""
+	if FileAccess.file_exists(SETTINGS_PATH):
+		var file := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+		if file != null:
+			var parsed: Variant = JSON.parse_string(file.get_as_text())
+			if parsed is Dictionary:
+				look = str((parsed as Dictionary).get(LOOK_KEY, ""))
+	for entry: Array in STYLES:
+		if entry[0] == look:
+			return str(entry[2])
+	return str(STYLES[0][2])

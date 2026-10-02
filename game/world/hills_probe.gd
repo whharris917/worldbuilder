@@ -26,7 +26,9 @@ const VIEWS := [
 
 func _ready() -> void:
 	MouseMode.probe = true
-	var world: GrassHills = (load("res://world/grass_hills.tscn") as PackedScene).instantiate()
+	# WORLDBUILDER_HILLS_STYLE=anime photographs the painted hills.
+	var scene := "res://world/grass_hills_painted.tscn" if OS.get_environment("WORLDBUILDER_HILLS_STYLE") == "anime" else "res://world/grass_hills.tscn"
+	var world: GrassHills = (load(scene) as PackedScene).instantiate()
 	add_child(world)
 	_run(world)
 
