@@ -271,3 +271,8 @@ The director renamed the project from veribuilder to worldbuilder: the folder, t
 - **Moonlight**: the director found the cartoon's night too bright. A Moonlight slider (0 to 200 %) in the options scales the night's light and ambient in every world, saved per world; the cartoon's daytime lift of the shade no longer applies at night.
 - **Measuring**: frame rates read with other Godot windows open on the machine are not comparable; the probe's two-second timing is reliable only alone.
 
+## 2026-10-02: the meadow's look and grass changed in play
+
+- **Look**: the options' Look row (As it is, Cartoon, Painted, Model) builds the meadow again in the chosen look with the player where they stood (`MeadowMap._change_look`, a static handoff read by `load_player`). Each look keeps its own save and moonlight; the clock is shared. The rebuild takes about nine seconds on the development machine, most of it the terrain; switching in place would need every part to restyle itself and was not worth it yet.
+- **Grass**: the Grass row (Full, Light, None) redraws the grass at once and is kept for every look (`GrassField.set_model`, settings key `meadow_grass`). Light has broader blades of one or two segments, about an eighth of the near field's triangles, the same reach. Its first version, sparse and ending at 44 m, showed the dark ground through the middle distance.
+- **What the grass costs**: on Medium at the arrival view, Full 32 to 34 fps, Light 36 to 37, None 36. The grass is about 4 ms of a 30 ms frame; the wood (about 6.5 M primitives) is most of the rest. Light takes nearly all the grass's saving.

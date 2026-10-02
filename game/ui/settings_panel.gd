@@ -4,6 +4,7 @@ extends Control
 ## background music toggle, off by default, and the graphics: a preset
 ## and every knob under it, with the frame rate live beside them so the
 ## balance between speed and looks can be read while flipping switches.
+## A world may add its own choices (`add_choice`), shown under the music.
 ## Opens over a dimmed backdrop with the mouse freed; the
 ## world applies the values and remembers them between sessions.
 
@@ -28,6 +29,7 @@ var _scale: HSlider
 var _scale_label: Label
 var _options: Dictionary = {}   # key -> OptionButton
 var _checks: Dictionary = {}    # key -> CheckButton
+var _world_rows: VBoxContainer
 
 
 func _ready() -> void:
@@ -130,6 +132,10 @@ func _ready() -> void:
 			on_music_changed.call(on))
 	column.add_child(_music)
 
+	_world_rows = VBoxContainer.new()
+	_world_rows.add_theme_constant_override("separation", 6)
+	column.add_child(_world_rows)
+
 	column.add_child(HSeparator.new())
 	_build_graphics(column)
 
@@ -211,6 +217,24 @@ func _build_graphics(column: VBoxContainer) -> void:
 		check.toggled.connect(func(on: bool) -> void: _on_check(key, on))
 		switches.add_child(check)
 		_checks[key] = check
+
+
+## A row of the world's own: `label`, a list of `items` with `selected`
+## chosen, calling `on_pick` with the index picked.
+func add_choice(label: String, items: Array[String], selected: int, on_pick: Callable) -> void:
+	var row := HBoxContainer.new()
+	_world_rows.add_child(row)
+	var name_label := Label.new()
+	name_label.text = label
+	name_label.custom_minimum_size = Vector2(120, 0)
+	row.add_child(name_label)
+	var option := OptionButton.new()
+	for item in items:
+		option.add_item(item)
+	option.select(selected)
+	option.custom_minimum_size = Vector2(180, 0)
+	option.item_selected.connect(func(idx: int) -> void: on_pick.call(idx))
+	row.add_child(option)
 
 
 func set_values(hours: float, music_on: bool) -> void:

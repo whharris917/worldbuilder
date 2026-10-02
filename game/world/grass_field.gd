@@ -11,27 +11,41 @@ extends Node3D
 ## ones with sparser bands of simpler tufts. As the camera moves the
 ## slots follow it chunk by chunk and take their bands afresh. The
 ## shader thins the tufts by distance at one rate (full density out to
-## FULL_R, then falling as the distance to the power 1.5, gone by FAR),
+## the model's full_r, then falling as the distance to the power 1.5, gone
+## by its far),
 ## and a chunk takes the sparsest band that still carries that rate at
 ## its nearest point, so the bands meet without a seam. Chunks with no
 ## grass in them are hidden.
+##
+## The field is drawn in one of MODELS (`set_model`), changeable while
+## the world runs: "full", the dense blades; "light", fewer and broader
+## blades of fewer segments, an eighth of the near field's triangles;
+## "off", none.
 
 const CHUNK := 8.0
 const TEXEL := 0.5
-const FULL_R := 7.0
-const FAR := 64.0
-## density (tufts a square metre), blades a tuft, segments a blade.
-const BANDS: Array = [
-	[14.0, 10, 4],
-	[7.0, 8, 3],
-	[3.5, 6, 2],
-	[1.4, 5, 1],
-]
+## Each model: its bands (density in tufts a square metre, blades a
+## tuft, segments a blade), full density out to full_r, gone by far,
+## blades widen times the usual width.
+const MODELS: Dictionary = {
+	"full": {"bands": [[14.0, 10, 4], [7.0, 8, 3], [3.5, 6, 2], [1.4, 5, 1]],
+		"full_r": 7.0, "far": 64.0, "widen": 1.0},
+	"light": {"bands": [[6.0, 6, 2], [4.0, 5, 1], [2.5, 4, 1], [1.2, 3, 1]],
+		"full_r": 7.0, "far": 64.0, "widen": 1.8},
+}
+const MODEL_NAMES: Array[String] = ["full", "light", "off"]
 
 var origin := Vector2(-128.0, -128.0)
 var size := 256.0
+var ground_tex: ImageTexture
+var model := "full"
 var materials: Array[ShaderMaterial] = []
 var stats: Dictionary = {}
+
+var _style := "real"
+var _bands: Array = []
+var _full_r := 7.0
+var _far := 64.0
 
 var _meshes: Array[MultiMesh] = []
 var _slots: Array[MultiMeshInstance3D] = []
@@ -46,10 +60,11 @@ var _placed_at := Vector2(1.0e9, 0.0)
 ## the tiles and the slots. `style` picks the look: "real", or the
 ## drawn styles: "cartoon" and "anime" in grass_toon.gdshader in their
 ## own greens, "diorama" in grass_lowpoly.gdshader, short blades of one
-## flat triangle each.
+## flat triangle each. `with_model` is the model to draw.
 func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowers: Callable,
-		style := "real") -> void:
+		style := "real", with_model := "full") -> void:
 	var t0 := Time.get_ticks_msec()
+	_style = style
 	size = side
 	origin = centre - Vector2(side, side) * 0.5
 	var n := int(side / TEXEL)
@@ -69,27 +84,52 @@ func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowe
 					_grass_in[key] = Vector2(minf(span.x, h), maxf(span.y, h))
 				else:
 					_grass_in[key] = Vector2(h, h)
-	var tex := ImageTexture.create_from_image(img)
+	ground_tex = ImageTexture.create_from_image(img)
+	set_model(with_model)
+	stats["ms"] = Time.get_ticks_msec() - t0
+	stats["chunks_with_grass"] = _grass_in.size()
+
+
+## Draw the field in model `which` (one of MODEL_NAMES), replacing the
+## tiles and slots of the last.
+func set_model(which: String) -> void:
+	model = which if which in MODEL_NAMES else "full"
+	for slot in _slots:
+		slot.queue_free()
+	_slots.clear()
+	_offsets.clear()
+	_meshes.clear()
+	materials.clear()
+	_band_out.clear()
+	_placed_at = Vector2(1.0e9, 0.0)
+	stats["slots"] = 0
+	if model == "off":
+		return
+	var spec: Dictionary = MODELS[model]
+	_bands = spec["bands"]
+	_full_r = float(spec["full_r"])
+	_far = float(spec["far"])
+	var widen := float(spec["widen"])
 	var shader_path := "res://world/grass.gdshader"
-	if style == "cartoon" or style == "anime":
+	if _style == "cartoon" or _style == "anime":
 		shader_path = "res://world/grass_toon.gdshader"
-	elif style == "diorama":
+	elif _style == "diorama":
 		shader_path = "res://world/grass_lowpoly.gdshader"
 	var shader := load(shader_path) as Shader
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261002
-	var tufts := 0
-	for band: Array in BANDS:
+	var full_density := float(_bands[0][0])
+	for band: Array in _bands:
 		var mat := ShaderMaterial.new()
 		mat.shader = shader
-		mat.set_shader_parameter("ground", tex)
+		mat.set_shader_parameter("ground", ground_tex)
 		mat.set_shader_parameter("ground_origin", origin)
 		mat.set_shader_parameter("ground_size", size)
 		mat.set_shader_parameter("band_density", float(band[0]))
-		mat.set_shader_parameter("full_density", float(BANDS[0][0]))
-		mat.set_shader_parameter("full_r", FULL_R)
-		mat.set_shader_parameter("grass_far", FAR)
-		match style:
+		mat.set_shader_parameter("full_density", full_density)
+		mat.set_shader_parameter("full_r", _full_r)
+		mat.set_shader_parameter("grass_far", _far)
+		match _style:
 			"cartoon":
 				mat.set_shader_parameter("green", Color(0.27, 0.52, 0.16))
 				mat.set_shader_parameter("yellow_green", Color(0.44, 0.64, 0.20))
@@ -109,37 +149,34 @@ func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowe
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		# A model's grass: single wide triangles standing nearly upright.
-		var model := style == "diorama"
-		var segs := 1 if model else int(band[2])
-		mm.mesh = _tuft(int(band[1]), segs, band == BANDS[0] or band == BANDS[1], rng,
-			3.0 if model else 1.0, 0.25 if model else 1.0)
+		var flat := _style == "diorama"
+		var segs := 1 if flat else int(band[2])
+		mm.mesh = _tuft(int(band[1]), segs, band == _bands[0] or band == _bands[1], rng,
+			(3.0 if flat else 1.0) * widen, 0.25 if flat else 1.0)
 		var count := int(float(band[0]) * CHUNK * CHUNK)
 		mm.instance_count = count
 		for k in count:
 			mm.set_instance_transform(k, Transform3D(Basis.IDENTITY,
 				Vector3(rng.randf_range(0.0, CHUNK), 0.0, rng.randf_range(0.0, CHUNK))))
 		_meshes.append(mm)
-		tufts += count
 	# A band is wanted out to where the thinning falls to the next band's
-	# density; the last to FAR.
-	for b in BANDS.size():
-		if b + 1 < BANDS.size():
-			_band_out.append(FULL_R * pow(float(BANDS[0][0]) / float(BANDS[b + 1][0]), 1.0 / 1.5))
+	# density; the last to the model's reach.
+	for b in _bands.size():
+		if b + 1 < _bands.size():
+			_band_out.append(_full_r * pow(full_density / float(_bands[b + 1][0]), 1.0 / 1.5))
 		else:
-			_band_out.append(FAR)
-	var reach := int(ceil(FAR / CHUNK)) + 1
+			_band_out.append(_far)
+	var reach := int(ceil(_far / CHUNK)) + 1
 	for j in range(-reach, reach + 1):
 		for i in range(-reach, reach + 1):
-			if _gap(Vector2i(i, j)) <= FAR:
+			if _gap(Vector2i(i, j)) <= _far:
 				_offsets.append(Vector2i(i, j))
 				var slot := MultiMeshInstance3D.new()
 				slot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				slot.visible = false
 				add_child(slot)
 				_slots.append(slot)
-	stats["ms"] = Time.get_ticks_msec() - t0
 	stats["slots"] = _slots.size()
-	stats["chunks_with_grass"] = _grass_in.size()
 
 
 ## The nearest distance between the camera's chunk and the chunk at
@@ -175,11 +212,11 @@ func follow(camera_pos: Vector3, player_pos: Vector3, wind: float, wind_dir: Vec
 		var lo := Vector2(key) * CHUNK
 		var nearest := Vector2(clampf(cam.x, lo.x, lo.x + CHUNK), clampf(cam.y, lo.y, lo.y + CHUNK))
 		var gap := maxf(cam.distance_to(nearest) - 1.0, 0.0)
-		if gap > FAR:
+		if gap > _far:
 			slot.visible = false
 			continue
-		var band := BANDS.size() - 1
-		for b in BANDS.size():
+		var band := _bands.size() - 1
+		for b in _bands.size():
 			if gap <= _band_out[b]:
 				band = b
 				break

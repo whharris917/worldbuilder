@@ -26,8 +26,25 @@ class_name MeadowMap
 ##     with its edges cut, pastel and faceted, the distance blurred as a
 ##     close photograph of a model is.
 ## Each keeps its own save and moonlight and shares the meadow's clock.
+## The options' Look row changes the style in play: the meadow is built
+## again in the new style with the player where they stood. The Grass
+## row picks the grass's model (GrassField.MODEL_NAMES), shared by every
+## style and changed on the spot.
 
 const WIND_DIR := Vector2(0.8, 0.6)      # toward the south-east, down the valley
+## style, its name in the options, its scene.
+const STYLES: Array = [
+	["real", "As it is", "res://world/meadow.tscn"],
+	["cartoon", "Cartoon", "res://world/meadow_cartoon.tscn"],
+	["anime", "Painted", "res://world/meadow_anime.tscn"],
+	["diorama", "Model", "res://world/meadow_diorama.tscn"],
+]
+const GRASS_NAMES: Array[String] = ["Full", "Light", "None"]
+const GRASS_KEY := "meadow_grass"
+
+## Where the player stood when the look was changed, for the meadow
+## built in the new one: position, turn, the camera's tilt.
+static var _handoff: Array = []
 
 @export var style := "real"
 
@@ -129,7 +146,8 @@ func _build_ground() -> void:
 	grass = GrassField.new()
 	grass.name = "Grass"
 	add_child(grass)
-	grass.build(land, Vector2(0.0, 0.0), 256.0, land.grass_at, _flowers_at, style)
+	grass.build(land, Vector2(0.0, 0.0), 256.0, land.grass_at, _flowers_at, style,
+		str(_read_settings().get(GRASS_KEY, "full")))
 	_build_air()
 	sound = MeadowSound.new()
 	sound.name = "Sound"
@@ -150,7 +168,7 @@ func _flowers_at(x: float, z: float) -> float:
 
 
 func _build_air() -> void:
-	var tex: Texture2D = grass.materials[0].get_shader_parameter("ground")
+	var tex: Texture2D = grass.ground_tex
 	_fireflies = _air_layer(tex, false, 260, 60.0)
 	_fireflies.name = "Fireflies"
 	_motes = _air_layer(tex, true, 500, 14.0)
@@ -267,6 +285,45 @@ func start_heat() -> void:
 	heat.play(cam.global_position, -cam.global_basis.z)
 
 
+## Build the meadow again in look `index` of STYLES, the player where
+## they stand.
+func _change_look(index: int) -> void:
+	if STYLES[index][0] == style:
+		return
+	_handoff = [player.global_position, player.rotation.y, player.camera.rotation.x]
+	_save_settings()
+	# The options close and the note shows before the build holds the
+	# screen for some seconds.
+	settings.visible = false
+	player.input_locked = false
+	hud.toast("Changing the look...")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	get_tree().change_scene_to_file(str(STYLES[index][2]))
+
+
+## The grass in model `index` of GRASS_NAMES, kept for every look.
+func _change_grass(index: int) -> void:
+	grass.set_model(GrassField.MODEL_NAMES[index])
+	var saved := _read_settings()
+	saved[GRASS_KEY] = grass.model
+	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(saved))
+
+
+## Arriving from another look, the player stands where they stood in it;
+## otherwise where this look's save left them.
+func load_player() -> bool:
+	if _handoff.is_empty():
+		return super()
+	player.global_position = _handoff[0]
+	player.rotation.y = _handoff[1]
+	player.camera.rotation.x = _handoff[2]
+	_handoff = []
+	return true
+
+
 ## The breeze: calm at dawn and in the night, rising through the
 ## morning to its strongest in mid-afternoon, falling at evening; gusts
 ## on top of it.
@@ -316,6 +373,14 @@ func _after_build() -> void:
 	add_child(heat)
 	heat.setup(self)
 	events.add_event(EventBar.draw_heat, "Heat lightning on the horizon", start_heat, heat.running)
+	var looks: Array[String] = []
+	var current := 0
+	for k in STYLES.size():
+		looks.append(str(STYLES[k][1]))
+		if STYLES[k][0] == style:
+			current = k
+	settings.add_choice("Look", looks, current, _change_look)
+	settings.add_choice("Grass", GRASS_NAMES, GrassField.MODEL_NAMES.find(grass.model), _change_grass)
 	if not FileAccess.file_exists(save_path):
 		# On the meadow east of the brook, looking west across it toward
 		# the lone oak and the afternoon sun.

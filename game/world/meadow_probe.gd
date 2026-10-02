@@ -6,7 +6,8 @@ extends Node
 ## WORLDBUILDER_MEADOW_SHOTS=name,name limits it to those views;
 ## WORLDBUILDER_MEADOW_VIEWS=name:hour:fov:x,y,z:tx,ty,tz;... takes its
 ## own (heights over the ground); WORLDBUILDER_MEADOW_PRESET picks the
-## graphics preset (Medium by default); WORLDBUILDER_MEADOW_STYLES=0,1,...
+## graphics preset (Medium by default); WORLDBUILDER_MEADOW_GRASS the
+## grass's model; WORLDBUILDER_MEADOW_STYLES=0,1,...
 ## photographs each view in those picture styles (style.gdshader).
 
 ## name, hour, fov, camera (x, height over ground, z), target (x, height over ground, z).
@@ -41,6 +42,9 @@ func _run(world: MeadowMap) -> void:
 	var preset := OS.get_environment("WORLDBUILDER_MEADOW_PRESET")
 	world.graphics.set_preset(preset if preset != "" else "Medium")
 	world.graphics.apply(world)
+	# WORLDBUILDER_MEADOW_GRASS=full|light|off draws the grass in that model.
+	if OS.get_environment("WORLDBUILDER_MEADOW_GRASS") != "":
+		world.grass.set_model(OS.get_environment("WORLDBUILDER_MEADOW_GRASS"))
 	for layer: Node in get_tree().root.find_children("*", "CanvasLayer", true, false):
 		(layer as CanvasLayer).visible = false
 	world.player.visible = false
