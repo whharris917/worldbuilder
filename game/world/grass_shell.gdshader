@@ -6,8 +6,11 @@ shader_type spatial;
 // the cross-sections of the strands that reach it: the ground is cut
 // into small cells, each cell one strand of its own height, round and
 // narrowing upward, so the stack of layers reads as a turf of fine
-// blades. The layers slide downwind with the gusts, more the higher
-// they are, and the gusts brighten the grass as they pass. Strands
+// blades. Gusts cross the field as long bands lying across the wind
+// and running downwind: in a band the layers slide downwind, more the
+// higher they are, so the grass leans, and the leaning grass turns
+// pale as a field does when its blades bend and show their sheen;
+// between bands it stands up and darker. Strands
 // fall short toward the edge of the stack and where the ground grows
 // no grass. Each strand stands anywhere in its own cell of a lattice
 // and reaches at most half a cell from its foot, so a layer's pixel
@@ -27,8 +30,11 @@ uniform float height_scale = 1.0;
 uniform float grass_height = 0.7;    // the tallest strand at full growth, metres
 uniform float strands = 18.0;        // strands a metre each way
 uniform float reach = 32.0;          // strands are gone by here from the camera
-uniform float ripple = 0.6;
-uniform float gust_speed = 0.8;      // how fast the gusts' light runs downwind, metres a second, in a calm
+uniform float ripple = 1.0;          // how pale the grass turns where a gust leans it
+uniform float gust_speed = 1.2;      // how fast the gusts run downwind, metres a second, in a calm
+uniform float band_length = 30.0;    // a gust band's length across the wind, metres
+uniform float band_width = 6.0;      // and its width along it
+uniform vec3 sheen : source_color = vec3(0.62, 0.68, 0.48);   // leaning grass's pale side
 uniform float lattice_turn = 0.53;   // the lattice against the world's axes, radians
 
 uniform vec3 green : source_color = vec3(0.22, 0.32, 0.11);
@@ -62,19 +68,25 @@ void vertex() {
 	float h = layer * grass_height * height_scale * growth;
 
 	vec2 wd = normalize(wind_dir);
-	// The gusts: broad swells that carry the light, a finer ripple in
-	// the sway only.
+	// The gusts: a pattern in the wind's own frame, long across it and
+	// narrow along it, carried downwind; a slow drift across the wind
+	// keeps the bands from repeating. Even a light breeze shows them.
 	float speed = gust_speed * (1.0 + 1.5 * wind);
-	float swell = value_noise(w.xz * 0.04 - wd * TIME * speed * 0.04);
-	float fine = value_noise(w.xz * 0.15 - wd * TIME * speed * 0.15);
-	gust = smoothstep(0.35, 0.85, swell) * (0.3 + 0.7 * wind);
-	float wave = swell * 0.7 + fine * 0.3;
-	vec2 sway = wd * wind * (0.15 + 0.6 * wave * wave);
+	vec2 across = vec2(-wd.y, wd.x);
+	float u = (dot(w.xz, wd) - TIME * speed) / band_width;
+	float v = (dot(w.xz, across) + TIME * 0.3) / band_length;
+	float bands = value_noise(vec2(u, v)) * 0.75 + value_noise(vec2(u * 2.3, v * 1.7) + 11.0) * 0.25;
+	float strength = 0.45 + 0.55 * wind;
+	gust = smoothstep(0.38, 0.62, bands) * strength;
+	float flutter = sin(TIME * 2.1 + dot(w.xz, vec2(1.3, 0.9))) * 0.04;
+	vec2 sway = wd * (0.08 * strength + 0.8 * gust + flutter * wind);
 	vec2 away = w.xz - player_pos.xz;
 	float near_leg = (1.0 - smoothstep(0.3, 1.0, length(away))) * (1.0 - smoothstep(1.2, 2.0, abs(w.y - player_pos.y)));
 	sway += normalize(away + vec2(0.001)) * near_leg * 0.8;
-	w.xz += sway * layer * layer * grass_height * growth;
-	w.y = g.r + h + 0.01;
+	vec2 lean = sway * pow(layer, 1.4) * grass_height * growth;
+	w.xz += lean;
+	// A leaning blade reaches less high.
+	w.y = g.r + h - length(lean) * 0.4 * layer + 0.01;
 	VERTEX = w - MODEL_MATRIX[3].xyz;
 	NORMAL = vec3(0.0, 1.0, 0.0);
 }
@@ -131,7 +143,12 @@ void fragment() {
 	c = mix(c, seed_tan, dry * 0.45);
 	vec3 col = mix(root_dark, c, smoothstep(0.0, 0.45, layer));
 	col = mix(col, yellow_green, 0.3 * smoothstep(0.6, 1.0, layer / tall));
-	col *= 1.0 + ripple * gust * layer;
+	// Leaning grass turns pale from a little above the roots, where
+	// most of what the eye sees of the turf is; standing grass is a
+	// little darker.
+	float tips = smoothstep(0.0, 0.3, layer);
+	col = mix(col, sheen, clamp(ripple * gust * tips * 0.8, 0.0, 1.0));
+	col *= 0.85 + 0.15 * smoothstep(0.0, 0.3, gust) + 0.35 * ripple * gust * tips;
 	ALBEDO = col;
 	ROUGHNESS = 0.85;
 	SPECULAR = 0.25;
