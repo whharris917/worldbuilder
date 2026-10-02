@@ -7,7 +7,8 @@ extends Node
 ## WORLDBUILDER_HILLS_VIEWS=name:hour:fov:x,y,z:tx,ty,tz;... takes its
 ## own (heights over the ground); WORLDBUILDER_HILLS_PRESET picks the
 ## graphics preset (Medium by default); WORLDBUILDER_HILLS_GRASS the
-## grass's model.
+## grass's model. Two views follow the world: "start", where the
+## player arrives, and "edge", at the pond's edge looking across it.
 
 ## name, hour, fov, camera (x, height over ground, z), target (x, height over ground, z).
 const VIEWS := [
@@ -15,6 +16,11 @@ const VIEWS := [
 	["across", 15.0, 60.0, Vector3(0.0, 1.6, 0.0), Vector3(-60.0, 0.0, 80.0)],
 	["high", 15.0, 60.0, Vector3(0.0, 6.0, 0.0), Vector3(-80.0, 0.0, -60.0)],
 	["evening", 19.0, 60.0, Vector3(0.0, 1.6, 0.0), Vector3(-80.0, 0.0, -60.0)],
+	["pond", 15.0, 60.0, Vector3(0.0, 1.6, 0.0), Vector3(-31.0, 0.0, -45.0)],
+	["pond_above", 15.0, 60.0, Vector3(-5.0, 10.0, -20.0), Vector3(-31.0, 0.0, -45.0)],
+	["pond_shore", 15.0, 60.0, Vector3(-14.0, 1.6, -30.0), Vector3(-34.0, 0.0, -48.0)],
+	["start", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
+	["edge", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
 ]
 
 
@@ -60,6 +66,17 @@ func _run(world: GrassHills) -> void:
 		var to: Vector3 = v[4]
 		at.y += world.land.height_at(at.x, at.z)
 		to.y += world.land.height_at(to.x, to.z)
+		if v[0] == "start":
+			at = world.player.global_position + Vector3.UP * 1.2
+			to = at - world.player.global_basis.z * 40.0 + Vector3.DOWN * 6.0
+		elif v[0] == "edge":
+			var pond: Vector2 = world.land.lake_centre
+			var from := Vector2(world.player.global_position.x, world.player.global_position.z)
+			var q := from
+			while world.land.height_at(q.x, q.y) > world.land.lake_level + 0.4 and q.distance_to(pond) > 2.0:
+				q = q.move_toward(pond, 0.5)
+			at = Vector3(q.x, world.land.height_at(q.x, q.y) + 1.6, q.y)
+			to = Vector3(pond.x, world.land.lake_level - 1.5, pond.y)
 		cam.look_at_from_position(at, to, Vector3.UP)
 		await _shot("probe_hills_%s" % v[0])
 	get_tree().quit()

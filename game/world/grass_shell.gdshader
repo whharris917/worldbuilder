@@ -30,6 +30,7 @@ uniform float grass_height = 0.7;    // the tallest strand at full growth, metre
 uniform float strands = 18.0;        // strands a metre each way
 uniform float reach = 32.0;          // strands are gone by here from the camera
 uniform float ripple = 1.0;          // how pale the grass turns where a gust leans it
+uniform float water_level = -1.0e6;  // no strand stands where the ground is under this
 uniform float root_shade = 0.45;     // how far up the strands, 0 to 1 of the stack, their roots' shade reaches
 uniform vec3 sheen : source_color = vec3(0.62, 0.68, 0.48);   // leaning grass's pale side
 uniform float lattice_turn = 0.53;   // the lattice against the world's axes, radians
@@ -43,6 +44,7 @@ varying vec2 ground_xz;    // where the strand stands, before the wind moves the
 varying float layer;
 varying float growth;
 varying float gust;
+varying float ground_y;
 
 // A strand's own random numbers, 0 to 1, from its cell and a salt.
 float strand_hash(ivec2 c, uint salt) {
@@ -62,6 +64,7 @@ void vertex() {
 	float dist = length(w.xz - CAMERA_POSITION_WORLD.xz);
 	growth = g.g * inside * (1.0 - smoothstep(reach * 0.6, reach, dist));
 	ground_xz = w.xz;
+	ground_y = g.r;
 	float h = layer * grass_height * height_scale * growth;
 
 	vec2 wd = normalize(wind_dir);
@@ -120,7 +123,7 @@ vec3 strand(vec2 p) {
 }
 
 void fragment() {
-	if (growth < 0.04) {
+	if (growth < 0.04 || ground_y < water_level + 0.03) {
 		discard;
 	}
 	vec3 hit = strand(ground_xz);

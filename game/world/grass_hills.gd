@@ -136,6 +136,10 @@ func _process(delta: float) -> void:
 	land.terrain_mat.set_shader_parameter("wind", wind)
 	land.terrain_mat.set_shader_parameter("wind_dir", wd)
 	land.terrain_mat.set_shader_parameter("gust_travel", grass.travel)
+	if land.lake_mat != null:
+		land.lake_mat.set_shader_parameter("wind", wind)
+		land.lake_mat.set_shader_parameter("wind_dir", wd)
+		land.lake_mat.set_shader_parameter("gust_travel", grass.travel)
 	if _air == null:
 		return
 	# The hiss is the grass round the listener bending: the gusts at the
@@ -159,14 +163,19 @@ func _after_build() -> void:
 	settings.add_choice("Grass", ["Full", "Light", "Fluffy", "Shells", "None"],
 		GrassField.MODEL_NAMES.find(grass.model), _change_grass)
 	if not FileAccess.file_exists(save_path):
-		# On the first rise, facing into the wind, so the gusts come
-		# across the hills toward the viewer.
-		player.global_position = Vector3(0.0, land.surface_height(0.0, 0.0) + 0.4, 0.0)
-		var into := -WIND_DIR.normalized()
-		player.rotation.y = atan2(-into.x, -into.y)
+		# On the slope above the pond, looking down over it; with no
+		# pond, on the first rise facing into the wind.
+		var at := Vector2.ZERO
+		var look := -WIND_DIR.normalized()
+		if not land.lake_cells.is_empty():
+			at = _overlook(land.lake_centre)
+			look = (land.lake_centre - at).normalized()
+		player.global_position = Vector3(at.x, land.surface_height(at.x, at.y) + 0.4, at.y)
+		player.rotation.y = atan2(-look.x, -look.y)
 	hud.toast("Open hills of long grass. O options: the time of day, the grass. F5/F9 save/load")
-	print("[worldbuilder] hills: terrain %d ms, grass %d ms over %d chunks"
-		% [int(land.stats.get("ms_terrain", 0)), int(grass.stats.get("ms", 0)), int(grass.stats.get("chunks_with_grass", 0))])
+	print("[worldbuilder] hills: terrain %d ms, grass %d ms over %d chunks; pond %d m2, %.1f m deep at (%d, %d), level %.2f"
+		% [int(land.stats.get("ms_terrain", 0)), int(grass.stats.get("ms", 0)), int(grass.stats.get("chunks_with_grass", 0)),
+		int(land.stats.get("lake_m2", 0)), land.lake_depth, int(land.lake_centre.x), int(land.lake_centre.y), land.lake_level])
 	if DisplayServer.get_name() == "headless":
 		_report_in = 20
 
@@ -180,9 +189,37 @@ func _tune_grass() -> void:
 	for mat in grass.materials:
 		mat.set_shader_parameter("root_shade", 0.18)
 		mat.set_shader_parameter("root_dark", ROOT_DARK)
+		mat.set_shader_parameter("water_level", land.lake_level if not land.lake_cells.is_empty() else -1.0e6)
 		gusts.apply(mat)
 	land.terrain_mat.set_shader_parameter("root_dark", ROOT_DARK)
 	gusts.apply(land.terrain_mat)
+	if land.lake_mat != null:
+		gusts.apply(land.lake_mat)
+
+
+## A spot above the pond to look over it from: of the points round it
+## between 35 and 60 metres out, the one standing highest over the
+## water, most open toward it.
+func _overlook(pond: Vector2) -> Vector2:
+	var best := pond
+	var best_h := -INF
+	for a in 24:
+		var dir := Vector2(cos(TAU * a / 24.0), sin(TAU * a / 24.0))
+		var r := 35.0
+		while r <= 60.0:
+			var q := pond + dir * r
+			var h := land.height_at(q.x, q.y)
+			# Not cut off from the water by higher ground between.
+			var clear := true
+			for k in range(1, 6):
+				var m := pond + dir * r * k / 6.0
+				if land.height_at(m.x, m.y) > h - 0.5 * float(k) / 6.0 * (h - land.lake_level):
+					clear = false
+			if clear and h > best_h:
+				best_h = h
+				best = q
+			r += 5.0
+	return best
 
 
 func _change_grass(index: int) -> void:
