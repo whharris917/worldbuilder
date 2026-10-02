@@ -105,14 +105,15 @@ func _snag(at: Vector3, h: float, yaw: float) -> void:
 		_trunk_colors.append(SNAG_COLOR.darkened(0.1))
 
 
-func _conifer(at: Vector3, h: float, yaw: float, rng: RandomNumberGenerator) -> void:
+func _conifer(at: Vector3, h: float, yaw: float, rng: RandomNumberGenerator,
+		leaf: Color = CONIFER_COLOR) -> void:
 	# Proportions of a real spruce: a trunk a thirtieth of the height,
 	# a crown about a third as wide as it is tall.
 	var trunk_h := h * 0.25
 	var trunk_r := h * 0.035
 	_trunk_xforms.append(_xform(at + Vector3(0, trunk_h / 2.0, 0), yaw, Vector3(trunk_r, trunk_h, trunk_r)))
 	_trunk_colors.append(TRUNK_COLOR)
-	var tint := CONIFER_COLOR.lightened(rng.randf_range(-0.03, 0.05))
+	var tint := leaf.lightened(rng.randf_range(-0.03, 0.05))
 	_plants.append([at, h, yaw, 0, tint])
 	var base_r := h * rng.randf_range(0.12, 0.16)
 	# Three cones, each narrower and higher, overlapping into one crown.
@@ -133,9 +134,10 @@ func plant_species(at: Vector3, h: float, species: String, leaf: Color, rng: Ran
 	_plants.append([at, h, yaw if yaw >= 0.0 else rng.randf_range(0.0, TAU), species, leaf, stretch])
 
 
-## One spruce where it is wanted.
-func plant_conifer(at: Vector3, h: float, rng: RandomNumberGenerator) -> void:
-	_conifer(at, h, rng.randf_range(0.0, TAU), rng)
+## One spruce where it is wanted, in the wood's dark green or a colour
+## of its own.
+func plant_conifer(at: Vector3, h: float, rng: RandomNumberGenerator, leaf: Color = CONIFER_COLOR) -> void:
+	_conifer(at, h, rng.randf_range(0.0, TAU), rng, leaf)
 
 
 ## One broadleaf where it is wanted, in a leaf colour of its own: a

@@ -27,6 +27,12 @@ const CELL_NEAR := 60.0          # a cell is drawn with leaves within this of th
 var _n: FastNoiseLite
 var _edge: FastNoiseLite
 var brook_mat: ShaderMaterial
+## Drawn as a cartoon (set before build): its ground, wood, stones and
+## water in the cartoon shaders, the trees rounded crowns and cones with
+## ink outlines.
+var cartoon := false
+## The cartoon materials, whose wind the world keeps current.
+var toon_mats: Array[ShaderMaterial] = []
 var _stone_count := 0
 
 
@@ -175,6 +181,9 @@ func _build_sea() -> void:
 ## wood, then silhouettes on the hills. A fringe of shrubs and saplings
 ## where the meadow meets the trees, and one big oak alone in the meadow.
 func _build_forest() -> void:
+	if cartoon:
+		_build_cartoon_forest()
+		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed + 77
 	var edge := Forest.new()
@@ -288,10 +297,117 @@ func _build_forest() -> void:
 	stats["trees"] = planted + fringe + 1
 
 
+## The wood as a cartoon: the same mix of broadleaves and conifers, but
+## as rounded crowns on trunks and stacked cones, in bright greens,
+## flat-lit and outlined in ink; a few saplings at the meadow's edge
+## and the lone oak. The plain wood and silhouettes beyond as before,
+## brightened to match.
+func _build_cartoon_forest() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed + 77
+	var leaves: Array[Color] = [Color(0.30, 0.58, 0.16), Color(0.40, 0.66, 0.18), Color(0.24, 0.50, 0.20), Color(0.50, 0.70, 0.20)]
+	var needles: Array[Color] = [Color(0.10, 0.40, 0.26), Color(0.14, 0.46, 0.24)]
+	var wood := Forest.new()
+	wood.name = "Wood"
+	var ring := Forest.new()
+	ring.name = "Ring"
+	var planted := 0
+	var r_near := 300.0
+	# Fewer trees than the realistic wood: a cartoon wood reads by its
+	# crowns, and each is drawn twice, once as its outline.
+	var spacing := 6.0
+	var count := int(4.0 * r_near * r_near / (spacing * spacing))
+	for _i in count:
+		var x := rng.randf_range(-r_near, r_near)
+		var z := rng.randf_range(-r_near, r_near)
+		var d := Vector2(x, z).length()
+		var pick := rng.randf()
+		var hpick := rng.randf_range(0.7, 1.3)
+		if d > r_near or (d > DETAIL_R and rng.randf() < 0.6):
+			continue
+		var y := tree_ground(x, z)
+		if y == -INF:
+			continue
+		var into := wood if d <= DETAIL_R else ring
+		if pick < 0.35:
+			into.plant_conifer(Vector3(x, y, z), 16.0 * hpick, rng, needles[rng.randi() % needles.size()])
+		else:
+			into.plant_broadleaf(Vector3(x, y, z), 15.0 * hpick, leaves[rng.randi() % leaves.size()], rng)
+		planted += 1
+	for _i in 160:
+		var a := rng.randf_range(0.0, TAU)
+		var r := rng.randf_range(0.98, 1.08)
+		var x := MEADOW.x + cos(a) * MEADOW_RX * r
+		var z := MEADOW.y + sin(a) * MEADOW_RZ * r
+		if meadow_r(x, z) < 0.97 or brook_distance(x, z) < brook_half(z) + 2.0:
+			continue
+		wood.plant_broadleaf(Vector3(x, height_at(x, z), z), rng.randf_range(3.0, 6.0), leaves[rng.randi() % leaves.size()], rng)
+		planted += 1
+	var lone := Vector3(LONE_TREE.x, height_at(LONE_TREE.x, LONE_TREE.z), LONE_TREE.z)
+	wood.plant_broadleaf(lone, 17.0, Color(0.36, 0.62, 0.18), rng)
+	wood.finish(true, true)
+	add_child(wood)
+	ring.finish(false, true)
+	add_child(ring)
+	_toonify(wood, true, Vector3.ONE)
+	_toonify(ring, false, Vector3.ONE)
+	var r_far := 760.0
+	var far_sampler := func(x: float, z: float) -> float:
+		if Vector2(x, z).length() <= r_near:
+			return -INF
+		return tree_ground(x, z)
+	var far := Forest.new()
+	far.name = "FarWood"
+	planted += far.plant_scatter(Vector2(-r_far, -r_far), Vector2(r_far, r_far), 17.0, 22.0, 0.6, rng, far_sampler)
+	far.finish(false, true)
+	add_child(far)
+	# The wood's own dark greens, lifted to the cartoon's.
+	_toonify(far, false, Vector3(4.0, 3.2, 3.6))
+	stats["trees"] = planted + 1
+
+
+## Give a plain Forest's parts cartoon materials: crowns and cones sway,
+## trunks stand; with an outline, each part drawn again as its ink hull.
+func _toonify(forest: Forest, outline: bool, tint: Vector3) -> void:
+	var made: Dictionary = {}
+	for node in forest.get_children():
+		var mmi := node as MultiMeshInstance3D
+		if mmi == null or mmi.multimesh == null:
+			continue
+		var mesh := mmi.multimesh.mesh
+		var sway := 0.0
+		if mesh is SphereMesh:
+			sway = 0.5
+		elif mesh is CylinderMesh and (mesh as CylinderMesh).top_radius == 0.0:
+			sway = 0.35
+		if not made.has(sway):
+			made[sway] = _toon_material(ShaderMaterial.new(), sway, outline, tint, true)
+		mmi.material_override = made[sway]
+
+
+## Make mat a cartoon surface (toon_solid.gdshader) of the given sway
+## and tint, with its outline as the next pass if wanted.
+func _toon_material(mat: ShaderMaterial, sway: float, outline: bool, tint: Vector3, srgb: bool) -> ShaderMaterial:
+	mat.shader = load("res://world/toon_solid.gdshader")
+	mat.set_shader_parameter("sway", sway)
+	mat.set_shader_parameter("tint", tint)
+	mat.set_shader_parameter("srgb_colors", srgb)
+	toon_mats.append(mat)
+	if outline:
+		var hull := ShaderMaterial.new()
+		hull.shader = load("res://world/outline_hull.gdshader")
+		hull.set_shader_parameter("sway", sway)
+		mat.next_pass = hull
+		toon_mats.append(hull)
+	return mat
+
+
 ## The brook: a water ribbon down its line, wider than the water so its
 ## edges bury in the banks, and stones in its bed, the bigger ones
 ## breaking the surface.
 func _build_landmarks() -> void:
+	if cartoon:
+		_toon_material(rock_mat, 0.0, true, Vector3(0.62, 0.60, 0.56), false)
 	var samples: Array[Dictionary] = []
 	var z := -BROOK_REACH
 	while z <= BROOK_REACH + 0.01:
@@ -301,7 +417,7 @@ func _build_landmarks() -> void:
 		samples.append({"c": Vector3(brook_x(z), water_y(z), z), "n": across, "w": brook_half(z) + 0.9, "s": -z})
 		z += 1.5
 	brook_mat = ShaderMaterial.new()
-	brook_mat.shader = load("res://world/river.gdshader")
+	brook_mat.shader = load("res://world/toon_water.gdshader" if cartoon else "res://world/river.gdshader")
 	brook_mat.set_shader_parameter("flow", 0.7)
 	brook_mat.set_shader_parameter("foam_depth", 0.06)
 	brook_mat.set_shader_parameter("foam_amount", 0.15)

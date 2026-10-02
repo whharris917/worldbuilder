@@ -16,6 +16,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/middaugh.tscn"},
 	{"title": "FOREST MEADOW", "note": "A meadow in a summer wood with a brook running through it, from dawn mist to fireflies; a study in mood.",
 		"scene": "res://world/meadow.tscn"},
+	{"title": "FOREST MEADOW, AS A CARTOON", "note": "The same meadow drawn as a cartoon: flat light, bright colours, trees outlined in ink.",
+		"scene": "res://world/meadow_cartoon.tscn"},
 ]
 
 

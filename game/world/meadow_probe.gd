@@ -26,7 +26,9 @@ var _world: MeadowMap
 
 func _ready() -> void:
 	MouseMode.probe = true
-	var world: MeadowMap = (load("res://world/meadow.tscn") as PackedScene).instantiate()
+	# WORLDBUILDER_MEADOW_CARTOON=1 photographs the cartoon meadow.
+	var scene := "res://world/meadow_cartoon.tscn" if OS.get_environment("WORLDBUILDER_MEADOW_CARTOON") == "1" 		else "res://world/meadow.tscn"
+	var world: MeadowMap = (load(scene) as PackedScene).instantiate()
 	add_child(world)
 	_world = world
 	_run(world)

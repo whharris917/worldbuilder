@@ -43,8 +43,10 @@ var _placed_at := Vector2(1.0e9, 0.0)
 
 ## Bake the ground over a square of side `side` round `centre` from the
 ## landscape's height and the callables' grass and flowers, then make
-## the tiles and the slots.
-func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowers: Callable) -> void:
+## the tiles and the slots. A cartoon field draws in grass_toon.gdshader
+## in brighter greens.
+func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowers: Callable,
+		cartoon := false) -> void:
 	var t0 := Time.get_ticks_msec()
 	size = side
 	origin = centre - Vector2(side, side) * 0.5
@@ -66,7 +68,7 @@ func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowe
 				else:
 					_grass_in[key] = Vector2(h, h)
 	var tex := ImageTexture.create_from_image(img)
-	var shader := load("res://world/grass.gdshader") as Shader
+	var shader := load("res://world/grass_toon.gdshader" if cartoon else "res://world/grass.gdshader") as Shader
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261002
 	var tufts := 0
@@ -80,6 +82,10 @@ func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowe
 		mat.set_shader_parameter("full_density", float(BANDS[0][0]))
 		mat.set_shader_parameter("full_r", FULL_R)
 		mat.set_shader_parameter("grass_far", FAR)
+		if cartoon:
+			mat.set_shader_parameter("green", Color(0.27, 0.52, 0.16))
+			mat.set_shader_parameter("yellow_green", Color(0.44, 0.64, 0.20))
+			mat.set_shader_parameter("seed_tan", Color(0.80, 0.72, 0.40))
 		materials.append(mat)
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
