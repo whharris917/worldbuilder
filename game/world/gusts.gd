@@ -8,11 +8,12 @@ extends RefCounted
 const GUST_SPEED := 1.2
 const BAND_LENGTH := 30.0
 const BAND_WIDTH := 6.0
-const EDDY := 0.45
-const EDDY_SIZE := 70.0
+const EDDY := 0.9
+const EDDY_SIZE := 45.0
+const WARP := 12.0
 const GUST_CYCLE := 24.0
 ## How hard the slope pulls the gusts downhill: flow per unit of slope.
-const DOWNHILL := 3.0
+const DOWNHILL := 5.0
 const MASK := 0xFFFFFFFF
 
 var flow: Image                      # RG: the downhill pull, as the shaders' flow_map
@@ -24,7 +25,7 @@ var flow_size := 2048.0
 ## Bake the downhill pull over a square of side `size` round the
 ## origin, a texel every `texel` metres: the slope's fall, measured over
 ## a few texels so it follows the hills and not their ripples, times
-## DOWNHILL, never more than 0.8 of the wind.
+## DOWNHILL, never more than 1.2 times the wind.
 func bake_flow(land: Landscape, size: float, texel: float) -> void:
 	flow_size = size
 	flow_origin = Vector2(-size, -size) * 0.5
@@ -38,8 +39,8 @@ func bake_flow(land: Landscape, size: float, texel: float) -> void:
 			var gx := (land.height_at(x + d, z) - land.height_at(x - d, z)) / (2.0 * d)
 			var gz := (land.height_at(x, z + d) - land.height_at(x, z - d)) / (2.0 * d)
 			var down := -Vector2(gx, gz) * DOWNHILL
-			if down.length() > 0.8:
-				down = down.normalized() * 0.8
+			if down.length() > 1.2:
+				down = down.normalized() * 1.2
 			flow.set_pixel(i, j, Color(down.x, down.y, 0.0, 1.0))
 	flow_tex = ImageTexture.create_from_image(flow)
 
@@ -91,15 +92,18 @@ func _down(p: Vector2) -> Vector2:
 
 func _flow(p: Vector2, travel: float, wd: Vector2) -> Vector2:
 	var t := travel * GUST_SPEED
-	var e := Vector2(_noise(p / EDDY_SIZE + Vector2(t * 0.011, 3.0)),
-		_noise(p / EDDY_SIZE + Vector2(17.0, -t * 0.009))) - Vector2(0.5, 0.5)
-	var f := wd + _down(p) + e * 2.0 * EDDY
+	var e := Vector2(_noise(p / EDDY_SIZE + Vector2(t * 0.022, 3.0)),
+		_noise(p / EDDY_SIZE + Vector2(17.0, -t * 0.018))) - Vector2(0.5, 0.5)
+	var e2 := Vector2(_noise(p / (EDDY_SIZE * 0.4) + Vector2(-t * 0.05, 41.0)),
+		_noise(p / (EDDY_SIZE * 0.4) + Vector2(53.0, t * 0.043))) - Vector2(0.5, 0.5)
+	var f := wd + _down(p) + (e * 2.0 + e2) * EDDY
 	var mag := f.length()
-	return f / maxf(mag, 1e-4) * clampf(mag, 0.3, 1.8)
+	return f / maxf(mag, 1e-4) * clampf(mag, 0.15, 2.2)
 
 
 static func _pattern(q: Vector2, wd: Vector2) -> float:
 	var across := Vector2(-wd.y, wd.x)
+	q += (Vector2(_noise(q / 35.0 + Vector2(5.0, 5.0)), _noise(q / 35.0 + Vector2(29.0, 29.0))) - Vector2(0.5, 0.5)) * 2.0 * WARP
 	var u := q.dot(wd) / BAND_WIDTH
 	var v := q.dot(across) / BAND_LENGTH
 	return _noise(Vector2(u, v)) * 0.75 + _noise(Vector2(u * 2.3, v * 1.7) + Vector2(11.0, 11.0)) * 0.25

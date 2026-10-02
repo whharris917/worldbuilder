@@ -26,8 +26,9 @@ uniform sampler2D flow_map : filter_linear, repeat_disable;   // the downhill pu
 uniform vec2 flow_origin = vec2(-1024.0);
 uniform float flow_size = 2048.0;
 uniform float use_flow = 0.0;        // 1 where a world gives a flow map
-uniform float eddy = 0.45;           // how far the eddies turn the flow
-uniform float eddy_size = 70.0;      // their size, metres
+uniform float eddy = 0.9;            // how far the eddies turn the flow
+uniform float eddy_size = 45.0;      // their size, metres
+uniform float warp = 12.0;           // how far the bands' shapes are bent, metres
 
 const float GUST_CYCLE = 24.0;       // metres of run before a copy of the pattern starts again
 
@@ -54,17 +55,22 @@ vec2 gust_flow(vec2 p) {
 	vec2 wd = normalize(wind_dir);
 	vec2 down = use_flow > 0.5 ? textureLod(flow_map, (p - flow_origin) / flow_size, 0.0).rg : vec2(0.0);
 	float t = gust_travel * gust_speed;
-	vec2 e = vec2(gust_noise(p / eddy_size + vec2(t * 0.011, 3.0)),
-		gust_noise(p / eddy_size + vec2(17.0, -t * 0.009))) - 0.5;
-	vec2 f = wd + down + e * 2.0 * eddy;
+	// Eddies at two sizes, each wandering on its own.
+	vec2 e = vec2(gust_noise(p / eddy_size + vec2(t * 0.022, 3.0)),
+		gust_noise(p / eddy_size + vec2(17.0, -t * 0.018))) - 0.5;
+	vec2 e2 = vec2(gust_noise(p / (eddy_size * 0.4) + vec2(-t * 0.05, 41.0)),
+		gust_noise(p / (eddy_size * 0.4) + vec2(53.0, t * 0.043))) - 0.5;
+	vec2 f = wd + down + (e * 2.0 + e2) * eddy;
 	float len = length(f);
-	return f / max(len, 1e-4) * clamp(len, 0.3, 1.8);
+	return f / max(len, 1e-4) * clamp(len, 0.15, 2.2);
 }
 
 // The bands' pattern, fixed in the prevailing wind's frame.
 float gust_pattern(vec2 q) {
 	vec2 wd = normalize(wind_dir);
 	vec2 across = vec2(-wd.y, wd.x);
+	// The bands bent and broken, so they are never straight strips.
+	q += (vec2(gust_noise(q / 35.0 + 5.0), gust_noise(q / 35.0 + 29.0)) - 0.5) * 2.0 * warp;
 	float u = dot(q, wd) / band_width;
 	float v = dot(q, across) / band_length;
 	return gust_noise(vec2(u, v)) * 0.75 + gust_noise(vec2(u * 2.3, v * 1.7) + 11.0) * 0.25;
