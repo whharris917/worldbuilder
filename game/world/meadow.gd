@@ -41,6 +41,7 @@ const STYLES: Array = [
 ]
 const GRASS_NAMES: Array[String] = ["Full", "Light", "None"]
 const GRASS_KEY := "meadow_grass"
+const LOOK_KEY := "meadow_look"
 
 ## Where the player stood when the look was changed, for the meadow
 ## built in the new one: position, turn, the camera's tilt.
@@ -305,11 +306,32 @@ func _change_look(index: int) -> void:
 ## The grass in model `index` of GRASS_NAMES, kept for every look.
 func _change_grass(index: int) -> void:
 	grass.set_model(GrassField.MODEL_NAMES[index])
+	_store(GRASS_KEY, grass.model)
+
+
+## One value of the meadow's own into the shared settings file.
+func _store(key: String, value: Variant) -> void:
 	var saved := _read_settings()
-	saved[GRASS_KEY] = grass.model
+	saved[key] = value
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify(saved))
+
+
+## The scene of the look the meadow was last seen in, for the title
+## menu's one meadow entry.
+static func last_look_scene() -> String:
+	var look := ""
+	if FileAccess.file_exists(SETTINGS_PATH):
+		var file := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+		if file != null:
+			var parsed: Variant = JSON.parse_string(file.get_as_text())
+			if parsed is Dictionary:
+				look = str((parsed as Dictionary).get(LOOK_KEY, ""))
+	for entry: Array in STYLES:
+		if entry[0] == look:
+			return str(entry[2])
+	return str(STYLES[0][2])
 
 
 ## Arriving from another look, the player stands where they stood in it;
@@ -380,6 +402,8 @@ func _after_build() -> void:
 		if STYLES[k][0] == style:
 			current = k
 	settings.add_choice("Look", looks, current, _change_look)
+	if not MouseMode.probe:
+		_store(LOOK_KEY, style)
 	settings.add_choice("Grass", GRASS_NAMES, GrassField.MODEL_NAMES.find(grass.model), _change_grass)
 	if not FileAccess.file_exists(save_path):
 		# On the meadow east of the brook, looking west across it toward

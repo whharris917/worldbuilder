@@ -1,7 +1,8 @@
 class_name MainMenu
 extends Control
 ## The title screen: pick a world. Worlds are scenes the editor can Play
-## directly, so nothing here is required.
+## directly, so nothing here is required. An entry with "last_look"
+## opens the meadow in the look it was last seen in.
 
 const WORLDS: Array[Dictionary] = [
 	{"title": "HARBOR TOWN", "note": "A 1940s Maine harbour town on the coast, in whatever weather you choose.",
@@ -14,14 +15,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/twain_data.tscn"},
 	{"title": "MIDDAUGH HOUSE", "note": "The Middaugh house of 1888 in Clarendon Hills, Illinois, built by the general builder from its survey drawings while the work is under way; its outside only so far.",
 		"scene": "res://world/middaugh.tscn"},
-	{"title": "FOREST MEADOW", "note": "A meadow in a summer wood with a brook running through it, from dawn mist to fireflies; a study in mood.",
-		"scene": "res://world/meadow.tscn"},
-	{"title": "FOREST MEADOW, AS A CARTOON", "note": "The same meadow drawn as a cartoon: flat light, bright colours, trees outlined in ink.",
-		"scene": "res://world/meadow_cartoon.tscn"},
-	{"title": "FOREST MEADOW, PAINTED", "note": "The same meadow painted in the manner of a Japanese animated film: towering clouds, soft light, deep greens.",
-		"scene": "res://world/meadow_anime.tscn"},
-	{"title": "FOREST MEADOW, AS A MODEL", "note": "The same meadow as a low-poly model on a board: pastel, faceted, its edges cut to show the soil.",
-		"scene": "res://world/meadow_diorama.tscn"},
+	{"title": "FOREST MEADOW", "note": "A meadow in a summer wood with a brook running through it, from dawn mist to fireflies; a study in mood. Seen as it is, as a cartoon, painted, or as a model on a board: choose in the options (O).",
+		"scene": "res://world/meadow.tscn", "last_look": true},
 ]
 
 
@@ -103,5 +98,8 @@ func _world_button(world: Dictionary) -> Button:
 	button.add_theme_stylebox_override("focus", hover)
 	button.add_theme_stylebox_override("pressed", hover)
 	button.pressed.connect(func() -> void:
-		get_tree().change_scene_to_file(str(world["scene"])))
+		var scene := str(world["scene"])
+		if world.get("last_look", false):
+			scene = MeadowMap.last_look_scene()
+		get_tree().change_scene_to_file(scene))
 	return button
