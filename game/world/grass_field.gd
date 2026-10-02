@@ -43,10 +43,12 @@ var _placed_at := Vector2(1.0e9, 0.0)
 
 ## Bake the ground over a square of side `side` round `centre` from the
 ## landscape's height and the callables' grass and flowers, then make
-## the tiles and the slots. A cartoon field draws in grass_toon.gdshader
-## in brighter greens.
+## the tiles and the slots. `style` picks the look: "real", or the
+## drawn styles: "cartoon" and "anime" in grass_toon.gdshader in their
+## own greens, "diorama" in grass_lowpoly.gdshader, short blades of one
+## flat triangle each.
 func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowers: Callable,
-		cartoon := false) -> void:
+		style := "real") -> void:
 	var t0 := Time.get_ticks_msec()
 	size = side
 	origin = centre - Vector2(side, side) * 0.5
@@ -57,7 +59,7 @@ func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowe
 		for i in n:
 			var x := origin.x + (i + 0.5) * TEXEL
 			var g: float = grass.call(x, z)
-			var h := land.height_at(x, z)
+			var h := land.surface_height(x, z)
 			var f: float = flowers.call(x, z) if g > 0.0 else 0.0
 			img.set_pixel(i, j, Color(h, g, f, 1.0))
 			if g > 0.02:
@@ -68,7 +70,12 @@ func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowe
 				else:
 					_grass_in[key] = Vector2(h, h)
 	var tex := ImageTexture.create_from_image(img)
-	var shader := load("res://world/grass_toon.gdshader" if cartoon else "res://world/grass.gdshader") as Shader
+	var shader_path := "res://world/grass.gdshader"
+	if style == "cartoon" or style == "anime":
+		shader_path = "res://world/grass_toon.gdshader"
+	elif style == "diorama":
+		shader_path = "res://world/grass_lowpoly.gdshader"
+	var shader := load(shader_path) as Shader
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261002
 	var tufts := 0
@@ -82,14 +89,30 @@ func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowe
 		mat.set_shader_parameter("full_density", float(BANDS[0][0]))
 		mat.set_shader_parameter("full_r", FULL_R)
 		mat.set_shader_parameter("grass_far", FAR)
-		if cartoon:
-			mat.set_shader_parameter("green", Color(0.27, 0.52, 0.16))
-			mat.set_shader_parameter("yellow_green", Color(0.44, 0.64, 0.20))
-			mat.set_shader_parameter("seed_tan", Color(0.80, 0.72, 0.40))
+		match style:
+			"cartoon":
+				mat.set_shader_parameter("green", Color(0.27, 0.52, 0.16))
+				mat.set_shader_parameter("yellow_green", Color(0.44, 0.64, 0.20))
+				mat.set_shader_parameter("seed_tan", Color(0.80, 0.72, 0.40))
+			"anime":
+				mat.set_shader_parameter("green", Color(0.16, 0.46, 0.20))
+				mat.set_shader_parameter("yellow_green", Color(0.46, 0.72, 0.22))
+				mat.set_shader_parameter("seed_tan", Color(0.84, 0.80, 0.44))
+				mat.set_shader_parameter("toon_step", 0.3)
+				mat.set_shader_parameter("height_scale", 1.15)
+			"diorama":
+				mat.set_shader_parameter("green", Color(0.46, 0.68, 0.32))
+				mat.set_shader_parameter("yellow_green", Color(0.62, 0.80, 0.38))
+				mat.set_shader_parameter("seed_tan", Color(0.86, 0.80, 0.56))
+				mat.set_shader_parameter("height_scale", 0.4)
 		materials.append(mat)
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = _tuft(int(band[1]), int(band[2]), band == BANDS[0] or band == BANDS[1], rng)
+		# A model's grass: single wide triangles standing nearly upright.
+		var model := style == "diorama"
+		var segs := 1 if model else int(band[2])
+		mm.mesh = _tuft(int(band[1]), segs, band == BANDS[0] or band == BANDS[1], rng,
+			3.0 if model else 1.0, 0.25 if model else 1.0)
 		var count := int(float(band[0]) * CHUNK * CHUNK)
 		mm.instance_count = count
 		for k in count:
@@ -171,13 +194,15 @@ func follow(camera_pos: Vector3, player_pos: Vector3, wind: float, wind_dir: Vec
 
 
 ## A tuft of `blades` blades, each `segs` segments long, standing a
-## metre tall at full size (the shader sizes it); one blade of the near
-## tufts is a flower's stem with a head. COLOR: red the blade's own
+## metre tall at full size (the shader sizes it), `widen` times the
+## usual width and leaning `lean_by` times the usual lean; one blade of
+## the near tufts is a flower's stem with a head. COLOR: red the blade's own
 ## random, green a flower's stem, blue its head; UV.y runs root to tip.
-func _tuft(blades: int, segs: int, with_flower: bool, rng: RandomNumberGenerator) -> ArrayMesh:
+func _tuft(blades: int, segs: int, with_flower: bool, rng: RandomNumberGenerator,
+		widen := 1.0, lean_by := 1.0) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var width := 0.014 * sqrt(10.0 / blades)
+	var width := 0.014 * sqrt(10.0 / blades) * widen
 	for b in blades:
 		var flower_stem := with_flower and b == 0
 		var a := rng.randf_range(0.0, TAU)
@@ -187,7 +212,7 @@ func _tuft(blades: int, segs: int, with_flower: bool, rng: RandomNumberGenerator
 		var side := Vector3(cos(face), 0.0, sin(face))
 		var normal := Vector3(-side.z, 0.0, side.x)
 		var lean_dir := Vector3(cos(a), 0.0, sin(a)) if r > 0.01 else side
-		var lean := rng.randf_range(0.12, 0.5)
+		var lean := rng.randf_range(0.12, 0.5) * lean_by
 		var h := rng.randf_range(0.4, 1.0)
 		var w := width * rng.randf_range(0.7, 1.3)
 		var own := rng.randf()

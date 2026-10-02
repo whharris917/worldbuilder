@@ -17,14 +17,19 @@ class_name MeadowMap
 ## evening, gusting as it goes; the grass, the trees and the leaves'
 ## sound all follow the one value. Its own save.
 ##
-## The same meadow can be drawn as a cartoon (`cartoon`, set by
-## meadow_cartoon.tscn): flat light in two tones, bright colours,
-## rounded trees outlined in ink, cartoon water. It keeps its own save
-## and shares the meadow's clock.
+## The same meadow can be drawn in a style (`style`, set by its scene):
+##   "cartoon" (meadow_cartoon.tscn): flat light in two tones, bright
+##     colours, rounded trees outlined in ink, cartoon water;
+##   "anime" (meadow_anime.tscn): a painted sky of towering clouds, soft
+##     light warm in the sun and cool in the shade, painted crowns;
+##   "diorama" (meadow_diorama.tscn): a low-poly model on a square board
+##     with its edges cut, pastel and faceted, the distance blurred as a
+##     close photograph of a model is.
+## Each keeps its own save and moonlight and shares the meadow's clock.
 
 const WIND_DIR := Vector2(0.8, 0.6)      # toward the south-east, down the valley
 
-@export var cartoon := false
+@export var style := "real"
 
 var land: MeadowLand
 var grass: GrassField
@@ -58,29 +63,70 @@ func _build_environment() -> void:
 	sky_env.fog_sun_scatter = 0.25
 	sky_env.fog_aerial_perspective = 0.4
 	(sky_mat as ShaderMaterial).set_shader_parameter("haze", 0.55)
-	if cartoon:
-		# Softer contrast between lit and shade, as a painted picture has.
-		sun.light_energy = 1.3
-		_sun_base_energy = 1.3
-		sky_env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-		sky_env.tonemap_white = 6.0
-		sky_env.adjustment_enabled = true
-		sky_env.adjustment_saturation = 1.15
+	match style:
+		"cartoon":
+			# Softer contrast between lit and shade, as a painted picture has.
+			sun.light_energy = 1.3
+			_sun_base_energy = 1.3
+			sky_env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+			sky_env.tonemap_white = 6.0
+			sky_env.adjustment_enabled = true
+			sky_env.adjustment_saturation = 1.15
+		"anime":
+			# The painted sky, and a clear summer air with blue distance.
+			var painted := ShaderMaterial.new()
+			painted.shader = load("res://world/sky_anime.gdshader")
+			sky_env.sky.sky_material = painted
+			sky_mat = painted
+			sun.light_energy = 1.5
+			_sun_base_energy = 1.5
+			sky_env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+			sky_env.tonemap_white = 6.0
+			sky_env.adjustment_enabled = true
+			sky_env.adjustment_saturation = 1.2
+			sky_env.fog_aerial_perspective = 0.7
+			sky_env.glow_intensity = 0.3
+		"diorama":
+			# A model on a table: bright even light, clean air, a pale
+			# backdrop under the horizon, the far side out of focus.
+			(sky_mat as ShaderMaterial).set_shader_parameter("ground_color", Color(0.80, 0.77, 0.72))
+			(sky_mat as ShaderMaterial).set_shader_parameter("haze", 0.25)
+			sun.light_energy = 1.6
+			_sun_base_energy = 1.6
+			sky_env.fog_density = 0.0004
+			sky_env.adjustment_enabled = true
+			sky_env.adjustment_saturation = 1.05
+			var lens := CameraAttributesPractical.new()
+			lens.dof_blur_far_enabled = true
+			lens.dof_blur_far_distance = 55.0
+			lens.dof_blur_far_transition = 80.0
+			lens.dof_blur_near_enabled = true
+			lens.dof_blur_near_distance = 1.2
+			lens.dof_blur_near_transition = 1.0
+			lens.dof_blur_amount = 0.1
+			for node in find_children("*", "WorldEnvironment", true, false):
+				(node as WorldEnvironment).camera_attributes = lens
 
 
 func _build_ground() -> void:
 	land = MeadowLand.new()
-	if cartoon:
-		save_path = "user://save_meadow_cartoon.json"
-		moonlight_key = "meadow_cartoon_moonlight"
-		land.cartoon = true
-		land.ground_shader = "res://world/meadow_ground_toon.gdshader"
+	if style != "real":
+		save_path = "user://save_meadow_%s.json" % style
+		moonlight_key = "meadow_%s_moonlight" % style
+		land.set_style(style)
 	add_child(land)
 	land.build()
+	if style == "anime":
+		# The anime's ground: the cartoon's flat fields, softer lit, in
+		# deeper greens.
+		land.terrain_mat.set_shader_parameter("toon_step", 0.3)
+		land.terrain_mat.set_shader_parameter("meadow", Color(0.26, 0.56, 0.20))
+		land.terrain_mat.set_shader_parameter("meadow_light", Color(0.40, 0.66, 0.24))
+		land.terrain_mat.set_shader_parameter("wood_floor", Color(0.16, 0.36, 0.20))
 	grass = GrassField.new()
 	grass.name = "Grass"
 	add_child(grass)
-	grass.build(land, Vector2(0.0, 0.0), 256.0, land.grass_at, _flowers_at, cartoon)
+	grass.build(land, Vector2(0.0, 0.0), 256.0, land.grass_at, _flowers_at, style)
 	_build_air()
 	sound = MeadowSound.new()
 	sound.name = "Sound"
@@ -166,10 +212,17 @@ func _on_time_of_day(horizon: float, twilight: float) -> void:
 	var dawn := smoothstep(3.0, 5.5, h) * (1.0 - smoothstep(6.5, 9.0, h))
 	var night_mist := smoothstep(19.0, 23.5, h) * 0.6 + (1.0 - smoothstep(0.0, 3.0, h)) * 0.6 * float(h < 3.0)
 	var mist := maxf(dawn, night_mist)
-	if cartoon:
-		# The shade lit more by the sky by day, so it reads as a colour,
-		# not dark; the night keeps its own darkness.
-		sky_env.ambient_light_energy *= lerpf(1.0, 1.6, twilight)
+	match style:
+		"cartoon":
+			# The shade lit more by the sky by day, so it reads as a colour,
+			# not dark; the night keeps its own darkness.
+			sky_env.ambient_light_energy *= lerpf(1.0, 1.6, twilight)
+		"anime":
+			# Shade painted cool blue by day, against the warm sun.
+			sky_env.ambient_light_color = sky_env.ambient_light_color.lerp(Color(0.48, 0.60, 0.95), 0.6 * twilight)
+			sky_env.ambient_light_energy *= lerpf(1.0, 1.5, twilight)
+		"diorama":
+			sky_env.ambient_light_energy *= lerpf(1.0, 1.3, twilight)
 	_mist_mat.set_shader_parameter("density", 0.12 * mist)
 	_mist_mat.set_shader_parameter("scale_h", 0.9 + 0.6 * dawn)
 	# Lit by the sky: pale by day, the dawn's colour softened, dim at night.
@@ -222,7 +275,7 @@ func _process(delta: float) -> void:
 		mat.set_shader_parameter("wind", wind)
 		mat.set_shader_parameter("wind_dir", WIND_DIR)
 	_mist_mat.set_shader_parameter("wind_dir", WIND_DIR)
-	for mat in land.toon_mats:
+	for mat in land.style_mats:
 		mat.set_shader_parameter("wind", wind)
 		mat.set_shader_parameter("wind_dir", WIND_DIR.normalized())
 	for mat in TreeKit.materials():
@@ -241,12 +294,17 @@ func _after_build() -> void:
 	if not FileAccess.file_exists(save_path):
 		# On the meadow east of the brook, looking west across it toward
 		# the lone oak and the afternoon sun.
-		player.global_position = Vector3(26.0, land.height_at(26.0, 12.0) + 0.4, 12.0)
+		player.global_position = Vector3(26.0, land.surface_height(26.0, 12.0) + 0.4, 12.0)
 		player.rotation.y = PI / 2.0 - 0.25
-	if cartoon:
-		hud.toast("The meadow in the woods, drawn as a cartoon. O options: the time of day. F5/F9 save/load")
-	else:
-		hud.toast("A meadow in the woods, early summer. O options: the time of day. F5/F9 save/load")
+	match style:
+		"cartoon":
+			hud.toast("The meadow in the woods, drawn as a cartoon. O options: the time of day. F5/F9 save/load")
+		"anime":
+			hud.toast("The meadow in the woods, painted. O options: the time of day. F5/F9 save/load")
+		"diorama":
+			hud.toast("The meadow in the woods, as a model on a board. O options: the time of day. F5/F9 save/load")
+		_:
+			hud.toast("A meadow in the woods, early summer. O options: the time of day. F5/F9 save/load")
 	print("[worldbuilder] meadow: %d trees, %d stones, %d m of brook; terrain %d ms, woods %d ms, grass %d ms over %d chunks"
 		% [int(land.stats.get("trees", 0)), int(land.stats.get("stones", 0)), int(land.stats.get("brook_m", 0)),
 		int(land.stats.get("ms_terrain", 0)), int(land.stats.get("ms_forest", 0)), int(grass.stats.get("ms", 0)),

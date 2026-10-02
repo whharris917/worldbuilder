@@ -18,6 +18,10 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/meadow.tscn"},
 	{"title": "FOREST MEADOW, AS A CARTOON", "note": "The same meadow drawn as a cartoon: flat light, bright colours, trees outlined in ink.",
 		"scene": "res://world/meadow_cartoon.tscn"},
+	{"title": "FOREST MEADOW, PAINTED", "note": "The same meadow painted in the manner of a Japanese animated film: towering clouds, soft light, deep greens.",
+		"scene": "res://world/meadow_anime.tscn"},
+	{"title": "FOREST MEADOW, AS A MODEL", "note": "The same meadow as a low-poly model on a board: pastel, faceted, its edges cut to show the soil.",
+		"scene": "res://world/meadow_diorama.tscn"},
 ]
 
 

@@ -48,6 +48,13 @@ func height_at(_x: float, _z: float) -> float:
 	return 0.0
 
 
+## The height of the drawn ground at (x, z): what stands on the terrain
+## stands at this. A site whose mesh is coarse answers from its
+## triangles; by default the height itself.
+func surface_height(x: float, z: float) -> float:
+	return height_at(x, z)
+
+
 ## Signed distance to the shore, positive on land. By default read off
 ## the height; a site with a designed coast answers exactly.
 func coast_distance(x: float, z: float) -> float:

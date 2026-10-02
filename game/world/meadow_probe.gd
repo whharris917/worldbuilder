@@ -26,8 +26,10 @@ var _world: MeadowMap
 
 func _ready() -> void:
 	MouseMode.probe = true
-	# WORLDBUILDER_MEADOW_CARTOON=1 photographs the cartoon meadow.
-	var scene := "res://world/meadow_cartoon.tscn" if OS.get_environment("WORLDBUILDER_MEADOW_CARTOON") == "1" 		else "res://world/meadow.tscn"
+	# WORLDBUILDER_MEADOW_STYLE=cartoon|anime|diorama photographs that
+	# meadow.
+	var style := OS.get_environment("WORLDBUILDER_MEADOW_STYLE")
+	var scene := "res://world/meadow_%s.tscn" % style if style != "" else "res://world/meadow.tscn"
 	var world: MeadowMap = (load(scene) as PackedScene).instantiate()
 	add_child(world)
 	_world = world

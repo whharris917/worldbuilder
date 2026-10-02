@@ -1,5 +1,6 @@
-// The meadow grass's body, shared by grass.gdshader and its cartoon
-// twin grass_toon.gdshader (which defines TOON). See grass.gdshader.
+// The meadow grass's body, shared by grass.gdshader and its styled
+// twins: grass_toon.gdshader (TOON) and grass_lowpoly.gdshader
+// (LOWPOLY). See grass.gdshader.
 #include "res://world/granite.gdshaderinc"
 
 uniform sampler2D ground : filter_linear, repeat_disable;
@@ -12,6 +13,7 @@ uniform float grass_far = 58.0;     // where the last tuft is gone
 uniform vec3 player_pos = vec3(0.0, -1000.0, 0.0);
 uniform vec2 wind_dir = vec2(0.8, 0.6);
 uniform float wind = 0.3;           // 0 still to 1 a gale: the gusts' strength now
+uniform float height_scale = 1.0;   // the whole field taller or shorter
 
 uniform vec3 green : source_color = vec3(0.22, 0.32, 0.11);
 uniform vec3 yellow_green : source_color = vec3(0.40, 0.44, 0.18);
@@ -69,10 +71,10 @@ void vertex() {
 	float shown = mix(1.0, blooms, is_flower);
 	flower = is_head;
 
-	float height = g.g * (0.45 + 0.8 * r2) * alive * inside * shown;
+	float height = g.g * (0.45 + 0.8 * r2) * alive * inside * shown * height_scale;
 	vec3 v = VERTEX;
 	v.y *= height;
-	v.xz *= mix(0.5, 1.0, clamp(height * 2.0, 0.0, 1.0)) * spread;
+	v.xz *= mix(0.5, 1.0, clamp(height * 2.0 / height_scale, 0.0, 1.0)) * spread;
 	// Turn the tuft by its own hash.
 	float turn = r1 * 6.2832 + r2 * 3.0;
 	v.xz = rot(v.xz, turn);
@@ -116,6 +118,17 @@ void vertex() {
 }
 
 void fragment() {
+#ifdef LOWPOLY
+	// Each blade a flat painted triangle, lit flat.
+	vec3 fn = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
+	if (dot(fn, -VERTEX) < 0.0) {
+		fn = -fn;
+	}
+	NORMAL = fn;
+	ALBEDO = blade_col;
+	ROUGHNESS = 0.9;
+	SPECULAR = 0.1;
+#else
 #ifdef TOON
 	// Two tones up the blade, a darker foot and the colour itself.
 	float shade = mix(0.6, 1.0, smoothstep(0.25, 0.35, tip));
@@ -133,5 +146,6 @@ void fragment() {
 	BACKLIGHT = col * 0.7;
 	AO = mix(0.4, 1.0, tip);
 	AO_LIGHT_AFFECT = 0.3;
+#endif
 #endif
 }
