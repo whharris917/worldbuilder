@@ -4,6 +4,9 @@ extends Control
 ## directly, so nothing here is required. An entry with "last_look"
 ## opens the meadow in the look it was last seen in.
 
+## Every button's width, in pixels.
+const BUTTON_W := 760
+
 const WORLDS: Array[Dictionary] = [
 	{"title": "HARBOR TOWN", "note": "A 1940s Maine harbour town on the coast, in whatever weather you choose.",
 		"scene": "res://world/town.tscn"},
@@ -32,7 +35,7 @@ func _ready() -> void:
 	column.set_anchors_and_offsets_preset(PRESET_CENTER)
 	column.grow_horizontal = GROW_DIRECTION_BOTH
 	column.grow_vertical = GROW_DIRECTION_BOTH
-	column.add_theme_constant_override("separation", 10)
+	column.add_theme_constant_override("separation", 7)
 	add_child(column)
 
 	var title := Label.new()
@@ -59,7 +62,7 @@ func _ready() -> void:
 			first = button
 	var quit := Button.new()
 	quit.text = "QUIT"
-	quit.custom_minimum_size = Vector2(420, 34)
+	quit.custom_minimum_size = Vector2(BUTTON_W, 34)
 	quit.add_theme_font_size_override("font_size", 14)
 	quit.pressed.connect(func() -> void: get_tree().quit())
 	column.add_child(quit)
@@ -82,7 +85,9 @@ func _world_button(world: Dictionary) -> Button:
 	var button := Button.new()
 	button.text = "%s\n%s" % [world["title"], world["note"]]
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	button.custom_minimum_size = Vector2(420, 54)
+	# A long note wraps within the button's width.
+	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	button.custom_minimum_size = Vector2(BUTTON_W, 54)
 	button.add_theme_font_size_override("font_size", 14)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.10, 0.11, 0.13)

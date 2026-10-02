@@ -13,6 +13,7 @@ uniform float grass_far = 58.0;     // where the last tuft is gone
 uniform vec3 player_pos = vec3(0.0, -1000.0, 0.0);
 uniform vec2 wind_dir = vec2(0.8, 0.6);
 uniform float wind = 0.3;           // 0 still to 1 a gale: the gusts' strength now
+uniform float gust_travel = 0.0;    // how far the gusts have run: the sum over time of 1 + 1.5 * wind (GrassField)
 uniform float height_scale = 1.0;   // the whole field taller or shorter
 
 uniform vec3 green : source_color = vec3(0.22, 0.32, 0.11);
@@ -83,11 +84,12 @@ void vertex() {
 	float bh = max(v.y, 0.0);
 	float t2 = UV.y * UV.y;
 
-	// Wind: gusts travelling downwind across the meadow, and a flutter.
+	// Wind: gusts travelling downwind across the meadow, 2.5 m/s in a
+	// calm and faster with the wind, never back; and a flutter.
 	vec2 wd = normalize(wind_dir);
-	float speed = 2.5 + 4.0 * wind;
-	float wave = value_noise(root.xz * 0.05 - wd * TIME * speed * 0.05) * 0.65
-		+ value_noise(root.xz * 0.17 - wd * TIME * speed * 0.17) * 0.35;
+	float run = gust_travel * 2.5;
+	float wave = value_noise(root.xz * 0.05 - wd * run * 0.05) * 0.65
+		+ value_noise(root.xz * 0.17 - wd * run * 0.17) * 0.35;
 	float bend = wind * (0.25 + 1.1 * wave * wave);
 	float flutter = sin(TIME * (5.0 + 3.0 * COLOR.r) + root.x * 1.3 + root.z * 0.9 + COLOR.r * 6.28)
 		* (0.04 + 0.08 * wind);

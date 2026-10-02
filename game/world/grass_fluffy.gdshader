@@ -21,6 +21,7 @@ uniform float grass_far = 64.0;
 uniform vec3 player_pos = vec3(0.0, -1000.0, 0.0);
 uniform vec2 wind_dir = vec2(0.8, 0.6);
 uniform float wind = 0.3;
+uniform float gust_travel = 0.0;    // how far the gusts have run: the sum over time of 1 + 1.5 * wind (GrassField)
 uniform float height_scale = 1.0;
 uniform float blades_across = 20.0;  // blades cut into each card
 uniform float ripple = 0.6;          // how much the passing gusts brighten the grass
@@ -40,10 +41,11 @@ vec2 rot(vec2 v, float a) {
 	return vec2(c * v.x - s * v.y, s * v.x + c * v.y);
 }
 
-// The gust pattern over the meadow at a point: 0 calm to 1 the crest.
-float gust_at(vec2 p, vec2 wd, float speed) {
-	return value_noise(p * 0.05 - wd * TIME * speed * 0.05) * 0.65
-		+ value_noise(p * 0.17 - wd * TIME * speed * 0.17) * 0.35;
+// The gust pattern over the meadow at a point: 0 calm to 1 the crest,
+// run downwind `run` metres.
+float gust_at(vec2 p, vec2 wd, float run) {
+	return value_noise(p * 0.05 - wd * run * 0.05) * 0.65
+		+ value_noise(p * 0.17 - wd * run * 0.17) * 0.35;
 }
 
 void vertex() {
@@ -71,8 +73,7 @@ void vertex() {
 	v.xz = rot(v.xz, r1 * 6.2832 + r2 * 3.0);
 
 	vec2 wd = normalize(wind_dir);
-	float speed = 2.5 + 4.0 * wind;
-	float wave = gust_at(root.xz, wd, speed);
+	float wave = gust_at(root.xz, wd, gust_travel * 2.5);
 	gust = smoothstep(0.3, 0.8, wave) * (0.3 + 0.7 * wind);
 	// A slight lean with the gust and a slow nod: the light does the rest.
 	float nod = sin(TIME * (1.6 + r2) + root.x * 0.7 + root.z * 0.5) * 0.03;

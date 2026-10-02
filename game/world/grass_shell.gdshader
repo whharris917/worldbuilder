@@ -26,6 +26,7 @@ uniform float ground_size = 256.0;
 uniform vec3 player_pos = vec3(0.0, -1000.0, 0.0);
 uniform vec2 wind_dir = vec2(0.8, 0.6);
 uniform float wind = 0.3;
+uniform float gust_travel = 0.0;    // how far the gusts have run: the sum over time of 1 + 1.5 * wind (GrassField)
 uniform float height_scale = 1.0;
 uniform float grass_height = 0.7;    // the tallest strand at full growth, metres
 uniform float strands = 18.0;        // strands a metre each way
@@ -71,9 +72,8 @@ void vertex() {
 	// The gusts: a pattern in the wind's own frame, long across it and
 	// narrow along it, carried downwind; a slow drift across the wind
 	// keeps the bands from repeating. Even a light breeze shows them.
-	float speed = gust_speed * (1.0 + 1.5 * wind);
 	vec2 across = vec2(-wd.y, wd.x);
-	float u = (dot(w.xz, wd) - TIME * speed) / band_width;
+	float u = (dot(w.xz, wd) - gust_travel * gust_speed) / band_width;
 	float v = (dot(w.xz, across) + TIME * 0.3) / band_length;
 	float bands = value_noise(vec2(u, v)) * 0.75 + value_noise(vec2(u * 2.3, v * 1.7) + 11.0) * 0.25;
 	float strength = 0.45 + 0.55 * wind;

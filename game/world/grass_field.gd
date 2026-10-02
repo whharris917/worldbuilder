@@ -58,6 +58,10 @@ var _bands: Array = []
 var _full_r := 7.0
 var _far := 64.0
 var _shell: MeshInstance3D
+## How far the gusts have run: the sum over time of 1 + 1.5 * wind, so a
+## gust slows when the wind drops and never runs back. Each grass
+## shader scales it by its own speed in a calm.
+var _travel := 0.0
 
 var _meshes: Array[MultiMesh] = []
 var _slots: Array[MultiMeshInstance3D] = []
@@ -279,7 +283,9 @@ func _gap(o: Vector2i) -> float:
 ## with the band its nearest point wants; and keep the shaders' wind and
 ## the player's position current.
 func follow(camera_pos: Vector3, player_pos: Vector3, wind: float, wind_dir: Vector2) -> void:
+	_travel += (1.0 + 1.5 * wind) * get_process_delta_time()
 	for mat in materials:
+		mat.set_shader_parameter("gust_travel", _travel)
 		mat.set_shader_parameter("player_pos", player_pos)
 		mat.set_shader_parameter("wind", wind)
 		mat.set_shader_parameter("wind_dir", wind_dir)

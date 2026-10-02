@@ -52,6 +52,7 @@ The director is the creative director: does not code, reviews builds by walking 
 - A Packed*Array taken out of an Array or Dictionary is a copy; `dict[k].append(x)` changes nothing. Write it back or hold a plain Array.
 - `%g` is not a format specifier; use `%f`.
 - A colour literal in a shader is linear; a `source_color` uniform is converted. Literals go through `lin()` in `granite.gdshaderinc`.
+- A pattern that moves at a speed that varies is moved by a distance summed on the CPU and passed in, never `TIME * speed`: when the speed drops the product falls and the pattern runs backwards.
 - Clamp the base of every `pow()` in a shader: a negative base gives NaN, which the glow turns into flickering blobs.
 - `SurfaceTool.append_from` of a non-indexed source after an indexed one draws nothing of it.
 
