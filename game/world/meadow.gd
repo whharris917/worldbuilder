@@ -72,6 +72,7 @@ func _build_ground() -> void:
 	land = MeadowLand.new()
 	if cartoon:
 		save_path = "user://save_meadow_cartoon.json"
+		moonlight_key = "meadow_cartoon_moonlight"
 		land.cartoon = true
 		land.ground_shader = "res://world/meadow_ground_toon.gdshader"
 	add_child(land)
@@ -166,8 +167,9 @@ func _on_time_of_day(horizon: float, twilight: float) -> void:
 	var night_mist := smoothstep(19.0, 23.5, h) * 0.6 + (1.0 - smoothstep(0.0, 3.0, h)) * 0.6 * float(h < 3.0)
 	var mist := maxf(dawn, night_mist)
 	if cartoon:
-		# The shade lit more by the sky, so it reads as a colour, not dark.
-		sky_env.ambient_light_energy *= 1.6
+		# The shade lit more by the sky by day, so it reads as a colour,
+		# not dark; the night keeps its own darkness.
+		sky_env.ambient_light_energy *= lerpf(1.0, 1.6, twilight)
 	_mist_mat.set_shader_parameter("density", 0.12 * mist)
 	_mist_mat.set_shader_parameter("scale_h", 0.9 + 0.6 * dawn)
 	# Lit by the sky: pale by day, the dawn's colour softened, dim at night.

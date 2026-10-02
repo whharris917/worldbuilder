@@ -30,6 +30,8 @@ var music_player: AudioStreamPlayer = null
 var time_of_day := 10.0
 var weather_level := -1.0              # 0 fair to 1 storm; below 0, the world has no weather
 var settings_prefix := ""              # a world keeps its own clock and weather under its own keys
+var moonlight := 1.0                   # the night's light, 0 none to 2 twice the moon's (options)
+var moonlight_key := ""                # where it is saved; empty: the world's prefix + "moonlight"
 var music_on := false
 var graphics := GraphicsSettings.new()   # presets and knobs; see ui/graphics_settings.gd
 var _sun_base_energy := 1.5
@@ -54,6 +56,10 @@ func _ready() -> void:
 		settings.on_weather_changed = func(level: float) -> void:
 			set_weather(level)
 			_save_settings()
+	settings.on_moonlight_changed = func(level: float) -> void:
+		moonlight = level
+		set_time_of_day(time_of_day)
+		_save_settings()
 	settings.on_music_changed = func(on: bool) -> void:
 		set_music(on)
 		_save_settings()
@@ -216,7 +222,7 @@ func set_time_of_day(hours: float) -> void:
 	var warm := Color(1.0, 0.62, 0.35).lerp(_sun_base_color, horizon)
 	var night := Color(0.45, 0.55, 0.80)
 	sun.light_color = night.lerp(warm, twilight)
-	var night_energy := lerpf(0.05, 0.35, clampf(moon_light / 0.25, 0.0, 1.0))
+	var night_energy := lerpf(0.05, 0.35, clampf(moon_light / 0.25, 0.0, 1.0)) * moonlight
 	sun.light_energy = lerpf(night_energy, _sun_base_energy * (0.25 + 0.75 * horizon), twilight)
 	if sky_mat is ShaderMaterial:
 		# Our sky (world/sky.gdshader) wants the sun's true direction,
@@ -260,9 +266,9 @@ func set_time_of_day(hours: float) -> void:
 			var night_amb := Color(0.14, 0.18, 0.28)
 			sky_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 			sky_env.ambient_light_color = night_amb.lerp(dusk_amb.lerp(day_amb, horizon), twilight)
-			sky_env.ambient_light_energy = lerpf(0.55, 0.66 + 0.04 * horizon, twilight)
+			sky_env.ambient_light_energy = lerpf(0.55 * moonlight, 0.66 + 0.04 * horizon, twilight)
 		else:
-			sky_env.ambient_light_energy = lerpf(0.25, 0.55 + 0.05 * horizon, twilight)
+			sky_env.ambient_light_energy = lerpf(0.25 * moonlight, 0.55 + 0.05 * horizon, twilight)
 		sky_env.fog_light_color = horizon_color
 	_on_time_of_day(horizon, twilight)
 
@@ -304,12 +310,17 @@ func _save_settings() -> void:
 	saved[settings_prefix + "time_of_day"] = time_of_day
 	if weather_level >= 0.0:
 		saved[settings_prefix + "weather"] = weather_level
+	saved[_moonlight_key()] = moonlight
 	saved["music"] = music_on
 	saved["graphics"] = graphics.to_dict()
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file == null:
 		return
 	file.store_string(JSON.stringify(saved))
+
+
+func _moonlight_key() -> String:
+	return moonlight_key if moonlight_key != "" else settings_prefix + "moonlight"
 
 
 func _read_settings() -> Dictionary:
@@ -329,6 +340,7 @@ func _load_settings() -> void:
 	if not saved.is_empty():
 		hours = float(saved.get(settings_prefix + "time_of_day", hours))
 		on = bool(saved.get("music", on))
+		moonlight = float(saved.get(_moonlight_key(), moonlight))
 		if weather_level >= 0.0:
 			weather_level = float(saved.get(settings_prefix + "weather", weather_level))
 		if saved.get("graphics") is Dictionary:
@@ -340,6 +352,7 @@ func _load_settings() -> void:
 	set_music(on)
 	graphics.apply(self)
 	settings.set_values(time_of_day, music_on)
+	settings.set_moonlight(moonlight)
 
 
 func _build_audio() -> void:

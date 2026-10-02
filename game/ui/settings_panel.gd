@@ -11,6 +11,7 @@ var on_time_changed: Callable = Callable()
 var on_music_changed: Callable = Callable()
 var on_graphics_changed: Callable = Callable()   # after any graphics value changes
 var on_weather_changed: Callable = Callable()    # a world with weather sets this; the row shows only then
+var on_moonlight_changed: Callable = Callable()
 var graphics: GraphicsSettings = null           # the world's, edited in place
 
 var _slider: HSlider
@@ -19,6 +20,8 @@ var _music: CheckButton
 var _weather_row: HBoxContainer
 var _weather: HSlider
 var _weather_label: Label
+var _moon: HSlider
+var _moon_label: Label
 var _preset: OptionButton
 var _fps: Label
 var _scale: HSlider
@@ -69,6 +72,31 @@ func _ready() -> void:
 	_clock.custom_minimum_size = Vector2(56, 0)
 	_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	time_row.add_child(_clock)
+
+	# Moonlight: how bright the night is, from none to twice the moon's.
+	var moon_row := HBoxContainer.new()
+	column.add_child(moon_row)
+	var moon_name := Label.new()
+	moon_name.text = "Moonlight"
+	moon_name.custom_minimum_size = Vector2(120, 0)
+	moon_row.add_child(moon_name)
+	_moon = HSlider.new()
+	_moon.min_value = 0.0
+	_moon.max_value = 2.0
+	_moon.step = 0.05
+	_moon.value = 1.0
+	_moon.custom_minimum_size = Vector2(220, 0)
+	_moon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_moon.value_changed.connect(func(value: float) -> void:
+		_refresh_moon()
+		if on_moonlight_changed.is_valid():
+			on_moonlight_changed.call(value))
+	moon_row.add_child(_moon)
+	_moon_label = Label.new()
+	_moon_label.custom_minimum_size = Vector2(56, 0)
+	_moon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	moon_row.add_child(_moon_label)
+	_refresh_moon()
 
 	# Weather, in worlds that have it: one slider from fair to a storm.
 	_weather_row = HBoxContainer.new()
@@ -198,6 +226,15 @@ func set_weather(level: float) -> void:
 	_weather_row.visible = true
 	_weather.set_value_no_signal(level)
 	_refresh_weather()
+
+
+func set_moonlight(level: float) -> void:
+	_moon.set_value_no_signal(level)
+	_refresh_moon()
+
+
+func _refresh_moon() -> void:
+	_moon_label.text = "%d%%" % roundi(_moon.value * 100.0)
 
 
 func _refresh_weather() -> void:
