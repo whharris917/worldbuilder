@@ -24,6 +24,7 @@ const SKIES: Array = [
 
 var land: HillsLand
 var grass: GrassField
+var gusts := Gusts.new()
 var wind := 0.3
 var _air: AudioStreamPlayer
 var _hiss: AudioStreamPlayer
@@ -79,6 +80,8 @@ func _build_ground() -> void:
 	add_child(grass)
 	grass.build(land, Vector2.ZERO, FIELD, land.grass_at, func(_x: float, _z: float) -> float: return 0.0,
 		"real", str(_read_settings().get(GRASS_KEY, "shells")), 1.0)
+	# The gusts' pull downhill, over the land as far as the eye follows them.
+	gusts.bake_flow(land, 2048.0, 8.0)
 	land.terrain_mat.set_shader_parameter("reach", float(GrassField.MODELS["shells"]["reach"]))
 	_tune_grass()
 	_build_sound()
@@ -141,7 +144,7 @@ func _process(delta: float) -> void:
 	var across := Vector2(-wd.y, wd.x)
 	var g := 0.0
 	for offset: Vector2 in [Vector2.ZERO, wd * 6.0, -wd * 6.0, across * 6.0, -across * 6.0]:
-		g += Gusts.at(at + offset, grass.travel, wind, wd)
+		g += gusts.at(at + offset, grass.travel, wind, wd)
 	g /= 5.0
 	_hiss_level = lerpf(_hiss_level, g, clampf(delta * 3.0, 0.0, 1.0))
 	_air.volume_db = linear_to_db(0.12 + 0.6 * wind) - 4.0
@@ -177,7 +180,9 @@ func _tune_grass() -> void:
 	for mat in grass.materials:
 		mat.set_shader_parameter("root_shade", 0.18)
 		mat.set_shader_parameter("root_dark", ROOT_DARK)
+		gusts.apply(mat)
 	land.terrain_mat.set_shader_parameter("root_dark", ROOT_DARK)
+	gusts.apply(land.terrain_mat)
 
 
 func _change_grass(index: int) -> void:
