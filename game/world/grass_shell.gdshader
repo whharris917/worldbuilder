@@ -19,22 +19,18 @@ shader_type spatial;
 // stripes when looked along.
 render_mode cull_disabled;
 #include "res://world/granite.gdshaderinc"
+#include "res://world/gust.gdshaderinc"
 
 uniform sampler2D ground : filter_linear, repeat_disable;
 uniform vec2 ground_origin = vec2(-128.0);
 uniform float ground_size = 256.0;
 uniform vec3 player_pos = vec3(0.0, -1000.0, 0.0);
-uniform vec2 wind_dir = vec2(0.8, 0.6);
-uniform float wind = 0.3;
-uniform float gust_travel = 0.0;    // how far the gusts have run: the sum over time of 1 + 1.5 * wind (GrassField)
 uniform float height_scale = 1.0;
 uniform float grass_height = 0.7;    // the tallest strand at full growth, metres
 uniform float strands = 18.0;        // strands a metre each way
 uniform float reach = 32.0;          // strands are gone by here from the camera
 uniform float ripple = 1.0;          // how pale the grass turns where a gust leans it
-uniform float gust_speed = 1.2;      // how fast the gusts run downwind, metres a second, in a calm
-uniform float band_length = 30.0;    // a gust band's length across the wind, metres
-uniform float band_width = 6.0;      // and its width along it
+uniform float root_shade = 0.45;     // how far up the strands, 0 to 1 of the stack, their roots' shade reaches
 uniform vec3 sheen : source_color = vec3(0.62, 0.68, 0.48);   // leaning grass's pale side
 uniform float lattice_turn = 0.53;   // the lattice against the world's axes, radians
 
@@ -69,15 +65,9 @@ void vertex() {
 	float h = layer * grass_height * height_scale * growth;
 
 	vec2 wd = normalize(wind_dir);
-	// The gusts: a pattern in the wind's own frame, long across it and
-	// narrow along it, carried downwind; a slow drift across the wind
-	// keeps the bands from repeating. Even a light breeze shows them.
-	vec2 across = vec2(-wd.y, wd.x);
-	float u = (dot(w.xz, wd) - gust_travel * gust_speed) / band_width;
-	float v = (dot(w.xz, across) + TIME * 0.3) / band_length;
-	float bands = value_noise(vec2(u, v)) * 0.75 + value_noise(vec2(u * 2.3, v * 1.7) + 11.0) * 0.25;
+	// The gusts (gust.gdshaderinc); even a light breeze shows them.
 	float strength = 0.45 + 0.55 * wind;
-	gust = smoothstep(0.38, 0.62, bands) * strength;
+	gust = gust_at(w.xz);
 	float flutter = sin(TIME * 2.1 + dot(w.xz, vec2(1.3, 0.9))) * 0.04;
 	vec2 sway = wd * (0.08 * strength + 0.8 * gust + flutter * wind);
 	vec2 away = w.xz - player_pos.xz;
@@ -141,7 +131,7 @@ void fragment() {
 	float dry = smoothstep(0.45, 0.85, value_noise(ground_xz * 0.08) * 0.7 + value_noise(ground_xz * 0.31 + 4.0) * 0.3);
 	vec3 c = mix(green, yellow_green, hit.z);
 	c = mix(c, seed_tan, dry * 0.45);
-	vec3 col = mix(root_dark, c, smoothstep(0.0, 0.45, layer));
+	vec3 col = mix(root_dark, c, smoothstep(0.0, root_shade, layer));
 	col = mix(col, yellow_green, 0.3 * smoothstep(0.6, 1.0, layer / tall));
 	// Leaning grass turns pale from a little above the roots, where
 	// most of what the eye sees of the turf is; standing grass is a
@@ -153,6 +143,6 @@ void fragment() {
 	ROUGHNESS = 0.85;
 	SPECULAR = 0.25;
 	BACKLIGHT = col * 0.5;
-	AO = mix(0.6, 1.0, layer);
+	AO = mix(mix(0.85, 0.6, root_shade / 0.45), 1.0, layer);
 	AO_LIGHT_AFFECT = 0.3;
 }

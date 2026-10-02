@@ -21,6 +21,8 @@ Writes to game/audio/:
                   three distant rolls, darker with distance
   bell_1..2.wav   a bell buoy's bronze bell, struck hard and soft
   leaves_loop.wav 14 s seamless wind in a summer wood's leaves
+  air_loop.wav    12 s seamless steady low rush of moving air
+  grass_hiss_loop.wav  10 s seamless hiss of long grass bending
   crickets_loop.wav  10 s seamless field crickets and tree crickets
   bird_*.wav      white-throated sparrow, chickadee, robin, wood thrush
                   (two), barred owl
@@ -653,6 +655,43 @@ def make_leaves() -> None:
     write_wav(OUT_DIR / "leaves_loop.wav", [out], normalize_to=0.35)
 
 
+def make_grass_wind() -> None:
+    """Wind over open grass, as two steady loops the world swells by
+    its own gusts: the low rush of moving air, and the hiss of long
+    grass bending, a fine rustle of blade on blade."""
+    r = random.Random(20261008)
+    dur = 12.0
+    n = int(SR * dur)
+    fade = int(0.8 * SR)
+    total = n + fade
+    white = _noise_r(r, total)
+    air = _bandpass(white, 0.006, 0.04)
+    out = loop_crossfade(air, 0.8)
+    write_wav(OUT_DIR / "air_loop.wav", [out], normalize_to=0.35)
+
+    r = random.Random(20261009)
+    dur = 10.0
+    n = int(SR * dur)
+    fade = int(0.6 * SR)
+    total = n + fade
+    white = _noise_r(r, total)
+    hiss = _bandpass(white, 0.12, 0.55)
+    out = [h * 0.5 for h in hiss]
+    ticks = int(dur * 1400)
+    for _k in range(ticks):
+        start = int(r.random() * total)
+        length = int(SR * r.uniform(0.003, 0.02))
+        amp = r.uniform(0.03, 0.16)
+        last = 0.0
+        for k in range(length):
+            env = math.sin(math.pi * k / length)
+            w = r.random() * 2.0 - 1.0
+            out[(start + k) % total] += (w - last) * env * amp
+            last = w
+    out = loop_crossfade(out, 0.6)
+    write_wav(OUT_DIR / "grass_hiss_loop.wav", [out], normalize_to=0.35)
+
+
 def make_crickets() -> None:
     """A summer night in a meadow: field crickets near and far, each
     chirping three or four pulses of a pure note round 4.5 kHz at its
@@ -831,6 +870,7 @@ def main() -> None:
     make_thunders()
     make_bells()
     make_leaves()
+    make_grass_wind()
     make_crickets()
     make_birds()
     print("done")

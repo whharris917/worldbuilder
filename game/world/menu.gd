@@ -20,6 +20,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/middaugh.tscn"},
 	{"title": "FOREST MEADOW", "note": "A meadow in a summer wood with a brook running through it, from dawn mist to fireflies; a study in mood. Seen as it is, as a cartoon, painted, or as a model on a board: choose in the options (O).",
 		"scene": "res://world/meadow.tscn", "last_look": true},
+	{"title": "OPEN HILLS", "note": "Rolling hills of long grass under a wide sky, the wind running over them in gusts; a study in wind.",
+		"scene": "res://world/grass_hills.tscn"},
 ]
 
 

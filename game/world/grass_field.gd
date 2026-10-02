@@ -26,6 +26,7 @@ extends Node3D
 ## (grass_shell.gdshader); "off", none.
 
 const CHUNK := 8.0
+## The baked ground's texel, metres, unless build is given another.
 const TEXEL := 0.5
 ## Each model of blades or clumps: its bands (density in tufts a square
 ## metre, blades a tuft or cards a clump, segments a blade), full
@@ -61,7 +62,7 @@ var _shell: MeshInstance3D
 ## How far the gusts have run: the sum over time of 1 + 1.5 * wind, so a
 ## gust slows when the wind drops and never runs back. Each grass
 ## shader scales it by its own speed in a calm.
-var _travel := 0.0
+var travel := 0.0
 
 var _meshes: Array[MultiMesh] = []
 var _slots: Array[MultiMeshInstance3D] = []
@@ -76,19 +77,20 @@ var _placed_at := Vector2(1.0e9, 0.0)
 ## the tiles and the slots. `style` picks the look: "real", or the
 ## drawn styles: "cartoon" and "anime" in grass_toon.gdshader in their
 ## own greens, "diorama" in grass_lowpoly.gdshader, short blades of one
-## flat triangle each. `with_model` is the model to draw.
+## flat triangle each. `with_model` is the model to draw; `texel` the
+## baked ground's resolution, coarser for a large field.
 func build(land: Landscape, centre: Vector2, side: float, grass: Callable, flowers: Callable,
-		style := "real", with_model := "full") -> void:
+		style := "real", with_model := "full", texel := TEXEL) -> void:
 	var t0 := Time.get_ticks_msec()
 	_style = style
 	size = side
 	origin = centre - Vector2(side, side) * 0.5
-	var n := int(side / TEXEL)
+	var n := int(side / texel)
 	var img := Image.create_empty(n, n, false, Image.FORMAT_RGBAF)
 	for j in n:
-		var z := origin.y + (j + 0.5) * TEXEL
+		var z := origin.y + (j + 0.5) * texel
 		for i in n:
-			var x := origin.x + (i + 0.5) * TEXEL
+			var x := origin.x + (i + 0.5) * texel
 			var g: float = grass.call(x, z)
 			var h := land.surface_height(x, z)
 			var f: float = flowers.call(x, z) if g > 0.0 else 0.0
@@ -283,9 +285,9 @@ func _gap(o: Vector2i) -> float:
 ## with the band its nearest point wants; and keep the shaders' wind and
 ## the player's position current.
 func follow(camera_pos: Vector3, player_pos: Vector3, wind: float, wind_dir: Vector2) -> void:
-	_travel += (1.0 + 1.5 * wind) * get_process_delta_time()
+	travel += (1.0 + 1.5 * wind) * get_process_delta_time()
 	for mat in materials:
-		mat.set_shader_parameter("gust_travel", _travel)
+		mat.set_shader_parameter("gust_travel", travel)
 		mat.set_shader_parameter("player_pos", player_pos)
 		mat.set_shader_parameter("wind", wind)
 		mat.set_shader_parameter("wind_dir", wind_dir)
