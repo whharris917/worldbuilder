@@ -81,6 +81,37 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+## A zigzag bolt.
+static func draw_bolt(img: Image) -> void:
+	var pts: Array[Vector2] = [Vector2(14, 2), Vector2(8, 11), Vector2(13, 11), Vector2(7, 20)]
+	for i in pts.size() - 1:
+		_stroke(img, pts[i], pts[i + 1], 1.3, Color(0.85, 0.88, 1.0))
+
+
+## A thunderhead with a glow inside it.
+static func draw_heat(img: Image) -> void:
+	for y in ICON:
+		for x in ICON:
+			var p := Vector2(x + 0.5, y + 0.5)
+			var tower := absf(p.x - 11.0) < 4.0 + 0.3 * absf(p.y - 13.0) and p.y > 7.0 and p.y < 19.0
+			var anvil := absf(p.x - 12.0) < 8.0 and p.y > 4.0 and p.y < 8.0
+			if tower or anvil:
+				var glow := clampf(1.0 - p.distance_to(Vector2(11, 12)) / 5.0, 0.0, 1.0)
+				img.set_pixel(x, y, Color(0.45, 0.47, 0.55).lerp(Color(1.0, 0.9, 1.0), glow))
+
+
+static func _stroke(img: Image, a: Vector2, b: Vector2, r: float, col: Color) -> void:
+	for y in ICON:
+		for x in ICON:
+			var p := Vector2(x + 0.5, y + 0.5)
+			var t := clampf((p - a).dot(b - a) / (b - a).length_squared(), 0.0, 1.0)
+			var d := p.distance_to(a + (b - a) * t)
+			var v := clampf(1.0 - (d - r) / 1.0, 0.0, 1.0)
+			if v > 0.0:
+				var old := img.get_pixel(x, y)
+				img.set_pixel(x, y, Color(col.r, col.g, col.b, maxf(old.a, v)))
+
+
 ## The first icon: three small lights in a triangle.
 static func draw_orbs(img: Image) -> void:
 	var c := Vector2(ICON, ICON) / 2.0

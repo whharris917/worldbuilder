@@ -77,9 +77,11 @@ func _run(world: MeadowMap) -> void:
 		style_mat.shader = load("res://world/style.gdshader")
 		rect.material = style_mat
 		layer.add_child(rect)
-	# WORLDBUILDER_MEADOW_EVENT=1: from the first view, start the lights
-	# over the trees and photograph them as they go.
-	if OS.get_environment("WORLDBUILDER_MEADOW_EVENT") == "1":
+	# WORLDBUILDER_MEADOW_EVENT=n: from the first view, start event n
+	# (1 the lights over the trees, 2 lightning, 3 heat lightning) and
+	# photograph it as it goes.
+	var event := int(OS.get_environment("WORLDBUILDER_MEADOW_EVENT"))
+	if event > 0:
 		var v0: Array = views[0]
 		world.set_time_of_day(float(v0[1]))
 		cam.fov = float(v0[2])
@@ -92,9 +94,37 @@ func _run(world: MeadowMap) -> void:
 			(layer as CanvasLayer).visible = true
 		for i in 30:
 			await RenderingServer.frame_post_draw
-		world.start_orbs()
+		world.events.trigger(event - 1)
+		if event == 2:
+			# The stroke: every frame through its flicker.
+			for i in 24:
+				await RenderingServer.frame_post_draw
+				get_viewport().get_texture().get_image().save_png("user://probe_meadow_strike_%02d.png" % i)
+			print("[probe] strike frames written")
+			get_tree().quit()
+			return
+		if event == 3 and OS.get_environment("WORLDBUILDER_MEADOW_CATCH") == "1":
+			# The flashes: the first frames of the next few.
+			var caught := 0
+			var seen := 0
+			while caught < 4 and seen < 3000:
+				await RenderingServer.frame_post_draw
+				seen += 1
+				var newest := -1.0
+				for f: Dictionary in world.heat._flashes:
+					newest = maxf(newest, float(f["at"]))
+				var age := world.heat._t - newest
+				if newest >= 0.0 and age > 0.0 and age < 0.04:
+					get_viewport().get_texture().get_image().save_png("user://probe_meadow_heat_%d.png" % caught)
+					caught += 1
+			print("[probe] %d flashes caught" % caught)
+			get_tree().quit()
+			return
+		var times: Array[float] = [2.0, 5.5, 7.75, 9.0, 12.0, 15.0, 18.7, 19.4]
+		if event == 3:
+			times = [3.0, 6.0, 9.0, 12.0, 15.0, 20.0, 25.0, 37.0]
 		var last := 0.0
-		for when: float in [2.0, 5.5, 7.75, 9.0, 12.0, 15.0, 18.7, 19.4]:
+		for when: float in times:
 			await get_tree().create_timer(when - last).timeout
 			last = when
 			get_viewport().get_texture().get_image().save_png("user://probe_meadow_event_%04.1f.png" % when)

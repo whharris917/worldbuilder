@@ -11,6 +11,8 @@ uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
 uniform vec3 moon_dir = vec3(0.0, -1.0, 0.0);
 uniform float cover = 0.38;        // how much of the sky the clouds take
 uniform vec2 drift = vec2(0.004, 0.0015);
+uniform float flash = 0.0;           // lightning, lighting the sky toward it
+uniform vec3 flash_dir = vec3(0.0, 0.2, -1.0);
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -87,5 +89,7 @@ void sky() {
 	col += vec3(1.0, 0.92, 0.75) * (smoothstep(0.9993, 0.9996, s) * 20.0 + pow(max(s, 0.0), 64.0) * 0.6) * smoothstep(-0.05, 0.02, elev);
 	float m = dot(d, normalize(moon_dir));
 	col += vec3(0.85, 0.88, 0.95) * smoothstep(0.99955, 0.9998, m) * 2.0 * smoothstep(-0.02, 0.05, moon_dir.y);
+	float toward_flash = clamp(dot(d, normalize(flash_dir)), 0.0, 1.0);
+	col += vec3(0.55, 0.60, 0.78) * flash * (0.25 + 1.5 * pow(toward_flash, 6.0));
 	COLOR = col;
 }

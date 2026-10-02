@@ -34,9 +34,12 @@ const WIND_DIR := Vector2(0.8, 0.6)      # toward the south-east, down the valle
 var land: MeadowLand
 var grass: GrassField
 var sound: MeadowSound
-## The events the icons along the bottom start: the lights over the trees.
+## The events the icons along the bottom start: the lights over the
+## trees, a stroke of lightning and its thunder, heat lightning.
 var events: EventBar
 var orbs: Orbs
+var strike: LightningStrike
+var heat: HeatLightning
 var wind := 0.3
 var _fireflies: MultiMeshInstance3D
 var _motes: MultiMeshInstance3D
@@ -252,6 +255,18 @@ func start_orbs() -> void:
 	orbs.play(cam.global_position, -cam.global_basis.z, land.height_at)
 
 
+## A stroke of lightning where the viewer is looking.
+func start_strike() -> void:
+	var cam := get_viewport().get_camera_3d()
+	strike.play(cam.global_position, -cam.global_basis.z, land.height_at)
+
+
+## Thunderheads on the horizon where the viewer is looking.
+func start_heat() -> void:
+	var cam := get_viewport().get_camera_3d()
+	heat.play(cam.global_position, -cam.global_basis.z)
+
+
 ## The breeze: calm at dawn and in the night, rising through the
 ## morning to its strongest in mid-afternoon, falling at evening; gusts
 ## on top of it.
@@ -291,6 +306,16 @@ func _after_build() -> void:
 	events = EventBar.new()
 	hud.get_parent().add_child(events)
 	events.add_event(EventBar.draw_orbs, "Lights over the trees", start_orbs, orbs.running)
+	strike = LightningStrike.new()
+	strike.name = "Lightning"
+	add_child(strike)
+	strike.setup(self)
+	events.add_event(EventBar.draw_bolt, "Lightning and thunder", start_strike, strike.running)
+	heat = HeatLightning.new()
+	heat.name = "HeatLightning"
+	add_child(heat)
+	heat.setup(self)
+	events.add_event(EventBar.draw_heat, "Heat lightning on the horizon", start_heat, heat.running)
 	if not FileAccess.file_exists(save_path):
 		# On the meadow east of the brook, looking west across it toward
 		# the lone oak and the afternoon sun.
