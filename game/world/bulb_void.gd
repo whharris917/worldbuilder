@@ -30,15 +30,11 @@ extends Node3D
 ## combination are dimmed, and a line at the top says where the light on
 ## the surfaces is coming from.
 ##
-## The ball hangs on a rope from a hook 12 m up. The hook travels the
-## edges of a triangle around the ball's corner of the room, easing in
-## and out along each (a minimum-jerk profile), and waits at each corner
-## before the next; the ball swings as a rigid pendulum would. Its
-## motion is integrated here, in the hook's moving frame: gravity less
-## the hook's acceleration, its component across the rope scaled by
-## Lc^2 / (Lc^2 + 2/5 r^2) for a solid ball's own turning (Lc from hook
-## to the ball's centre), the rope held at its length, a little air
-## drag. A count of frames a second sits at the top right.
+## The ball and the bulb each hang on a rope from a hook 12 m up
+## (Pendulum); each hook travels its own triangle across the room,
+## waiting at each corner, at a speed and wait set in the Motion panel.
+## They bounce off the wall and off each other. A count of frames a
+## second sits at the top right.
 ##
 ## The bulb's glass takes no part in GI (it encloses the light, and a
 ## voxel or distance-field method would count it solid and smother the
@@ -83,11 +79,10 @@ var _specular_box: VBoxContainer
 var _voxel_gi: VoxelGI = null
 var _fps: Label
 @onready var _ball: AnimatableBody3D = $Ball
-var _hook: MeshInstance3D
-var _rope: MeshInstance3D
-var _swing := Vector3(0, -1, 0) * 1.0      # hook to ball centre
-var _swing_v := Vector3.ZERO                # its rate of change
-var _clock := 0.0
+var _ball_swing: Pendulum
+var _bulb_swing: Pendulum
+var _ball_rig: Array = []               # the weight, its hook, its rope
+var _bulb_rig: Array = []
 var _sun_model := "Off"                # Off, Infinite or Finite
 var _sun_far: DirectionalLight3D
 var _sun_near: SpotLight3D
@@ -142,7 +137,8 @@ func _ready() -> void:
 	theme.default_font_size = FONT_SIZE
 	root.theme = theme
 	layer.add_child(root)
-	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root)])
+	_build_swing()
+	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root), _build_motion(root)])
 	_set_sun("Off")
 	_fps = Label.new()
 	_fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -151,7 +147,6 @@ func _ready() -> void:
 	_fps.offset_top = 12.0
 	_fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	root.add_child(_fps)
-	_build_swing()
 	_set_outside("Void")
 	_set_bounce("None")
 	if DisplayServer.get_name() == "headless":
@@ -171,7 +166,7 @@ func _build_tabs(root: Control, panels: Array) -> void:
 		panel.position = Vector2(16, 48)
 		panel.visible = false
 		var tab := Button.new()
-		tab.text = ["Bulb and ball", "Indirect light", "Sun"][i]
+		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion"][i]
 		tab.toggle_mode = true
 		tab.button_group = group
 		tab.focus_mode = Control.FOCUS_NONE
@@ -692,7 +687,8 @@ func _reset() -> void:
 		button.button_pressed = false
 	(_choices["Outside"]["Void"] as CheckBox).button_pressed = true
 	(_choices["Bounce"]["None"] as CheckBox).button_pressed = true
-	for title: String in ["Polar angle", "Azimuth", "Sun energy", "Distance (m)"]:
+	for title: String in ["Polar angle", "Azimuth", "Sun energy", "Distance (m)",
+			"Ball speed", "Ball wait", "Bulb speed", "Bulb wait"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
 	_refresh()
@@ -721,83 +717,136 @@ func _process(_delta: float) -> void:
 	_fps.text = "%d fps  %.1f ms" % [fps, 1000.0 / maxf(fps, 1.0)]
 
 
-## ---- the swinging ball -----------------------------------------------------
+## ---- the swinging ball and bulb ----------------------------------------------
 
-const HOOK_Y := 12.0
-const BALL_Y := 1.3                     # the ball's centre at rest
-const BALL_R := 1.0
-const CORNERS: Array[Vector3] = [Vector3(5.3, 0, -1.8), Vector3(2.27, 0, -7.05), Vector3(8.33, 0, -7.05)]
-# A move near the swing's own period (about 6.6 s) pumps it up until
-# the ball reaches the wall; at 10 s, with 4 s waits, it sways up to
-# about 0.9 m and stays there.
-const WAIT := 4.0                       # s at each corner
-const MOVE := 10.0                      # s along each edge
-const DRAG := 0.03                      # 1/s
+const WALL_R := 15.0                    # the wall's inner face
+const BOUNCE := 0.3                     # restitution of a knock
 const SUBSTEPS := 8
 
 
+## Each corner, on a circle around the room's centre at an azimuth
+## measured from the doorway toward the ball's side.
+static func _corners(r: float, azimuths: Array) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for a: float in azimuths:
+		out.append(Vector3(r * sin(deg_to_rad(a)), 0, -r * cos(deg_to_rad(a))))
+	return out
+
+
+## The ball's hook runs a triangle nearly as wide as the room; the
+## bulb's a smaller one turned 60 degrees from it.
 func _build_swing() -> void:
-	_hook = MeshInstance3D.new()
-	var hook_mesh := BoxMesh.new()
-	hook_mesh.size = Vector3(0.3, 0.15, 0.3)
-	_hook.mesh = hook_mesh
-	add_child(_hook)
-	_rope = MeshInstance3D.new()
-	var rope_mesh := CylinderMesh.new()
-	rope_mesh.top_radius = 0.015
-	rope_mesh.bottom_radius = 0.015
-	rope_mesh.radial_segments = 8
-	rope_mesh.rings = 1
-	rope_mesh.height = 1.0
-	_rope.mesh = rope_mesh
-	add_child(_rope)
-	for node: GeometryInstance3D in [_hook, _rope]:
-		node.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
-	_swing = Vector3(0, BALL_Y - HOOK_Y, 0)
-	_swing_v = Vector3.ZERO
-	_clock = 0.0
-	_draw_swing(_hook_at(0.0))
+	_ball_swing = Pendulum.new(_corners(10.5, [30.0, 150.0, 270.0]), 1.3, 1.0, 1.0, 50.0)
+	_ball_swing.speed = 1.2
+	_ball_swing.wait = 4.0
+	_bulb_swing = Pendulum.new(_corners(9.0, [90.0, 210.0, 330.0]), 2.2, 0.05, 0.05, 0.05)
+	_bulb_swing.speed = 1.0
+	_bulb_swing.wait = 3.0
+	_ball_rig = [_ball, _hook_mesh(), _rope_mesh(0.015)]
+	_bulb_rig = [_bulb, _hook_mesh(), _rope_mesh(0.006)]
+	_draw_swing(_ball_swing, _ball_rig)
+	_draw_swing(_bulb_swing, _bulb_rig)
 
 
-## Where the hook is t seconds into its round of the triangle.
-func _hook_at(t: float) -> Vector3:
-	var leg := WAIT + MOVE
-	var t_round := fposmod(t, leg * CORNERS.size())
-	var i := int(t_round / leg)
-	var a := CORNERS[i]
-	var b := CORNERS[(i + 1) % CORNERS.size()]
-	var s := clampf((t_round - i * leg - WAIT) / MOVE, 0.0, 1.0)
-	s = s * s * s * (10.0 - 15.0 * s + 6.0 * s * s)
-	return a.lerp(b, s) + Vector3(0, HOOK_Y, 0)
+func _hook_mesh() -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.3, 0.15, 0.3)
+	node.mesh = mesh
+	node.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
+	add_child(node)
+	return node
+
+
+func _rope_mesh(r: float) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = r
+	mesh.bottom_radius = r
+	mesh.radial_segments = 8
+	mesh.rings = 1
+	mesh.height = 1.0
+	node.mesh = mesh
+	node.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
+	add_child(node)
+	return node
 
 
 func _step_swing(delta: float) -> void:
-	var length := HOOK_Y - BALL_Y
-	var turning := length * length / (length * length + 0.4 * BALL_R * BALL_R)
 	var dt := delta / SUBSTEPS
 	for _i in SUBSTEPS:
-		var hook_accel := (_hook_at(_clock + dt) - 2.0 * _hook_at(_clock) + _hook_at(_clock - dt)) / (dt * dt)
-		var along := _swing.normalized()
-		var force := Vector3(0, -9.8, 0) - hook_accel
-		var across := force - along * force.dot(along)
-		_swing_v += (across * turning - _swing_v * DRAG) * dt
-		_swing = (_swing + _swing_v * dt).normalized() * length
-		along = _swing.normalized()
-		_swing_v -= along * _swing_v.dot(along)
-		_clock += dt
-	_draw_swing(_hook_at(_clock))
+		_ball_swing.step(dt)
+		_bulb_swing.step(dt)
+		_knock_wall(_ball_swing)
+		_knock_wall(_bulb_swing)
+		_knock_each_other(_ball_swing, _bulb_swing)
+	_draw_swing(_ball_swing, _ball_rig)
+	_draw_swing(_bulb_swing, _bulb_rig)
 
 
-func _draw_swing(hook: Vector3) -> void:
-	var along := _swing.normalized()
-	var side := Vector3.RIGHT if absf(along.x) < 0.9 else Vector3.FORWARD
+## A weight that reaches the wall is put back against it and bounces
+## off, losing most of its speed into the wall.
+func _knock_wall(w: Pendulum) -> void:
+	var c := w.centre()
+	var flat := Vector3(c.x, 0, c.z)
+	var limit := WALL_R - w.radius
+	if flat.length() <= limit:
+		return
+	var out := flat.normalized()
+	w.place(c - out * (flat.length() - limit))
+	var vn := w.velocity().dot(out)
+	if vn > 0.0:
+		w.push(-out * (1.0 + BOUNCE) * vn)
+
+
+## Two weights that meet are parted and exchange momentum along the
+## line between their centres; the light one takes nearly all the change.
+func _knock_each_other(a: Pendulum, b: Pendulum) -> void:
+	var d := b.centre() - a.centre()
+	var gap := a.radius + b.radius - d.length()
+	if gap <= 0.0 or d.length() < 0.0001:
+		return
+	var n := d.normalized()
+	var inv_a := 1.0 / a.mass
+	var inv_b := 1.0 / b.mass
+	a.place(a.centre() - n * gap * inv_a / (inv_a + inv_b))
+	b.place(b.centre() + n * gap * inv_b / (inv_a + inv_b))
+	var vn := (b.velocity() - a.velocity()).dot(n)
+	if vn < 0.0:
+		var j := -(1.0 + BOUNCE) * vn / (inv_a + inv_b)
+		a.push(-n * j * inv_a)
+		b.push(n * j * inv_b)
+
+
+## The weight turned to hang along its rope, the hook, and the rope
+## from the hook to where it is tied.
+func _draw_swing(w: Pendulum, rig: Array) -> void:
+	var along := w.swing.normalized()
 	var up := -along
+	var side := Vector3.RIGHT if absf(up.x) < 0.9 else Vector3.FORWARD
 	var x := side.cross(up).normalized()
 	var aim := Basis(x, up, x.cross(up))
-	_ball.global_transform = Transform3D(aim, hook + _swing)
-	_hook.position = hook
-	var top := hook + _swing - along * BALL_R
-	_rope.global_transform = Transform3D(aim.scaled_local(Vector3(1, (top - hook).length(), 1)), (hook + top) * 0.5)
+	var hook := w.hook()
+	(rig[0] as Node3D).global_transform = Transform3D(aim, w.centre())
+	(rig[1] as Node3D).position = hook
+	var end := w.rope_end()
+	(rig[2] as Node3D).global_transform = Transform3D(aim.scaled_local(Vector3(1, (end - hook).length(), 1)), (hook + end) * 0.5)
+
+
+## ---- the motion panel ------------------------------------------------------
+
+func _build_motion(root: Control) -> Control:
+	var column := _column(root)
+	_heading(column, "Ball's hook")
+	_slider(column, "Ball speed", 0.2, 3.0, 0.05, _ball_swing.speed, func(v: float) -> void: _ball_swing.speed = v)
+	_slider(column, "Ball wait", 0.0, 10.0, 0.1, _ball_swing.wait, func(v: float) -> void: _ball_swing.wait = v)
+	_heading(column, "Bulb's hook")
+	_slider(column, "Bulb speed", 0.2, 3.0, 0.05, _bulb_swing.speed, func(v: float) -> void: _bulb_swing.speed = v)
+	_slider(column, "Bulb wait", 0.0, 10.0, 0.1, _bulb_swing.wait, func(v: float) -> void: _bulb_swing.wait = v)
+	_note(column, "Speed is the hook's average along an edge, in m/s; wait is the pause at each corner, in seconds. The ball swings back and forth about every 6.6 s and the bulb every 6.3 s; a hook whose stops and starts fall in step with that swings its weight higher and higher, and the ball then strikes the wall.")
+	for title: String in ["Ball speed", "Ball wait", "Bulb speed", "Bulb wait"]:
+		_defaults[title] = (_sliders[title] as HSlider).value
+	return column.get_parent() as Control
 
 
 func _physics_process(delta: float) -> void:
