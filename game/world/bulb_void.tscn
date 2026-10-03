@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://world/bulb_void.gd" id="1"]
 [ext_resource type="PackedScene" path="res://player/player.tscn" id="2"]
@@ -23,6 +23,14 @@ rings = 1
 [sub_resource type="CylinderShape3D" id="floor_shape"]
 height = 1.0
 radius = 15.0
+
+[sub_resource type="SphereMesh" id="ball_mesh"]
+material = SubResource("floor_mat")
+radius = 1.0
+height = 2.0
+
+[sub_resource type="SphereShape3D" id="ball_shape"]
+radius = 1.0
 
 [sub_resource type="StandardMaterial3D" id="bulb_mat"]
 albedo_color = Color(1, 1, 1, 1)
@@ -69,6 +77,15 @@ sides = 256
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -15.1)
 operation = 2
 size = Vector3(0.9, 3.8, 1)
+
+[node name="Ball" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.303, 1, -5.303)
+
+[node name="Mesh" type="MeshInstance3D" parent="Ball"]
+mesh = SubResource("ball_mesh")
+
+[node name="Collision" type="CollisionShape3D" parent="Ball"]
+shape = SubResource("ball_shape")
 
 [node name="Bulb" type="OmniLight3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
