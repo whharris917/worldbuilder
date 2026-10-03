@@ -92,6 +92,11 @@ var _sun_box: VBoxContainer
 var _distance_box: VBoxContainer
 var _sun_note: Label
 var _sky_mat: ProceduralSkyMaterial
+var _phys_mat: PhysicalSkyMaterial
+var _sky_model := "Gradient"            # Gradient or Physical
+var _grad_box: VBoxContainer
+var _phys_box: VBoxContainer
+var _sun_sky: DirectionalLight3D        # lights the sky only, at the sun's full strength
 var _outside := "Void"                 # Void, Colour or Sky
 var _bounce := "None"                  # None, SDFGI or VoxelGI
 var _debanding_was := false
@@ -252,19 +257,31 @@ func _build_right(root: Control) -> Control:
 	_slider(_colour_box, "Ambient energy", 0.0, 2.0, 0.01, _env.ambient_light_energy, func(v: float) -> void:
 		_env.ambient_light_energy = v)
 	_sky_box = _box(column)
-	var pickers := _colour_row(_sky_box, ["Sky top", "horizon"],
+	_choice(_sky_box, "Sky model", ["Gradient", "Physical"], _set_sky_model)
+	_grad_box = _box(_sky_box)
+	var pickers := _colour_row(_grad_box, ["Sky top", "horizon"],
 		[_sky_mat.sky_top_color, _sky_mat.sky_horizon_color])
-	pickers.append_array(_colour_row(_sky_box, ["Ground horizon", "bottom"],
+	pickers.append_array(_colour_row(_grad_box, ["Ground horizon", "bottom"],
 		[_sky_mat.ground_horizon_color, _sky_mat.ground_bottom_color]))
 	for i in 4:
 		var prop := SKY_PROPS[i]
 		var picker := pickers[i] as ColorPickerButton
 		picker.color_changed.connect(func(c: Color) -> void: _sky_mat.set(prop, c))
 		_sky_pickers[prop] = picker
-	_sky_slider(_sky_box, "Sky curve", "sky_curve", 0.001, 1.0)
-	_sky_slider(_sky_box, "Sky energy", "sky_energy_multiplier", 0.0, 4.0)
-	_sky_slider(_sky_box, "Ground curve", "ground_curve", 0.001, 1.0)
-	_sky_slider(_sky_box, "Ground energy", "ground_energy_multiplier", 0.0, 4.0)
+	_sky_slider(_grad_box, "Sky curve", "sky_curve", 0.001, 1.0)
+	_sky_slider(_grad_box, "Sky energy", "sky_energy_multiplier", 0.0, 4.0)
+	_sky_slider(_grad_box, "Ground curve", "ground_curve", 0.001, 1.0)
+	_sky_slider(_grad_box, "Ground energy", "ground_energy_multiplier", 0.0, 4.0)
+	_phys_box = _box(_sky_box)
+	_phys_mat = PhysicalSkyMaterial.new()
+	for spec: Array in [["Turbidity", "turbidity", 1.0, 20.0, 0.1], ["Rayleigh", "rayleigh_coefficient", 0.0, 8.0, 0.05],
+			["Mie", "mie_coefficient", 0.0, 0.05, 0.0005], ["Mie forward", "mie_eccentricity", 0.0, 0.99, 0.01],
+			["Sun disc size", "sun_disk_scale", 0.0, 20.0, 0.1], ["Air brightness", "energy_multiplier", 0.0, 4.0, 0.01]]:
+		var prop := str(spec[1])
+		_slider(_phys_box, str(spec[0]), float(spec[2]), float(spec[3]), float(spec[4]), float(_phys_mat.get(prop)),
+			func(v: float) -> void: _phys_mat.set(prop, v))
+		_defaults[str(spec[0])] = float(_phys_mat.get(prop))
+	_note(_phys_box, "The sky worked out from the sun: Rayleigh scattering off air molecules (blue overhead, red at sunset), Mie scattering off haze (the white glow round the sun, strongest forward). Turbidity is how hazy the air is. With the sun off, the physical sky is night.")
 
 	_choice(column, "Bounce", ["None", "SDFGI", "VoxelGI"], _set_bounce)
 	_bounce_box = _box(column)
@@ -322,7 +339,9 @@ func _build_sun(root: Control) -> Control:
 	_slider(_sun_box, "Azimuth", 0.0, 360.0, 1.0, 200.0, func(_v: float) -> void: _place_sun())
 	_note(_sun_box, "Around the horizon from the doorway: 45 toward the ball, 180 behind the start.")
 	_slider(_sun_box, "Sun energy", 0.0, 4.0, 0.01, 1.0, func(_v: float) -> void: _place_sun())
-	_note(_sun_box, "Light on a surface facing the sun at the room's centre.")
+	_note(_sun_box, "Light on a surface facing the sun at the room's centre, above the air.")
+	_switch(_sun_box, "Sun colour from the air", func(_on: bool) -> void: _place_sun())
+	_note(_sun_box, "The beam loses light on its way through the atmosphere, blue most: Rayleigh scattering by the air and some by haze, over a path that grows from one air mass overhead to about 38 at the horizon. Overhead the sun keeps about three quarters of its light; low, it turns orange and red and fades.")
 	_distance_box = _box(column)
 	_slider(_distance_box, "Distance (m)", 10.0, 150.0, 1.0, 60.0, func(_v: float) -> void: _place_sun())
 	(_sliders["Distance (m)"] as HSlider).exp_edit = true
@@ -330,6 +349,10 @@ func _build_sun(root: Control) -> Control:
 
 	_sun_far = DirectionalLight3D.new()
 	_sun_far.shadow_enabled = true
+	_sun_far.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	_sun_sky = DirectionalLight3D.new()
+	_sun_sky.sky_mode = DirectionalLight3D.SKY_MODE_SKY_ONLY
+	add_child(_sun_sky)
 	_sun_far.directional_shadow_max_distance = 200.0   # the near hills; 800 m cost about 80 ms a frame
 	add_child(_sun_far)
 	_sun_near = SpotLight3D.new()
@@ -356,6 +379,7 @@ func _build_sun(root: Control) -> Control:
 func _set_sun(option: String) -> void:
 	_sun_model = option
 	_sun_far.visible = option == "Infinite"
+	_sun_sky.visible = option != "Off"
 	_sun_near.visible = option == "Finite"
 	_sun_disc.visible = option == "Finite"
 	_enable(_sun_box, option != "Off")
@@ -378,6 +402,19 @@ func _place_sun() -> void:
 	var energy := float((_sliders["Sun energy"] as HSlider).value)
 	var d := float((_sliders["Distance (m)"] as HSlider).value)
 	_sun_far.basis = aim
+	_sun_sky.basis = aim
+	_sun_sky.light_energy = energy
+	# What reaches the ground: the sun's light less what the air scatters
+	# out of the beam on the way.
+	var through := Color(1, 1, 1)
+	if (_switches["Sun colour from the air"] as CheckButton).button_pressed:
+		through = _air_transmittance(float((_sliders["Polar angle"] as HSlider).value))
+	var lum := 0.2126 * through.r + 0.7152 * through.g + 0.0722 * through.b
+	var hue := Color(through.r / maxf(through.r, 1e-6), through.g / maxf(through.r, 1e-6), through.b / maxf(through.r, 1e-6))
+	var beam := hue.linear_to_srgb() if lum > 0.0 else Color.WHITE
+	energy *= lum
+	_sun_far.light_color = beam
+	_sun_near.light_color = beam
 	_sun_far.light_energy = energy
 	# The spot's range is twice its distance; its window then lets
 	# (1 - (1/2)^4)^2 of the light through at the room, which the energy
@@ -399,6 +436,27 @@ func _place_sun() -> void:
 			_sun_note.text = "A directional light: parallel rays, the same strength everywhere, no position. Seen as a disc only in the sky."
 		"Finite":
 			_sun_note.text = "A spot light %d m away aimed at the room: rays spread from one point. The floor's edge nearest the sun gets %d%% more light than the edge opposite." 				% [int(d), int(round((_edge_ratio(dir * d) - 1.0) * 100.0))]
+
+
+## The fraction of sunlight that crosses the atmosphere at a zenith
+## angle, in red, green and blue (680, 550 and 440 nm): exp(-tau m).
+## Tau is Rayleigh's optical depth for dry air, 0.008569 lambda^-4 (1 +
+## 0.0113 lambda^-2 + 0.00013 lambda^-4) with lambda in micrometres,
+## plus haze by Angstrom's law, 0.1 lambda^-1.3; m is the air mass by
+## Kasten and Young (1989), 1 overhead and about 38 at the horizon. Below
+## the horizon the sun is set.
+static func _air_transmittance(zenith_deg: float) -> Color:
+	if zenith_deg >= 91.0:
+		return Color(0, 0, 0)
+	var z := minf(zenith_deg, 90.0)
+	var m := 1.0 / (cos(deg_to_rad(z)) + 0.50572 * pow(96.07995 - z, -1.6364))
+	var out: Array[float] = []
+	for lam: float in [0.68, 0.55, 0.44]:
+		var l2 := 1.0 / (lam * lam)
+		var tau_r := 0.008569 * l2 * l2 * (1.0 + 0.0113 * l2 + 0.00013 * l2 * l2)
+		var tau_a := 0.1 * pow(lam, -1.3)
+		out.append(exp(-(tau_r + tau_a) * m))
+	return Color(out[0], out[1], out[2])
 
 
 ## How much more light, by distance alone, the floor's edge nearest a
@@ -433,6 +491,14 @@ func _set_outside(option: String) -> void:
 	_refresh()
 
 
+## The gradient sky (four colours chosen by hand) or the physical one
+## (worked out from the sun's direction by Rayleigh and Mie scattering).
+func _set_sky_model(option: String) -> void:
+	_sky_model = option
+	_env.sky.sky_material = _phys_mat if option == "Physical" else _sky_mat
+	_refresh()
+
+
 ## Two estimates of the same bounce light, so one at a time.
 func _set_bounce(option: String) -> void:
 	_bounce = option
@@ -460,6 +526,8 @@ func _set_voxel_gi(on: bool) -> void:
 func _refresh() -> void:
 	_enable(_colour_box, _outside == "Colour" and _bounce != "SDFGI")
 	_enable(_sky_box, _outside == "Sky")
+	_enable(_grad_box, _outside == "Sky" and _sky_model == "Gradient")
+	_enable(_phys_box, _outside == "Sky" and _sky_model == "Physical")
 	_enable(_bounce_box, _bounce != "None")
 	var metal := _ball_mat.metallic >= 0.999
 	_enable(_specular_box, not metal)
@@ -701,6 +769,9 @@ func _reset() -> void:
 			"Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
+	(_choices["Sky model"]["Gradient"] as CheckBox).button_pressed = true
+	for title: String in ["Turbidity", "Rayleigh", "Mie", "Mie forward", "Sun disc size", "Air brightness"]:
+		(_sliders[title] as HSlider).value = float(_defaults[title])
 	for title: String in ["Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)",
 			"Hill height (m)", "Hill size (m)", "Ruggedness", "Seed"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
