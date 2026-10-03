@@ -80,6 +80,9 @@ var _voxel_gi: VoxelGI = null
 var _fps: Label
 @onready var _ball: AnimatableBody3D = $Ball
 var _ball_swing: Pendulum
+var _radio: BulbRadio
+var _sound_status: Label
+var _sound_clock := 0.0
 var _bulb_swing: Pendulum
 var _ball_rig: Array = []               # the weight, its hook, its rope
 var _bulb_rig: Array = []
@@ -150,7 +153,7 @@ func _ready() -> void:
 	_build_wall()
 	_build_ground()
 	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root), _build_motion(root),
-		_build_textures(root), _build_terrain(root), _build_camera(root)])
+		_build_textures(root), _build_terrain(root), _build_camera(root), _build_sound(root)])
 	_set_sun("Off")
 	_fps = Label.new()
 	_fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -181,7 +184,7 @@ func _build_tabs(root: Control, panels: Array) -> void:
 		panel.position = Vector2(16, 48)
 		panel.visible = false
 		var tab := Button.new()
-		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion", "Textures", "Terrain", "Camera"][i]
+		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion", "Textures", "Terrain", "Camera", "Sound"][i]
 		tab.toggle_mode = true
 		tab.button_group = group
 		tab.focus_mode = Control.FOCUS_NONE
@@ -794,6 +797,10 @@ func _reset() -> void:
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
 	(_choices["Sky model"]["Gradient"] as CheckBox).button_pressed = true
 	(_choices["Units"]["Arbitrary"] as CheckBox).button_pressed = true
+	(_choices["Spreading"]["1/d"] as CheckBox).button_pressed = true
+	(_sliders["Volume (dB)"] as HSlider).value = -6.0
+	for title in SOUND_ON:
+		(_switches[title] as CheckButton).button_pressed = true
 	(_choices["Exposure"]["Meter"] as CheckBox).button_pressed = true
 	(_sliders["Compensation (EV)"] as HSlider).value = 0.0
 	(_choices["Curve"]["Linear"] as CheckBox).button_pressed = true
@@ -843,6 +850,7 @@ func _process(delta: float) -> void:
 		if _save_in < 0.0:
 			_save_state()
 	_adapt(delta)
+	_hear(delta)
 	if _terrain_in >= 0.0:
 		_terrain_in -= delta
 		if _terrain_in < 0.0:
@@ -1009,6 +1017,12 @@ func _build_swing() -> void:
 	_bulb_swing.wait = 3.0
 	_ball_rig = [_ball, _hook_mesh(), _rope_mesh(0.015)]
 	_bulb_rig = [_bulb, _hook_mesh(), _rope_mesh(0.006)]
+	# The radio sits on the ball 35 degrees from its top, upright to the
+	# ball's surface there.
+	_radio = BulbRadio.new()
+	var n := Vector3(0.0, cos(deg_to_rad(35.0)), -sin(deg_to_rad(35.0)))
+	_radio.transform = Transform3D(Basis(Vector3.RIGHT, n, Vector3.RIGHT.cross(n)), n * 1.12)
+	_ball.add_child(_radio)
 	_draw_swing(_ball_swing, _ball_rig)
 	_draw_swing(_bulb_swing, _bulb_rig)
 
@@ -1126,26 +1140,29 @@ func _draw_swing(w: Pendulum, rig: Array) -> void:
 ## triplanar in its own space. Height is parallax: the texture shifted
 ## by the view angle, the surface flat; its depth is in millimetres,
 ## turned into Godot's heightmap scale (hundredths of a texture repeat).
+## Each entry's alpha is its sound absorption coefficient near 1 kHz, the
+## share of sound a surface of it absorbs (textbook values, approximate;
+## 0.02 where none is given).
 ## The Moon, the Earth and Mars are global maps (tools/build_planets.py,
 ## NASA and USGS data): on the ball they wrap it once, by its own
 ## texture coordinates, whatever the scale or mapping chosen; on floor
 ## or wall they lie flat as a map 12 m wide.
 const LIBRARY: Array[Dictionary] = [
-	{"name": "Plain gray"},
-	{"name": "Generated tiles", "dir": "generated_tiles", "size": Vector2(2.0, 2.0)},
-	{"name": "Limestone tiles", "dir": "ambientcg_tiles142", "size": Vector2(2.0, 2.0)},
-	{"name": "Travertine", "dir": "travertine", "size": Vector2(1.2, 1.2)},
-	{"name": "Marble", "dir": "marble", "size": Vector2(2.0, 2.0)},
-	{"name": "Wood floor", "dir": "wood_floor", "size": Vector2(1.8, 1.8)},
-	{"name": "Cobblestone", "dir": "cobblestone", "size": Vector2(1.15, 1.15)},
-	{"name": "Paving stones", "dir": "paving_stones", "size": Vector2(3.5, 3.5)},
-	{"name": "Red bricks", "dir": "red_bricks", "size": Vector2(2.4, 1.2)},
-	{"name": "Old stone bricks", "dir": "old_stone_bricks", "size": Vector2(1.8, 0.9)},
-	{"name": "Stone wall", "dir": "stone_wall", "size": Vector2(2.4, 2.4)},
-	{"name": "Rough rock", "dir": "rough_rock", "size": Vector2(2.0, 1.0)},
-	{"name": "Gravel", "dir": "gravel", "size": Vector2(1.6, 1.6)},
-	{"name": "Wet pebbles", "dir": "pebbles", "size": Vector2(1.0, 1.0), "wet": true},
-	{"name": "Grass", "dir": "grass", "size": Vector2(1.4, 1.4), "canopy_rough": 0.9, "canopy_spec": 0.2},
+	{"name": "Plain gray", "alpha": 0.02},
+	{"name": "Generated tiles", "dir": "generated_tiles", "size": Vector2(2.0, 2.0), "alpha": 0.02},
+	{"name": "Limestone tiles", "dir": "ambientcg_tiles142", "size": Vector2(2.0, 2.0), "alpha": 0.02},
+	{"name": "Travertine", "dir": "travertine", "size": Vector2(1.2, 1.2), "alpha": 0.03},
+	{"name": "Marble", "dir": "marble", "size": Vector2(2.0, 2.0), "alpha": 0.01},
+	{"name": "Wood floor", "dir": "wood_floor", "size": Vector2(1.8, 1.8), "alpha": 0.07},
+	{"name": "Cobblestone", "dir": "cobblestone", "size": Vector2(1.15, 1.15), "alpha": 0.05},
+	{"name": "Paving stones", "dir": "paving_stones", "size": Vector2(3.5, 3.5), "alpha": 0.03},
+	{"name": "Red bricks", "dir": "red_bricks", "size": Vector2(2.4, 1.2), "alpha": 0.04},
+	{"name": "Old stone bricks", "dir": "old_stone_bricks", "size": Vector2(1.8, 0.9), "alpha": 0.04},
+	{"name": "Stone wall", "dir": "stone_wall", "size": Vector2(2.4, 2.4), "alpha": 0.05},
+	{"name": "Rough rock", "dir": "rough_rock", "size": Vector2(2.0, 1.0), "alpha": 0.06},
+	{"name": "Gravel", "dir": "gravel", "size": Vector2(1.6, 1.6), "alpha": 0.4},
+	{"name": "Wet pebbles", "dir": "pebbles", "size": Vector2(1.0, 1.0), "wet": true, "alpha": 0.05},
+	{"name": "Grass", "dir": "grass", "size": Vector2(1.4, 1.4), "canopy_rough": 0.9, "canopy_spec": 0.2, "alpha": 0.3},
 	{"name": "The Moon", "dir": "planet_moon", "size": Vector2(12.0, 6.0), "globe": true},
 	{"name": "The Earth", "dir": "planet_earth", "size": Vector2(12.0, 6.0), "globe": true},
 	{"name": "Mars", "dir": "planet_mars", "size": Vector2(12.0, 6.0), "globe": true},
@@ -1665,6 +1682,61 @@ func _adapt(delta: float) -> void:
 	var slider := _sliders["EV100"] as HSlider
 	slider.set_value_no_signal(_ev_now)
 	_show_slider("EV100", _ev_now)
+
+
+## ---- the sound panel --------------------------------------------------------
+
+const SOUND_ON: Array[String] = ["Radio playing", "Air absorption", "Over the wall", "Through the doorway", "Room reverb", "Doppler"]
+
+
+func _build_sound(root: Control) -> Control:
+	var column := _column(root)
+	_sound_status = _note(column, "")
+	_sound_status.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
+	_switch(column, "Radio playing", func(on: bool) -> void: _radio.playing = on)
+	_slider(column, "Volume (dB)", -30.0, 6.0, 0.5, -6.0, func(v: float) -> void: _radio.volume_db = v)
+	_defaults["Volume (dB)"] = -6.0
+	_note(column, "The director's recording, Levittown Levity, on a radio sitting on the ball.")
+	_choice(column, "Spreading", ["1/d", "1/d²", "Log", "None"], func(option: String) -> void: _radio.spreading = option)
+	_note(column, "1/d in amplitude is the physical law, -6 dB each time the distance doubles (Godot calls it inverse distance). Godot's inverse square is 1/d² in amplitude, -12 dB a doubling: too steep.")
+	_switch(column, "Air absorption", func(on: bool) -> void: _radio.air = on)
+	_note(column, "Air takes the treble with distance, about 0.1 dB a metre at 8 kHz: little across the room, a muffled tune from a far hill.")
+	_switch(column, "Over the wall", func(on: bool) -> void: _radio.over_wall = on)
+	_note(column, "With the wall between, sound bends over its top edge: quieter, and the treble most (Maekawa's barrier). Off: only what passes through the masonry, about -45 dB.")
+	_switch(column, "Through the doorway", func(on: bool) -> void: _radio.doorway = on)
+	_note(column, "With the wall between, the music also comes from the doorway, duller the more sharply its path bends there.")
+	_switch(column, "Room reverb", func(on: bool) -> void: _radio.reverb = on)
+	_note(column, "Sabine's reverberation time from the room's size and its floor and wall materials; the open top absorbs most, so it is short, as in a walled courtyard.")
+	_switch(column, "Doppler", func(on: bool) -> void:
+		_radio.doppler = on
+		var cam := get_viewport().get_camera_3d()
+		if cam != null:
+			cam.doppler_tracking = Camera3D.DOPPLER_TRACKING_PHYSICS_STEP if on else Camera3D.DOPPLER_TRACKING_DISABLED)
+	_note(column, "The pitch rises as the radio swings toward you and falls as it swings away; a few hundredths of a semitone at these speeds.")
+	for title in SOUND_ON:
+		(_switches[title] as CheckButton).set_pressed_no_signal(true)
+	var cam := get_viewport().get_camera_3d()
+	if cam != null:
+		cam.doppler_tracking = Camera3D.DOPPLER_TRACKING_PHYSICS_STEP
+	return column.get_parent() as Control
+
+
+## The radio's paths worked out for the ear (the camera) each frame.
+func _hear(delta: float) -> void:
+	var cam := get_viewport().get_camera_3d()
+	if _radio == null or cam == null:
+		return
+	_radio.room_r = _room_r
+	_radio.wall_h = WALL_H
+	_radio.wall_t = WALL_T
+	_radio.door_w = DOOR_W
+	_radio.alpha_floor = float(LIBRARY[_library_index(str(_surf["Floor"]["material"]))].get("alpha", 0.02))
+	_radio.alpha_wall = float(LIBRARY[_library_index(str(_surf["Walls"]["material"]))].get("alpha", 0.02))
+	_radio.listen(cam.global_position)
+	_sound_clock -= delta
+	if _sound_clock <= 0.0:
+		_sound_clock = 0.25
+		_sound_status.text = _radio.status
 
 
 ## ---- the terrain panel -----------------------------------------------------
