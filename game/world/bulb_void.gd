@@ -861,6 +861,10 @@ func _draw_swing(w: Pendulum, rig: Array) -> void:
 ## triplanar in its own space. Height is parallax: the texture shifted
 ## by the view angle, the surface flat; its depth is in millimetres,
 ## turned into Godot's heightmap scale (hundredths of a texture repeat).
+## The Moon, the Earth and Mars are global maps (tools/build_planets.py,
+## NASA and USGS data): on the ball they wrap it once, by its own
+## texture coordinates, whatever the scale or mapping chosen; on floor
+## or wall they lie flat as a map 12 m wide.
 const LIBRARY: Array[Dictionary] = [
 	{"name": "Plain gray"},
 	{"name": "Generated tiles", "dir": "generated_tiles", "size": Vector2(2.0, 2.0)},
@@ -877,6 +881,9 @@ const LIBRARY: Array[Dictionary] = [
 	{"name": "Gravel", "dir": "gravel", "size": Vector2(1.6, 1.6)},
 	{"name": "Wet pebbles", "dir": "pebbles", "size": Vector2(1.0, 1.0), "wet": true},
 	{"name": "Grass", "dir": "grass", "size": Vector2(1.4, 1.4)},
+	{"name": "The Moon", "dir": "planet_moon", "size": Vector2(12.0, 6.0), "globe": true},
+	{"name": "The Earth", "dir": "planet_earth", "size": Vector2(12.0, 6.0), "globe": true},
+	{"name": "Mars", "dir": "planet_mars", "size": Vector2(12.0, 6.0), "globe": true},
 ]
 const TEX_MAPS: Array[String] = ["Albedo", "Roughness", "Normal", "Height", "AO"]
 const TEX_FILES := {"Albedo": "albedo", "Roughness": "roughness", "Normal": "normal", "Height": "height", "AO": "ao"}
@@ -1026,7 +1033,7 @@ func _build_textures(root: Control) -> Control:
 	_choice(column, "Ball map", ["UV", "Triplanar"], func(option: String) -> void:
 		_ball_map = option
 		_apply_textures())
-	_note(column, "UV wraps the image round the ball and pinches it at the poles. Triplanar projects it from three sides, no seams, blended where they meet; Godot does no height with it.")
+	_note(column, "UV wraps the image round the ball and pinches it at the poles. Triplanar projects it from three sides, no seams, blended where they meet; Godot does no height with it. The Moon, the Earth and Mars always wrap the ball once, north pole toward the hook.")
 	_defaults["Normal strength"] = 1.0
 	_defaults["Height depth (mm)"] = 10.0
 	_defaults["Scale"] = 1.0
@@ -1042,7 +1049,9 @@ func _apply_textures() -> void:
 	_dress(_wall_mat, wall_entry, _repeat(wall_entry, k), false, true)
 	var size: Vector2 = ball_entry.get("size", Vector2.ONE) * k
 	var r := _ball_swing.radius
-	if _ball_map == "Triplanar":
+	if ball_entry.get("globe", false):
+		_dress(_ball_mat, ball_entry, Vector3.ONE, false, false)
+	elif _ball_map == "Triplanar":
 		_dress(_ball_mat, ball_entry, Vector3(1.0 / size.x, 1.0 / size.y, 1.0 / size.x), true, false)
 	else:
 		_dress(_ball_mat, ball_entry, Vector3(TAU * r / size.x, PI * r / size.y, 1.0), false, false)

@@ -1,0 +1,1 @@
+Built by tools/build_planets.py from public-domain NASA and USGS data; the script names each source.
