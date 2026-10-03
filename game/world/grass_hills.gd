@@ -287,8 +287,8 @@ func _process(delta: float) -> void:
 		g += gusts.at(at + offset, grass.travel, wind, wd)
 	g /= 5.0
 	_hiss_level = lerpf(_hiss_level, g, clampf(delta * 3.0, 0.0, 1.0))
-	_air.volume_db = linear_to_db(0.12 + 0.6 * wind) - 11.0
-	_hiss.volume_db = linear_to_db(0.03 + 0.9 * _hiss_level * (0.4 + 0.6 * wind)) - 18.0
+	_air.volume_db = linear_to_db(0.12 + 0.6 * wind) - 18.0
+	_hiss.volume_db = linear_to_db(0.03 + 0.9 * _hiss_level * (0.4 + 0.6 * wind)) - 30.0
 
 
 func _after_build() -> void:
