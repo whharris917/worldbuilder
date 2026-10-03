@@ -11,8 +11,16 @@ extends CharacterBody3D
 ## match. Yaw turns the body, pitch free-looks from the vantage point.
 ## Space jumps; in the air the player keeps the speed they left the
 ## ground with and can steer it a little.
+##
+## The pace is a person's: a walk at WALK_SPEED, Shift to run, picking
+## up and slowing over a fraction of a second rather than at once; and
+## the view about ninety degrees across, as a room looks to the eye, so
+## a room is crossed in the steps it takes and looks its size.
 
-const SPEED := 4.0
+const WALK_SPEED := 1.4        # m/s, an unhurried walk
+const RUN_SPEED := 4.5         # m/s, Shift held
+const ACCEL := 6.0             # m/s² picking up
+const DECEL := 9.0             # m/s² slowing to a stop or a walk
 const MOUSE_SENS := 0.0022
 const GRAVITY := 9.8
 const JUMP_SPEED := 3.43       # a 0.6 m rise
@@ -30,7 +38,7 @@ const ZOOM_TOP := Vector3(0, 5.4, 0.9)   # nearly overhead, just trailing the pl
 const ZOOM_STEP := 0.07
 const ZOOM_T_MAX := 4.0        # ~870 m up the handle — effectively unbounded
 const ZOOM_EXT_RATE := 1.6     # exponential growth rate past the top
-const FOV_DEFAULT := 75.0
+const FOV_DEFAULT := 60.0       # vertical: about 90 degrees across at 16:9
 const BASE_REACH := 3.0
 
 @onready var camera: Camera3D = $Camera3D
@@ -150,10 +158,12 @@ func _physics_process(delta: float) -> void:
 	var input := Vector2.ZERO if input_locked else Input.get_vector(
 		"move_left", "move_right", "move_forward", "move_back")
 	var direction := (transform.basis * Vector3(input.x, 0, input.y)).normalized()
-	var wanted := Vector2(direction.x, direction.z) * SPEED * sqrt(body_scale)
+	var pace := RUN_SPEED if Input.is_action_pressed("run") and not input_locked else WALK_SPEED
+	var wanted := Vector2(direction.x, direction.z) * pace * sqrt(body_scale)
 	var ground := Vector2(velocity.x, velocity.z)
 	if grounded:
-		ground = wanted
+		var rate := ACCEL if wanted.length() > ground.length() else DECEL
+		ground = ground.move_toward(wanted, rate * sqrt(body_scale) * delta)
 	elif input != Vector2.ZERO:
 		ground = ground.move_toward(wanted, AIR_STEER * delta)
 	velocity.x = ground.x

@@ -67,7 +67,7 @@ func _ready() -> void:
 	settings.on_graphics_changed = func() -> void:
 		graphics.apply(self)
 		_save_settings()
-	hud.toast("WASD move · E use · wheel zoom (ctrl: optic) · O options · F5/F9 save/load")
+	hud.toast("WASD walk · Shift run · E use · wheel zoom (ctrl: optic) · O options · F5/F9 save/load")
 	_after_build()
 	load_player()
 	print("[worldbuilder] startup %d ms — world %d" % [Time.get_ticks_msec() - t_start, ms_world])

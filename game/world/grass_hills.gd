@@ -11,6 +11,12 @@ class_name GrassHills
 ## the listener (Gusts, the bands on the CPU). Its own save, clock and
 ## grass model.
 ##
+## A farmhouse stands by the pond (HillsLand.find_site), and in its
+## parlour a console radio plays a swing tune of the 1940s
+## (radio_loop.wav), heard through the open doors and windows: it fades
+## with distance and loses its brightness first, so from up the hill it
+## is a faint, muffled tune over the wind.
+##
 ## Drawn in a look (`style`, set by its scene): "real", or "anime"
 ## (grass_hills_painted.tscn), painted as the meadow's painted look is:
 ## the painted sky of towering clouds, soft two-tone light warm in the
@@ -44,6 +50,7 @@ const SKIES: Array = [
 static var _handoff: Array = []
 
 var land: HillsLand
+var house: BuildingMesh
 var grass: GrassField
 var gusts := Gusts.new()
 var wind := 0.3
@@ -125,6 +132,13 @@ func _build_ground() -> void:
 		land.ground_shader = "res://world/hills_ground_painted.gdshader"
 	add_child(land)
 	land.build()
+	if land.site.x != INF:
+		# The farmhouse on its graded yard by the pond, facing the water.
+		house = BuildingMesh.open("res://data/buildings/farmhouse.bld")
+		house.position = Vector3(land.site.x, land.site_y, land.site.y)
+		house.rotation.y = land.site_yaw
+		add_child(house)
+		_build_radio()
 	grass = GrassField.new()
 	grass.name = "Grass"
 	add_child(grass)
@@ -135,6 +149,79 @@ func _build_ground() -> void:
 	land.terrain_mat.set_shader_parameter("reach", float(GrassField.MODELS["shells"]["reach"]))
 	_tune_grass()
 	_build_sound()
+
+
+## The parlour's console radio, in the house's frame (metres, +x its
+## front, the first floor 0.6 m up): a walnut cabinet against the end
+## wall between the windows, its cloth grille and lit dial toward the
+## room, and the tune playing from it.
+func _build_radio() -> void:
+	var radio := Node3D.new()
+	radio.name = "Radio"
+	radio.position = Vector3(0.0, 0.6, 3.75)
+	radio.rotation.y = PI
+	house.add_child(radio)
+	var walnut := StandardMaterial3D.new()
+	walnut.albedo_color = Color(0.24, 0.13, 0.07)
+	walnut.roughness = 0.45
+	var cloth := StandardMaterial3D.new()
+	cloth.albedo_color = Color(0.55, 0.47, 0.34)
+	cloth.roughness = 1.0
+	var dial := StandardMaterial3D.new()
+	dial.albedo_color = Color(0.95, 0.80, 0.50)
+	dial.emission_enabled = true
+	dial.emission = Color(1.0, 0.72, 0.35)
+	dial.emission_energy_multiplier = 1.4
+	# +z toward the room in the radio's own frame.
+	for part: Array in [
+		[Vector3(0.78, 1.02, 0.40), Vector3(0.0, 0.51, 0.0), walnut],
+		[Vector3(0.62, 0.42, 0.02), Vector3(0.0, 0.42, 0.205), cloth],
+		[Vector3(0.40, 0.09, 0.02), Vector3(0.0, 0.80, 0.205), dial],
+		[Vector3(0.82, 0.04, 0.44), Vector3(0.0, 1.04, 0.0), walnut],
+	]:
+		var box := BoxMesh.new()
+		box.size = part[0]
+		var mi := MeshInstance3D.new()
+		mi.mesh = box
+		mi.position = part[1]
+		mi.material_override = part[2]
+		radio.add_child(mi)
+	for x: float in [-0.12, 0.12]:
+		var knob := CylinderMesh.new()
+		knob.top_radius = 0.025
+		knob.bottom_radius = 0.028
+		knob.height = 0.03
+		var k := MeshInstance3D.new()
+		k.mesh = knob
+		k.rotation.x = PI / 2.0
+		k.position = Vector3(x, 0.70, 0.215)
+		k.material_override = walnut
+		radio.add_child(k)
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(1.0, 0.75, 0.45)
+	glow.light_energy = 0.15
+	glow.omni_range = 1.2
+	glow.position = Vector3(0.0, 0.8, 0.35)
+	radio.add_child(glow)
+	if DisplayServer.get_name() == "headless":
+		return
+	var stream := load("res://audio/radio_loop.wav") as AudioStreamWAV
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = int(stream.get_length() * stream.mix_rate)
+	var sound := AudioStreamPlayer3D.new()
+	sound.stream = stream
+	sound.position = Vector3(0.0, 0.5, 0.0)
+	sound.volume_db = -4.0
+	sound.unit_size = 3.0
+	sound.max_distance = 140.0
+	sound.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+	# Farther off the tune keeps its low notes and loses its bright ones.
+	sound.attenuation_filter_cutoff_hz = 2500.0
+	sound.attenuation_filter_db = -18.0
+	sound.bus = "Outdoor"
+	radio.add_child(sound)
+	sound.play()
 
 
 ## No trees.
@@ -236,9 +323,11 @@ func _after_build() -> void:
 		hud.toast("Open hills of long grass, painted. O options: the time of day, the grass, the look. F5/F9 save/load")
 	else:
 		hud.toast("Open hills of long grass. O options: the time of day, the grass, the look. F5/F9 save/load")
-	print("[worldbuilder] hills: terrain %d ms, grass %d ms over %d chunks; pond %d m2, %.1f m deep at (%d, %d), level %.2f"
+	print("[worldbuilder] hills: terrain %d ms, grass %d ms over %d chunks; pond %d m2, %.1f m deep at (%d, %d), level %.2f; farmhouse at (%d, %d), %.1f m over the water, yard spread %.2f m%s"
 		% [int(land.stats.get("ms_terrain", 0)), int(grass.stats.get("ms", 0)), int(grass.stats.get("chunks_with_grass", 0)),
-		int(land.stats.get("lake_m2", 0)), land.lake_depth, int(land.lake_centre.x), int(land.lake_centre.y), land.lake_level])
+		int(land.stats.get("lake_m2", 0)), land.lake_depth, int(land.lake_centre.x), int(land.lake_centre.y), land.lake_level,
+		int(land.site.x), int(land.site.y), land.site_y - land.lake_level, float(land.stats.get("site_spread", 0.0)),
+		" (BROKEN: it fails its checks)" if house != null and house.broken else ""])
 	if DisplayServer.get_name() == "headless":
 		_report_in = 20
 

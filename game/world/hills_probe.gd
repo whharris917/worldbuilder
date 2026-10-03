@@ -8,7 +8,9 @@ extends Node
 ## own (heights over the ground); WORLDBUILDER_HILLS_PRESET picks the
 ## graphics preset (Medium by default); WORLDBUILDER_HILLS_GRASS the
 ## grass's model. Two views follow the world: "start", where the
-## player arrives, and "edge", at the pond's edge looking across it.
+## player arrives, and "edge", at the pond's edge looking across it;
+## "house" the farmhouse from its yard, "parlor" the parlour through the front door,
+## "inside" in it at eye height, "kitchen" the kitchen.
 
 ## name, hour, fov, camera (x, height over ground, z), target (x, height over ground, z).
 const VIEWS := [
@@ -21,6 +23,10 @@ const VIEWS := [
 	["pond_shore", 15.0, 60.0, Vector3(-14.0, 1.6, -30.0), Vector3(-34.0, 0.0, -48.0)],
 	["start", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
 	["edge", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
+	["house", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
+	["parlor", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
+	["kitchen", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
+	["inside", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
 ]
 
 
@@ -71,6 +77,19 @@ func _run(world: GrassHills) -> void:
 		if v[0] == "start":
 			at = world.player.global_position + Vector3.UP * 1.2
 			to = at - world.player.global_basis.z * 40.0 + Vector3.DOWN * 6.0
+		elif v[0] in ["house", "parlor", "kitchen", "inside"]:
+			# The farmhouse from the yard, and its rooms from inside, in its
+			# own frame (metres, +x its front).
+			var b: Node3D = world.house
+			var rooms := {
+				"house": [Vector3(16.0, 1.6, 9.0), Vector3(0.0, 3.0, -2.5)],
+				"parlor": [Vector3(4.6, 2.2, -0.2), Vector3(-2.5, 1.6, 3.5)],
+				"kitchen": [Vector3(0.0, 2.2, -4.9), Vector3(0.0, 1.5, -9.0)],
+				"inside": [Vector3(2.4, 2.2, 0.5), Vector3(-1.0, 1.4, 3.9)],
+			}
+			var pair: Array = rooms[v[0]]
+			at = b.to_global(pair[0])
+			to = b.to_global(pair[1])
 		elif v[0] == "edge":
 			var pond: Vector2 = world.land.lake_centre
 			var from := Vector2(world.player.global_position.x, world.player.global_position.z)

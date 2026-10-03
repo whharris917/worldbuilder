@@ -1,0 +1,72 @@
+{
+  "name": "farmhouse",
+  "title": "A farmhouse by the pond in the open hills",
+  "note": "Not a real building: a plain New England farmhouse of the kind, made for the open hills to give the land its scale. Two storeys under a gable roof (9 in 12), a one-storey kitchen ell whose gable roof dies into the main block, a porch across the front under a lean-to, a chimney in the hall and one at the kitchen's end wall; the kitchen's door on its side, toward the pond. Rooms 8 ft high. Feet; x and z in plan, y up; the front (with the porch) on z1.",
+  "world": {"origin": [14.0, 10.0], "first_floor_m": 0.6, "ft_to_m": 0.3048},
+  "site": {"grade": -2.0, "foundation": -4.0},
+  "defaults": {"wall": 0.8, "partition": 0.4, "slab": 1.0, "roof_depth": 0.6},
+  "levels": [
+    {"id": "first", "floor": 0.0},
+    {"id": "second", "floor": 9.0}
+  ],
+  "groups": [
+    {"id": "main", "wall": 0.8, "material": "clapboard"},
+    {"id": "ell", "wall": 0.8, "material": "clapboard"},
+    {"id": "porch", "wall": 0.0, "material": "none"}
+  ],
+  "spaces": [
+    {"id": "parlor", "level": "first", "kind": "room", "group": "main", "poly": {"rect": [0, 0, 14, 20]}},
+    {"id": "hall", "level": "first", "kind": "room", "group": "main", "poly": {"rect": [14, 0, 28, 20]}},
+    {"id": "kitchen", "level": "first", "kind": "room", "group": "ell", "poly": {"rect": [28, 3, 44, 17]}},
+    {"id": "bed1", "level": "second", "kind": "room", "group": "main", "poly": {"rect": [0, 0, 14, 20]}},
+    {"id": "bed2", "level": "second", "kind": "room", "group": "main", "poly": {"rect": [14, 0, 28, 20]}},
+    {"id": "porch", "level": "first", "kind": "porch", "group": "porch", "floor": -0.2, "poly": {"rect": [3, 20, 25, 27]}}
+  ],
+  "roofs": [
+    {"id": "main", "footprint": {"rect": [0, 0, 28, 20]}, "plate": 17.0, "pitch": 0.75, "overhang": 1.0,
+     "sides": {"x0": {"kind": "gable", "rake": 0.8}, "x1": {"kind": "gable", "rake": 0.8}}},
+    {"id": "ell", "footprint": {"rect": [24, 3, 44, 17]}, "plate": 8.0, "pitch": 0.75, "overhang": 1.0,
+     "sides": {"x0": {"kind": "gable", "rake": 0.0}, "x1": {"kind": "gable", "rake": 0.8}}},
+    {"id": "porch", "footprint": {"space": "porch"}, "porch": "porch", "cover": "tin",
+     "plate": 8.5, "pitch": 0.25, "overhang": 0.8,
+     "sides": {"z0": {"kind": "abut"}, "x0": {"kind": "gable", "rake": 0.5}, "x1": {"kind": "gable", "rake": 0.5}}}
+  ],
+  "openings": [
+    {"at": [10, 20], "w": 3.0, "sill": 0.0, "head": 7.0, "kind": "door"},
+    {"at": [6, 20], "w": 2.6, "sill": 2.5, "head": 7.0},
+    {"at": [17, 20], "w": 2.6, "sill": 2.5, "head": 7.0},
+    {"at": [21.5, 20], "w": 2.6, "sill": 2.5, "head": 7.0},
+    {"at": [6, 20], "w": 2.6, "sill": 11.5, "head": 16.0},
+    {"at": [21, 20], "w": 2.6, "sill": 11.5, "head": 16.0},
+    {"at": [7, 0], "w": 2.6, "sill": 2.5, "head": 7.0},
+    {"at": [21, 0], "w": 2.6, "sill": 2.5, "head": 7.0},
+    {"at": [7, 0], "w": 2.6, "sill": 11.5, "head": 16.0},
+    {"at": [21, 0], "w": 2.6, "sill": 11.5, "head": 16.0},
+    {"at": [0, 6], "w": 2.6, "sill": 2.5, "head": 7.0},
+    {"at": [0, 14], "w": 2.6, "sill": 2.5, "head": 7.0},
+    {"at": [0, 6], "w": 2.6, "sill": 11.5, "head": 16.0},
+    {"at": [0, 14], "w": 2.6, "sill": 11.5, "head": 16.0},
+    {"at": [0, 10], "w": 2.0, "sill": 18.5, "head": 21.0},
+    {"at": [36, 3], "w": 2.6, "sill": 3.0, "head": 7.0},
+    {"at": [36, 17], "w": 2.6, "sill": 3.0, "head": 7.0},
+    {"at": [31.5, 17], "w": 3.0, "sill": 0.0, "head": 7.0, "kind": "door"},
+    {"at": [14, 10], "w": 3.0, "sill": 0.0, "head": 7.0, "kind": "idoor"},
+    {"at": [28, 10], "w": 3.0, "sill": 0.0, "head": 7.0, "kind": "idoor"}
+  ],
+  "style": {
+    "note": "Painted as a New England farmhouse usually is: white clapboard and white trim, the sashes and doors dark green. The floor's edge between the storeys is in the clapboard.",
+    "materials": {
+      "clapboard": {"color": [0.80, 0.78, 0.72], "kind": "clapboard"},
+      "brick": {"color": [0.80, 0.78, 0.72], "kind": "clapboard"},
+      "trim": {"color": [0.84, 0.82, 0.76], "kind": "paint"},
+      "sash": {"color": [0.12, 0.20, 0.14], "kind": "paint"},
+      "door": {"color": [0.12, 0.20, 0.14], "kind": "paint"},
+      "lattice": {"color": [0.84, 0.82, 0.76], "kind": "paint"},
+      "timber": {"color": [0.84, 0.82, 0.76], "kind": "paint"}
+    }
+  },
+  "chimneys": [
+    {"id": "hall", "at": [20, 8], "size": [3.0, 3.0], "base": -4.0, "top": 26.5},
+    {"id": "kitchen", "at": [42.4, 10], "size": [2.5, 2.5], "base": -4.0, "top": 15.5}
+  ]
+}

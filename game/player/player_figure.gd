@@ -15,8 +15,12 @@ const SHIN := 0.42
 const ANKLE_H := 0.08
 const UPPER_ARM := 0.30
 const FOREARM := 0.26
-const STRIDE := 2.6          # metres travelled per gait cycle (two steps)
-const FULL_SPEED := 4.0      # speed at which the gait reaches full swing
+## Metres travelled per gait cycle (two steps): STRIDE_BASE plus
+## STRIDE_PER for each m/s, so a walk takes short steps and a run long
+## ones.
+const STRIDE_BASE := 0.9
+const STRIDE_PER := 0.42
+const FULL_SPEED := 1.4      # speed at which the gait reaches full swing
 const HIP_TURN := 1.0        # the most the legs turn from the view, rad
 
 const COVERALL := Color(0.34, 0.40, 0.46)
@@ -125,7 +129,7 @@ func pose(delta: float, velocity: Vector3, grounded: bool, pitch: float) -> bool
 	var struck := false
 	if grounded:
 		var before := floorf(2.0 * _travel - 0.5)
-		_travel += direction * speed * delta / STRIDE
+		_travel += direction * speed * delta / (STRIDE_BASE + STRIDE_PER * speed)
 		struck = floorf(2.0 * _travel - 0.5) != before and _gait > 0.3
 	_gait = lerpf(_gait, clampf(speed / FULL_SPEED, 0.0, 1.0), 1.0 - exp(-10.0 * delta))
 	_air = lerpf(_air, 0.0 if grounded else 1.0, 1.0 - exp(-14.0 * delta))

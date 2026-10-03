@@ -69,7 +69,7 @@ func _ready() -> void:
 	quit.pressed.connect(func() -> void: get_tree().quit())
 	column.add_child(quit)
 	var hint := Label.new()
-	hint.text = "WASD move · E use · O options · F7 graphics · F5/F9 save/load"
+	hint.text = "WASD walk · Shift run · E use · O options · F7 graphics · F5/F9 save/load"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 11)
 	hint.add_theme_color_override("font_color", Color(0.45, 0.47, 0.45))
