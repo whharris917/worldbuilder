@@ -141,6 +141,7 @@ func _ready() -> void:
 	_build_swing()
 	_build_floor()
 	_build_wall()
+	_build_ground()
 	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root), _build_motion(root),
 		_build_textures(root)])
 	_set_sun("Off")
@@ -153,6 +154,7 @@ func _ready() -> void:
 	root.add_child(_fps)
 	_set_outside("Void")
 	_set_bounce("None")
+	_apply_textures()
 	_load_state()
 	_watch_controls()
 	if DisplayServer.get_name() == "headless":
@@ -699,11 +701,11 @@ func _reset() -> void:
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
 	for title: String in TEX_MAPS:
 		(_switches[title] as CheckButton).set_pressed_no_signal(true)
-	for title: String in ["Normal strength", "Height depth (mm)", "Floor scale", "Walls scale", "Ball scale",
+	for title: String in ["Normal strength", "Height depth (mm)", "Floor scale", "Walls scale", "Ball scale", "Outside scale",
 			"Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	for pick: OptionButton in _picks.values():
-		pick.select(0)
+		pick.select(int(pick.get_meta("default")))
 	(_choices["Filter"]["Mipmaps"] as CheckBox).button_pressed = true
 	(_choices["Ball map"]["UV"] as CheckBox).button_pressed = true
 	_apply_textures()
@@ -1043,6 +1045,9 @@ var _wall_mat: StandardMaterial3D
 var _wall_view: MeshInstance3D
 var _wall_shape: CollisionShape3D
 var _room_r := 15.0                     # the floor's radius and the wall's inner face
+var _ground_mat: StandardMaterial3D
+var _ground_view: MeshInstance3D
+const OUTSIDE_R := 300.0                # the ground outside runs to here
 var _tex_filter := "Mipmaps"
 var _ball_map := "UV"
 var _picks: Dictionary = {}             # surface -> OptionButton
@@ -1071,7 +1076,7 @@ func _shape_floor() -> void:
 			[Vector2(p[0].x, p[0].z), Vector2(p[1].x, p[1].z), Vector2(p[2].x, p[2].z)])
 	st.generate_tangents()
 	($Floor/Mesh as MeshInstance3D).mesh = st.commit()
-	(($Floor/Collision as CollisionShape3D).shape as CylinderShape3D).radius = _room_r
+	(($Floor/Collision as CollisionShape3D).shape as CylinderShape3D).radius = OUTSIDE_R
 
 
 ## The ring wall, 20 cm thick and 3.6 m high, open in a doorway 0.9 m
@@ -1125,20 +1130,56 @@ func _shape_wall() -> void:
 	_wall_shape.shape = mesh.create_trimesh_shape()
 
 
+## The ground outside the room: a ring from under the wall out to
+## OUTSIDE_R, level with the floor, its texture coordinates its x and z
+## in metres. The floor's collider reaches as far, so the player can
+## walk out through the doorway and on to its edge.
+func _build_ground() -> void:
+	_ground_view = MeshInstance3D.new()
+	_ground_mat = StandardMaterial3D.new()
+	_ground_mat.albedo_color = PLAIN
+	_ground_view.material_override = _ground_mat
+	add_child(_ground_view)
+	_shape_ground()
+
+
+func _shape_ground() -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 256
+	var up: Array = [Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP]
+	for i in n:
+		var a0 := TAU * i / n
+		var a1 := TAU * (i + 1) / n
+		var p: Array = [Vector3(sin(a0), 0, cos(a0)) * _room_r, Vector3(sin(a1), 0, cos(a1)) * _room_r,
+			Vector3(sin(a1), 0, cos(a1)) * OUTSIDE_R, Vector3(sin(a0), 0, cos(a0)) * OUTSIDE_R]
+		var uv: Array = []
+		for at: Vector3 in p:
+			uv.append(Vector2(at.x, at.z))
+		_quad(st, p, up, uv)
+	st.generate_tangents()
+	_ground_view.mesh = st.commit()
+
+
 ## The room at a new radius: floor, wall, the hooks' paths (the ball's
-## 0.7 of the radius out, the bulb's 0.6), the player kept inside, the
+## 0.7 of the radius out, the bulb's 0.6), the ground outside, the player kept clear of the wall, the
 ## finite sun's aim.
 func _set_room(r: float) -> void:
+	var was_inside := Vector2(player.global_position.x, player.global_position.z).length() <= _room_r + WALL_T / 2.0
 	_room_r = r
 	_shape_floor()
 	_shape_wall()
+	_shape_ground()
 	_ball_swing.corners = _corners(0.7 * r, [30.0, 150.0, 270.0])
 	_bulb_swing.corners = _corners(0.6 * r, [90.0, 210.0, 330.0])
+	# The wall never lands on the player: kept on whichever side they were.
 	var at := player.global_position
 	var flat := Vector2(at.x, at.z)
-	if flat.length() > r - 0.6:
+	if was_inside and flat.length() > r - 0.6:
 		flat = flat.normalized() * (r - 0.6)
-		player.global_position = Vector3(flat.x, at.y, flat.y)
+	elif not was_inside and flat.length() < r + WALL_T + 0.6:
+		flat = flat.normalized() * (r + WALL_T + 0.6)
+	player.global_position = Vector3(flat.x, at.y, flat.y)
 	_place_sun()
 
 
@@ -1169,7 +1210,7 @@ static func _quad(st: SurfaceTool, p: Array, n: Array, uv: Array) -> void:
 
 func _build_textures(root: Control) -> Control:
 	var column := _column(root)
-	for surface: String in ["Floor", "Walls", "Ball"]:
+	for surface: String in ["Floor", "Walls", "Ball", "Outside"]:
 		var row := HBoxContainer.new()
 		var label := Label.new()
 		label.text = surface
@@ -1180,6 +1221,8 @@ func _build_textures(root: Control) -> Control:
 		pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		for entry: Dictionary in LIBRARY:
 			pick.add_item(str(entry["name"]))
+		pick.set_meta("default", _library_index("Grass") if surface == "Outside" else 0)
+		pick.select(int(pick.get_meta("default")))
 		pick.item_selected.connect(func(_i: int) -> void: _apply_textures())
 		row.add_child(pick)
 		column.add_child(row)
@@ -1194,7 +1237,7 @@ func _build_textures(root: Control) -> Control:
 	_slider(column, "Height depth (mm)", 0.0, 100.0, 1.0, 10.0, func(_v: float) -> void: _apply_textures())
 	_switch(column, "Deep parallax", func(_on: bool) -> void: _apply_textures())
 	_note(column, "Steps through the height in layers so raised parts hide what lies behind them; costs more.")
-	for surface: String in ["Floor", "Walls", "Ball"]:
+	for surface: String in ["Floor", "Walls", "Ball", "Outside"]:
 		_slider(column, surface + " scale", 0.25, 4.0, 0.05, 1.0, func(_v: float) -> void: _apply_textures())
 		_defaults[surface + " scale"] = 1.0
 	_note(column, "1 is each material's real size; the planets always wrap the ball once.")
@@ -1217,6 +1260,8 @@ func _apply_textures() -> void:
 	var floor_entry := LIBRARY[(_picks["Floor"] as OptionButton).selected]
 	var wall_entry := LIBRARY[(_picks["Walls"] as OptionButton).selected]
 	var ball_entry := LIBRARY[(_picks["Ball"] as OptionButton).selected]
+	var outside_entry := LIBRARY[(_picks["Outside"] as OptionButton).selected]
+	_dress(_ground_mat, outside_entry, _repeat(outside_entry, _scale("Outside")), false, true)
 	_dress(_floor_mat, floor_entry, _repeat(floor_entry, _scale("Floor")), false, true)
 	_dress(_wall_mat, wall_entry, _repeat(wall_entry, _scale("Walls")), false, true)
 	var size: Vector2 = ball_entry.get("size", Vector2.ONE) * _scale("Ball")
@@ -1227,6 +1272,13 @@ func _apply_textures() -> void:
 		_dress(_ball_mat, ball_entry, Vector3(1.0 / size.x, 1.0 / size.y, 1.0 / size.x), true, false)
 	else:
 		_dress(_ball_mat, ball_entry, Vector3(TAU * r / size.x, PI * r / size.y, 1.0), false, false)
+
+
+static func _library_index(entry_name: String) -> int:
+	for i in LIBRARY.size():
+		if str(LIBRARY[i]["name"]) == entry_name:
+			return i
+	return 0
 
 
 func _scale(surface: String) -> float:
