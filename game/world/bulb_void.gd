@@ -1059,29 +1059,80 @@ func _step_swing(delta: float) -> void:
 		_draw_swing(_bulb_swing, _bulb_rig)
 		return
 	var dt := delta / SUBSTEPS
+	var hardest := 0.0
+	var where := Vector3.ZERO
 	for _i in SUBSTEPS:
 		_ball_swing.step(dt)
 		_bulb_swing.step(dt)
-		_knock_wall(_ball_swing)
+		var hit := _knock_wall(_ball_swing)
+		if hit > hardest:
+			hardest = hit
+			var c := _ball_swing.centre()
+			where = c + Vector3(c.x, 0, c.z).normalized() * _ball_swing.radius
 		_knock_wall(_bulb_swing)
 		_knock_each_other(_ball_swing, _bulb_swing)
 	_draw_swing(_ball_swing, _ball_rig)
 	_draw_swing(_bulb_swing, _bulb_rig)
+	_knock_sound(hardest, where, delta)
 
 
 ## A weight that reaches the wall, below its top, is put back against it and bounces
 ## off, leaving the restitution's share of its speed toward the wall.
-func _knock_wall(w: Pendulum) -> void:
+## Returns the speed it struck at, 0 if it did not.
+func _knock_wall(w: Pendulum) -> float:
 	var c := w.centre()
 	var flat := Vector3(c.x, 0, c.z)
 	var limit := _room_r - w.radius
 	if flat.length() <= limit or c.y - w.radius >= WALL_H:
-		return
+		return 0.0
 	var out := flat.normalized()
 	w.place(c - out * (flat.length() - limit))
 	var vn := w.velocity().dot(out)
 	if vn > 0.0:
 		w.push(-out * (1.0 + _restitution) * vn)
+		return vn
+	return 0.0
+
+
+## The ball striking the wall, heard where it struck: a knock whose
+## amplitude goes as the speed of impact (6 dB louder for twice as
+## fast), 0 dB at 3 m/s and at most +6, a little higher in pitch the
+## harder it struck.
+## It plays through the radio's own path to the ear (the radio sits on
+## the ball), so outside the wall it comes muffled over the top like the
+## music. A knock under 3 cm/s, or within a tenth of a second of the
+## last, is the ball settling against the wall, and is not heard.
+const KNOCKS: Array[String] = ["res://audio/knock_1.wav", "res://audio/knock_2.wav", "res://audio/knock_3.wav"]
+var _knock_players: Array[AudioStreamPlayer3D] = []
+var _knock_gap := 0.0
+
+
+func _knock_sound(speed: float, at: Vector3, delta: float) -> void:
+	_knock_gap -= delta
+	if speed < 0.03 or _knock_gap > 0.0 or not (_switches["Knocks"] as CheckButton).button_pressed:
+		return
+	if DisplayServer.get_name() == "headless":
+		return
+	_knock_gap = 0.1
+	if _knock_players.is_empty():
+		for i in 3:
+			var p := AudioStreamPlayer3D.new()
+			p.unit_size = 2.0
+			p.max_distance = 0.0
+			p.attenuation_filter_db = 0.0
+			p.bus = "BulbRadio"
+			add_child(p)
+			_knock_players.append(p)
+	var player := _knock_players[0]
+	for p in _knock_players:
+		if not p.playing:
+			player = p
+			break
+	player.stream = load(KNOCKS[randi() % KNOCKS.size()]) as AudioStream
+	player.global_position = at
+	player.volume_db = minf(20.0 * log(speed / 3.0) / log(10.0), 6.0)
+	player.pitch_scale = randf_range(0.94, 1.02) + 0.04 * clampf(speed / 2.0, 0.0, 1.0)
+	player.play()
 
 
 ## Two weights that meet are parted and exchange momentum along the
@@ -1686,7 +1737,7 @@ func _adapt(delta: float) -> void:
 
 ## ---- the sound panel --------------------------------------------------------
 
-const SOUND_ON: Array[String] = ["Radio playing", "Air absorption", "Over the wall", "Through the doorway", "Room reverb", "Doppler"]
+const SOUND_ON: Array[String] = ["Radio playing", "Knocks", "Air absorption", "Over the wall", "Through the doorway", "Room reverb", "Doppler"]
 
 
 func _build_sound(root: Control) -> Control:
@@ -1697,6 +1748,8 @@ func _build_sound(root: Control) -> Control:
 	_slider(column, "Volume (dB)", -30.0, 6.0, 0.5, -6.0, func(v: float) -> void: _radio.volume_db = v)
 	_defaults["Volume (dB)"] = -6.0
 	_note(column, "The director's recording, Levittown Levity, on a radio sitting on the ball.")
+	_switch(column, "Knocks", func(_on: bool) -> void: pass)
+	_note(column, "The ball striking the wall, loud as the speed it struck at: twice as fast, 6 dB louder. Raise the ball's hook speed under Motion to make it swing into the wall.")
 	_choice(column, "Spreading", ["1/d", "1/d²", "Log", "None"], func(option: String) -> void: _radio.spreading = option)
 	_note(column, "1/d in amplitude is the physical law, -6 dB each time the distance doubles (Godot calls it inverse distance). Godot's inverse square is 1/d² in amplitude, -12 dB a doubling: too steep.")
 	_switch(column, "Air absorption", func(on: bool) -> void: _radio.air = on)

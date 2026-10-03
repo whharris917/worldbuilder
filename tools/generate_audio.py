@@ -27,6 +27,8 @@ Writes to game/audio/:
   crickets_loop.wav  10 s seamless field crickets and tree crickets
   bird_*.wav      white-throated sparrow, chickadee, robin, wood thrush
                   (two), barred owl
+  knock_1..3.wav  a heavy ball striking a stone wall: a falling low
+                  body tone, a mid knock, a stone click
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -888,6 +890,41 @@ def make_birds() -> None:
     write_wav(OUT_DIR / "bird_owl.wav", [out], normalize_to=0.45)
 
 
+def make_knock(path: Path, r: random.Random, f0: float, decay: float, mid: float) -> None:
+    """A heavy ball striking a stone wall: the ball's body as a low tone
+    falling in pitch as the contact springs back, a short mid knock of
+    band-limited noise from the contact itself, and a brief bright click
+    of stone, over half a second. Its own generator, so the other files
+    stay as they are."""
+    duration = 0.6
+    n = int(duration * SR)
+    noise = _noise_r(r, n)
+    # The knock: noise between about mid / 2 and mid * 2.
+    low = 1.0 - math.exp(-2.0 * math.pi * mid * 2.0 / SR)
+    high = 1.0 - math.exp(-2.0 * math.pi * mid * 0.5 / SR)
+    band = _lowpass(_lowpass(noise, low), low)
+    under = _lowpass(band, high)
+    knock = [band[i] - under[i] for i in range(n)]
+    click = _noise_r(r, n)
+    phase = 0.0
+    buf = [0.0] * n
+    for i in range(n):
+        t = i / SR
+        attack = min(1.0, t / 0.0015)
+        phase += 2.0 * math.pi * (f0 * (0.62 + 0.38 * math.exp(-t * 18.0))) / SR
+        body = math.sin(phase) * math.exp(-t * decay)
+        thump = knock[i] * 16.0 * math.exp(-t * 35.0)
+        tick = click[i] * 0.7 * math.exp(-t * 600.0)
+        buf[i] = (body + thump + tick) * attack
+    write_wav(path, [buf], normalize_to=0.6)
+
+
+def make_knocks() -> None:
+    r = random.Random(20261003)
+    for idx, (f0, decay, mid) in enumerate([(92.0, 9.0, 420.0), (84.0, 8.0, 380.0), (100.0, 10.0, 470.0)], start=1):
+        make_knock(OUT_DIR / f"knock_{idx}.wav", r, f0, decay, mid)
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -910,6 +947,7 @@ def main() -> None:
     make_engine()
     make_crickets()
     make_birds()
+    make_knocks()
     print("done")
 
 
