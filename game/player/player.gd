@@ -17,7 +17,7 @@ extends CharacterBody3D
 ## the view about ninety degrees across, as a room looks to the eye, so
 ## a room is crossed in the steps it takes and looks its size.
 
-const WALK_SPEED := 1.4        # m/s, an unhurried walk
+const WALK_SPEED := 2.0        # m/s, a brisk walk
 const RUN_SPEED := 4.5         # m/s, Shift held
 const ACCEL := 6.0             # m/s² picking up
 const DECEL := 9.0             # m/s² slowing to a stop or a walk

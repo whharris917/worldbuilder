@@ -20,7 +20,7 @@ const FOREARM := 0.26
 ## ones.
 const STRIDE_BASE := 0.9
 const STRIDE_PER := 0.42
-const FULL_SPEED := 1.4      # speed at which the gait reaches full swing
+const FULL_SPEED := 2.0      # speed at which the gait reaches full swing
 const HIP_TURN := 1.0        # the most the legs turn from the view, rad
 
 const COVERALL := Color(0.34, 0.40, 0.46)
