@@ -30,6 +30,16 @@ extends Node3D
 ## combination are dimmed, and a line at the top says where the light on
 ## the surfaces is coming from.
 ##
+## The ball hangs on a rope from a hook 12 m up. The hook travels the
+## edges of a triangle around the ball's corner of the room, easing in
+## and out along each (a minimum-jerk profile), and waits at each corner
+## before the next; the ball swings as a rigid pendulum would. Its
+## motion is integrated here, in the hook's moving frame: gravity less
+## the hook's acceleration, its component across the rope scaled by
+## Lc^2 / (Lc^2 + 2/5 r^2) for a solid ball's own turning (Lc from hook
+## to the ball's centre), the rope held at its length, a little air
+## drag. A count of frames a second sits at the top right.
+##
 ## The bulb's glass takes no part in GI (it encloses the light, and a
 ## voxel or distance-field method would count it solid and smother the
 ## light), and the player's body is dynamic, so the methods that bake
@@ -71,6 +81,13 @@ var _sky_box: VBoxContainer
 var _bounce_box: VBoxContainer
 var _specular_box: VBoxContainer
 var _voxel_gi: VoxelGI = null
+var _fps: Label
+@onready var _ball: AnimatableBody3D = $Ball
+var _hook: MeshInstance3D
+var _rope: MeshInstance3D
+var _swing := Vector3(0, -1, 0) * 1.0      # hook to ball centre
+var _swing_v := Vector3.ZERO                # its rate of change
+var _clock := 0.0
 var _sun_model := "Off"                # Off, Infinite or Finite
 var _sun_far: DirectionalLight3D
 var _sun_near: SpotLight3D
@@ -127,6 +144,14 @@ func _ready() -> void:
 	layer.add_child(root)
 	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root)])
 	_set_sun("Off")
+	_fps = Label.new()
+	_fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_fps.offset_left = -120.0
+	_fps.offset_right = -16.0
+	_fps.offset_top = 12.0
+	_fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	root.add_child(_fps)
+	_build_swing()
 	_set_outside("Void")
 	_set_bounce("None")
 	if DisplayServer.get_name() == "headless":
@@ -691,7 +716,92 @@ func _exit_tree() -> void:
 	vp.positional_shadow_atlas_16_bits = _atlas16_was
 
 
-func _physics_process(_delta: float) -> void:
+func _process(_delta: float) -> void:
+	var fps := Engine.get_frames_per_second()
+	_fps.text = "%d fps  %.1f ms" % [fps, 1000.0 / maxf(fps, 1.0)]
+
+
+## ---- the swinging ball -----------------------------------------------------
+
+const HOOK_Y := 12.0
+const BALL_Y := 1.3                     # the ball's centre at rest
+const BALL_R := 1.0
+const CORNERS: Array[Vector3] = [Vector3(5.3, 0, -1.8), Vector3(2.27, 0, -7.05), Vector3(8.33, 0, -7.05)]
+# A move near the swing's own period (about 6.6 s) pumps it up until
+# the ball reaches the wall; at 10 s, with 4 s waits, it sways up to
+# about 0.9 m and stays there.
+const WAIT := 4.0                       # s at each corner
+const MOVE := 10.0                      # s along each edge
+const DRAG := 0.03                      # 1/s
+const SUBSTEPS := 8
+
+
+func _build_swing() -> void:
+	_hook = MeshInstance3D.new()
+	var hook_mesh := BoxMesh.new()
+	hook_mesh.size = Vector3(0.3, 0.15, 0.3)
+	_hook.mesh = hook_mesh
+	add_child(_hook)
+	_rope = MeshInstance3D.new()
+	var rope_mesh := CylinderMesh.new()
+	rope_mesh.top_radius = 0.015
+	rope_mesh.bottom_radius = 0.015
+	rope_mesh.radial_segments = 8
+	rope_mesh.rings = 1
+	rope_mesh.height = 1.0
+	_rope.mesh = rope_mesh
+	add_child(_rope)
+	for node: GeometryInstance3D in [_hook, _rope]:
+		node.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
+	_swing = Vector3(0, BALL_Y - HOOK_Y, 0)
+	_swing_v = Vector3.ZERO
+	_clock = 0.0
+	_draw_swing(_hook_at(0.0))
+
+
+## Where the hook is t seconds into its round of the triangle.
+func _hook_at(t: float) -> Vector3:
+	var leg := WAIT + MOVE
+	var t_round := fposmod(t, leg * CORNERS.size())
+	var i := int(t_round / leg)
+	var a := CORNERS[i]
+	var b := CORNERS[(i + 1) % CORNERS.size()]
+	var s := clampf((t_round - i * leg - WAIT) / MOVE, 0.0, 1.0)
+	s = s * s * s * (10.0 - 15.0 * s + 6.0 * s * s)
+	return a.lerp(b, s) + Vector3(0, HOOK_Y, 0)
+
+
+func _step_swing(delta: float) -> void:
+	var length := HOOK_Y - BALL_Y
+	var turning := length * length / (length * length + 0.4 * BALL_R * BALL_R)
+	var dt := delta / SUBSTEPS
+	for _i in SUBSTEPS:
+		var hook_accel := (_hook_at(_clock + dt) - 2.0 * _hook_at(_clock) + _hook_at(_clock - dt)) / (dt * dt)
+		var along := _swing.normalized()
+		var force := Vector3(0, -9.8, 0) - hook_accel
+		var across := force - along * force.dot(along)
+		_swing_v += (across * turning - _swing_v * DRAG) * dt
+		_swing = (_swing + _swing_v * dt).normalized() * length
+		along = _swing.normalized()
+		_swing_v -= along * _swing_v.dot(along)
+		_clock += dt
+	_draw_swing(_hook_at(_clock))
+
+
+func _draw_swing(hook: Vector3) -> void:
+	var along := _swing.normalized()
+	var side := Vector3.RIGHT if absf(along.x) < 0.9 else Vector3.FORWARD
+	var up := -along
+	var x := side.cross(up).normalized()
+	var aim := Basis(x, up, x.cross(up))
+	_ball.global_transform = Transform3D(aim, hook + _swing)
+	_hook.position = hook
+	var top := hook + _swing - along * BALL_R
+	_rope.global_transform = Transform3D(aim.scaled_local(Vector3(1, (top - hook).length(), 1)), (hook + top) * 0.5)
+
+
+func _physics_process(delta: float) -> void:
+	_step_swing(delta)
 	if player.global_position.y < -30.0:
 		player.global_position = START
 		player.velocity = Vector3.ZERO
