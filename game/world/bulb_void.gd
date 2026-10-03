@@ -83,6 +83,7 @@ var _ball_swing: Pendulum
 var _bulb_swing: Pendulum
 var _ball_rig: Array = []               # the weight, its hook, its rope
 var _bulb_rig: Array = []
+var _bounce := 0.9                      # restitution of a knock: 1 loses nothing
 var _sun_model := "Off"                # Off, Infinite or Finite
 var _sun_far: DirectionalLight3D
 var _sun_near: SpotLight3D
@@ -688,7 +689,7 @@ func _reset() -> void:
 	(_choices["Outside"]["Void"] as CheckBox).button_pressed = true
 	(_choices["Bounce"]["None"] as CheckBox).button_pressed = true
 	for title: String in ["Polar angle", "Azimuth", "Sun energy", "Distance (m)",
-			"Ball speed", "Ball wait", "Bulb speed", "Bulb wait"]:
+			"Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
 	_refresh()
@@ -720,7 +721,6 @@ func _process(_delta: float) -> void:
 ## ---- the swinging ball and bulb ----------------------------------------------
 
 const WALL_R := 15.0                    # the wall's inner face
-const BOUNCE := 0.3                     # restitution of a knock
 const SUBSTEPS := 8
 
 
@@ -785,7 +785,7 @@ func _step_swing(delta: float) -> void:
 
 
 ## A weight that reaches the wall is put back against it and bounces
-## off, losing most of its speed into the wall.
+## off, leaving the restitution's share of its speed toward the wall.
 func _knock_wall(w: Pendulum) -> void:
 	var c := w.centre()
 	var flat := Vector3(c.x, 0, c.z)
@@ -796,7 +796,7 @@ func _knock_wall(w: Pendulum) -> void:
 	w.place(c - out * (flat.length() - limit))
 	var vn := w.velocity().dot(out)
 	if vn > 0.0:
-		w.push(-out * (1.0 + BOUNCE) * vn)
+		w.push(-out * (1.0 + _bounce) * vn)
 
 
 ## Two weights that meet are parted and exchange momentum along the
@@ -813,7 +813,7 @@ func _knock_each_other(a: Pendulum, b: Pendulum) -> void:
 	b.place(b.centre() + n * gap * inv_b / (inv_a + inv_b))
 	var vn := (b.velocity() - a.velocity()).dot(n)
 	if vn < 0.0:
-		var j := -(1.0 + BOUNCE) * vn / (inv_a + inv_b)
+		var j := -(1.0 + _bounce) * vn / (inv_a + inv_b)
 		a.push(-n * j * inv_a)
 		b.push(n * j * inv_b)
 
@@ -844,7 +844,10 @@ func _build_motion(root: Control) -> Control:
 	_slider(column, "Bulb speed", 0.2, 3.0, 0.05, _bulb_swing.speed, func(v: float) -> void: _bulb_swing.speed = v)
 	_slider(column, "Bulb wait", 0.0, 10.0, 0.1, _bulb_swing.wait, func(v: float) -> void: _bulb_swing.wait = v)
 	_note(column, "Speed is the hook's average along an edge, in m/s; wait is the pause at each corner, in seconds. The ball swings back and forth about every 6.6 s and the bulb every 6.3 s; a hook whose stops and starts fall in step with that swings its weight higher and higher, and the ball then strikes the wall.")
-	for title: String in ["Ball speed", "Ball wait", "Bulb speed", "Bulb wait"]:
+	_heading(column, "Knocks")
+	_slider(column, "Restitution", 0.0, 1.0, 0.01, _bounce, func(v: float) -> void: _bounce = v)
+	_note(column, "The share of the closing speed kept after a knock, against the wall or between ball and bulb: 1 bounces back as fast as it came, 0 stops dead.")
+	for title: String in ["Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution"]:
 		_defaults[title] = (_sliders[title] as HSlider).value
 	return column.get_parent() as Control
 
