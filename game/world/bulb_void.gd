@@ -93,6 +93,8 @@ var _distance_box: VBoxContainer
 var _sun_note: Label
 var _sky_mat: ProceduralSkyMaterial
 var _phys_mat: PhysicalSkyMaterial
+var _atmo_mat: ShaderMaterial
+var _atmo_box: VBoxContainer
 var _sky_model := "Gradient"            # Gradient or Physical
 var _grad_box: VBoxContainer
 var _phys_box: VBoxContainer
@@ -257,7 +259,7 @@ func _build_right(root: Control) -> Control:
 	_slider(_colour_box, "Ambient energy", 0.0, 2.0, 0.01, _env.ambient_light_energy, func(v: float) -> void:
 		_env.ambient_light_energy = v)
 	_sky_box = _box(column)
-	_choice(_sky_box, "Sky model", ["Gradient", "Physical"], _set_sky_model)
+	_choice(_sky_box, "Sky model", ["Gradient", "Physical", "Atmosphere"], _set_sky_model)
 	_grad_box = _box(_sky_box)
 	var pickers := _colour_row(_grad_box, ["Sky top", "horizon"],
 		[_sky_mat.sky_top_color, _sky_mat.sky_horizon_color])
@@ -286,7 +288,17 @@ func _build_right(root: Control) -> Control:
 		_slider(_phys_box, str(spec[0]), float(spec[2]), float(spec[3]), float(spec[4]), float(_phys_mat.get(prop)),
 			func(v: float) -> void: _phys_mat.set(prop, v))
 		_defaults[str(spec[0])] = float(_phys_mat.get(prop))
-	_note(_phys_box, "The sky worked out from the sun: Rayleigh scattering off air molecules (blue overhead, red at sunset), Mie scattering off haze (the white glow round the sun, strongest forward). Turbidity is how hazy the air is. With the sun off, the physical sky is night.")
+	_atmo_box = _box(_sky_box)
+	_atmo_mat = ShaderMaterial.new()
+	_atmo_mat.shader = load("res://world/atmosphere_sky.gdshader") as Shader
+	for spec: Array in [["Air density", "rayleigh_scale", 0.0, 3.0, 0.01, 1.0], ["Haze", "mie_scale", 0.0, 20.0, 0.1, 1.0],
+			["Ozone", "ozone_scale", 0.0, 3.0, 0.01, 1.0], ["Haze forward", "mie_g", 0.0, 0.95, 0.01, 0.8]]:
+		var param := str(spec[1])
+		_slider(_atmo_box, str(spec[0]), float(spec[2]), float(spec[3]), float(spec[4]), float(spec[5]),
+			func(v: float) -> void: _atmo_mat.set_shader_parameter(param, v))
+		_defaults[str(spec[0])] = float(spec[5])
+	_note(_atmo_box, "Worked out here, step by step along each line of sight through 100 km of air: sunlight scattered by the air (Rayleigh) and by haze (Mie), and absorbed by ozone, which turns twilight purple. The Earth's shadow gives twilight and night. 1 is the standard atmosphere and a clear day.")
+	_note(_phys_box, "Godot's own physical sky: Rayleigh scattering off air molecules (blue overhead, red at sunset), Mie scattering off haze (the white glow round the sun, strongest forward). Turbidity is how hazy the air is. With the sun off, the physical sky is night.")
 
 	_choice(column, "Bounce", ["None", "SDFGI", "VoxelGI"], _set_bounce)
 	_bounce_box = _box(column)
@@ -409,6 +421,9 @@ func _place_sun() -> void:
 	_sun_far.basis = aim
 	_sun_sky.basis = aim
 	_sun_sky.light_energy = energy
+	if _atmo_mat != null:
+		_atmo_mat.set_shader_parameter("sun_dir", dir)
+		_atmo_mat.set_shader_parameter("sun_illuminance", 0.0 if _sun_model == "Off" else energy)
 	if _phys_mat != null:
 		_phys_mat.energy_multiplier = float((_sliders["Air brightness"] as HSlider).value) * (SKY_CAL if _physical else 1.0)
 	# What reaches the ground: the sun's light less what the air scatters
@@ -502,7 +517,7 @@ func _set_outside(option: String) -> void:
 ## (worked out from the sun's direction by Rayleigh and Mie scattering).
 func _set_sky_model(option: String) -> void:
 	_sky_model = option
-	_env.sky.sky_material = _phys_mat if option == "Physical" else _sky_mat
+	_env.sky.sky_material = _phys_mat if option == "Physical" else (_atmo_mat if option == "Atmosphere" else _sky_mat)
 	_refresh()
 
 
@@ -535,6 +550,7 @@ func _refresh() -> void:
 	_enable(_sky_box, _outside == "Sky")
 	_enable(_grad_box, _outside == "Sky" and _sky_model == "Gradient")
 	_enable(_phys_box, _outside == "Sky" and _sky_model == "Physical")
+	_enable(_atmo_box, _outside == "Sky" and _sky_model == "Atmosphere")
 	_enable(_bounce_box, _bounce != "None")
 	var metal := _ball_mat.metallic >= 0.999
 	_enable(_specular_box, not metal)
@@ -783,7 +799,8 @@ func _reset() -> void:
 	(_choices["Curve"]["Linear"] as CheckBox).button_pressed = true
 	for title: String in ["EV100", "Bulb (lm)", "White point"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
-	for title: String in ["Turbidity", "Rayleigh", "Mie", "Mie forward", "Sun disc size", "Air brightness"]:
+	for title: String in ["Turbidity", "Rayleigh", "Mie", "Mie forward", "Sun disc size", "Air brightness",
+			"Air density", "Haze", "Ozone", "Haze forward"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	for title: String in ["Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)",
 			"Hill height (m)", "Hill size (m)", "Ruggedness", "Seed"]:
