@@ -7,7 +7,7 @@ extends Node
 ## WORLDBUILDER_HILLS_VIEWS=name:hour:fov:x,y,z:tx,ty,tz;... takes its
 ## own (heights over the ground); WORLDBUILDER_HILLS_PRESET picks the
 ## graphics preset (Medium by default); WORLDBUILDER_HILLS_GRASS the
-## grass's model. Two views follow the world: "start", where the
+## grass's model; WORLDBUILDER_HILLS_DRIVE=1 drives the truck. Two views follow the world: "start", where the
 ## player arrives, and "edge", at the pond's edge looking across it;
 ## "house" the farmhouse from its yard, "parlor" the parlour through the front door,
 ## "inside" in it at eye height, "kitchen" the kitchen; "lane" down
@@ -29,6 +29,7 @@ const VIEWS := [
 	["kitchen", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
 	["inside", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
 	["lane", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
+	["truck", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
 	["road", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
 ]
 
@@ -67,6 +68,24 @@ func _run(world: GrassHills) -> void:
 			var p := parts[3].split_floats(",")
 			var t := parts[4].split_floats(",")
 			views.append([parts[0], float(parts[1]), float(parts[2]), Vector3(p[0], p[1], p[2]), Vector3(t[0], t[1], t[2])])
+	# WORLDBUILDER_HILLS_DRIVE=1: get into the truck, drive it down the
+	# lane with the throttle open, steering a little, and photograph from
+	# the seat and from behind, printing its speed.
+	if OS.get_environment("WORLDBUILDER_HILLS_DRIVE") == "1":
+		world.set_time_of_day(15.0)
+		cam.current = false
+		world.truck.use()
+		Input.action_press("move_forward")
+		for i in 7:
+			await get_tree().create_timer(1.0).timeout
+			print("[probe] driving %d s: %.1f m/s at %s" % [i + 1, world.truck.linear_velocity.length(), str(world.truck.global_position)])
+		await _shot("probe_hills_drive_seat")
+		world.truck._chase = true
+		world.truck._chase_cam.current = true
+		await _shot("probe_hills_drive_behind")
+		Input.action_release("move_forward")
+		get_tree().quit()
+		return
 	var only := OS.get_environment("WORLDBUILDER_HILLS_SHOTS")
 	for v: Array in views:
 		if only != "" and not (str(v[0]) in only.split(",")):
@@ -93,6 +112,11 @@ func _run(world: GrassHills) -> void:
 			var pair: Array = rooms[v[0]]
 			at = b.to_global(pair[0])
 			to = b.to_global(pair[1])
+		elif v[0] == "truck":
+			# The pickup from in front and to its left.
+			var tr: Node3D = world.truck
+			at = tr.to_global(Vector3(3.5, 1.6, 6.0))
+			to = tr.to_global(Vector3(0.0, 1.0, 0.0))
 		elif v[0] == "lane" or v[0] == "road":
 			# "lane": from the back of the yard along the driveway to the
 			# road; "road": on the road a way off, looking along it.

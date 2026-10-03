@@ -16,7 +16,8 @@ class_name GrassHills
 ## recording, levittown_levity.mp3), heard through the open doors and
 ## windows: it fades
 ## with distance and loses its brightness first, so from up the hill it
-## is a faint, muffled tune over the wind.
+## is a faint, muffled tune over the wind. A red pickup (PickupTruck)
+## stands on the farm's lane facing the road, to be driven.
 ##
 ## Drawn in a look (`style`, set by its scene): "real", or "anime"
 ## (grass_hills_painted.tscn), painted as the meadow's painted look is:
@@ -52,6 +53,7 @@ static var _handoff: Array = []
 
 var land: HillsLand
 var house: BuildingMesh
+var truck: PickupTruck
 var grass: GrassField
 var gusts := Gusts.new()
 var wind := 0.3
@@ -150,6 +152,22 @@ func _build_ground() -> void:
 	land.terrain_mat.set_shader_parameter("reach", float(GrassField.MODELS["shells"]["reach"]))
 	_tune_grass()
 	_build_sound()
+	_park_truck()
+
+
+## The pickup on the lane a few metres from the yard, facing the road,
+## let down onto its wheels.
+func _park_truck() -> void:
+	if land.drive_pts.size() < 6:
+		return
+	var at: Vector2 = land.drive_pts[4]
+	var dir: Vector2 = (land.drive_pts[5] - land.drive_pts[3]).normalized()
+	truck = PickupTruck.new()
+	truck.name = "Truck"
+	truck.world = self
+	truck.position = Vector3(at.x, land.height_at(at.x, at.y) + 0.12, at.y)
+	truck.rotation.y = atan2(dir.x, dir.y)
+	add_child(truck)
 
 
 ## The parlour's console radio, in the house's frame (metres, +x its

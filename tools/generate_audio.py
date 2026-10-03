@@ -23,6 +23,7 @@ Writes to game/audio/:
   leaves_loop.wav 14 s seamless wind in a summer wood's leaves
   air_loop.wav    12 s seamless steady low rush of moving air
   grass_hiss_loop.wav  10 s seamless hiss of long grass bending
+  engine_loop.wav 2 s seamless 1940s pickup six-cylinder at idle
   crickets_loop.wav  10 s seamless field crickets and tree crickets
   bird_*.wav      white-throated sparrow, chickadee, robin, wood thrush
                   (two), barred owl
@@ -692,6 +693,41 @@ def make_grass_wind() -> None:
     write_wav(OUT_DIR / "grass_hiss_loop.wav", [out], normalize_to=0.35)
 
 
+def make_engine() -> None:
+    """A 1940s pickup's six-cylinder at idle, as a 2 s loop the game
+    raises in pitch with the engine's speed: a firing every 1/32 s,
+    each a short thump through the exhaust (a damped low tone and a
+    burst of dull noise), the six cylinders each a little different, so
+    the beat lopes; under it a faint mechanical whir. Every firing
+    falls on the loop's own grid, so the seam is a firing like any
+    other."""
+    r = random.Random(20261013)
+    dur = 2.0
+    n = int(SR * dur)
+    fire = 32.0
+    count = int(dur * fire)
+    out = [0.0] * n
+    cyl = [r.uniform(0.75, 1.0) for _ in range(6)]
+    for k in range(count):
+        start = int(k * n / count)
+        amp = cyl[k % 6] * r.uniform(0.92, 1.0)
+        length = int(0.03 * SR)
+        burst = []
+        last = 0.0
+        for i in range(length):
+            t = i / SR
+            env = math.exp(-t / 0.008)
+            last += 0.08 * ((r.random() * 2.0 - 1.0) - last)
+            burst.append((math.sin(2.0 * math.pi * 85.0 * t) * 0.8 + last * 3.0) * env * amp)
+        _add_wrapped(out, start, burst, 1.0)
+    whir_f = quantize(410.0, dur)
+    for i in range(n):
+        out[i] += 0.03 * math.sin(2.0 * math.pi * whir_f * i / SR)
+    pre = int(0.1 * SR)
+    x = _lowpass(_lowpass(out[-pre:] + out, 0.12), 0.12)[pre:]
+    write_wav(OUT_DIR / "engine_loop.wav", [x], normalize_to=0.4)
+
+
 def make_crickets() -> None:
     """A summer night in a meadow: field crickets near and far, each
     chirping three or four pulses of a pure note round 4.5 kHz at its
@@ -871,6 +907,7 @@ def main() -> None:
     make_bells()
     make_leaves()
     make_grass_wind()
+    make_engine()
     make_crickets()
     make_birds()
     print("done")

@@ -31,7 +31,7 @@ extends Landscape
 ## across the road and its shoulders, blending back into the hill. The
 ## driveway, a two-track lane, runs from the back of the yard to the
 ## road the same way. Both are ribbons (road.gdshader) laid on their
-## beds; no grass grows on them.
+## beds, solid to wheels and feet; no grass grows on them.
 
 ## How far from the centre a hollow may lie, the grid it is searched on,
 ## and how much water makes a pond: its area and its depth.
@@ -457,11 +457,19 @@ func _build_roads() -> void:
 				along += pts[i].distance_to(pts[i - 1])
 			# Lifted a little more far from the middle, where the ground's
 			# triangles are larger than the road is wide.
-			var lift := 0.04 + 0.0004 * pts[i].length()
+			var lift := 0.04 + 0.0001 * pts[i].length()
 			samples.append({"c": Vector3(pts[i].x, ys[i] + lift, pts[i].y), "n": Vector2(-t.y, t.x),
 				"w": (DRIVE_HALF if drive else ROAD_HALF) + 0.3, "s": along})
 		var ribbon := _water_ribbon(samples, drive_mat if drive else road_mat)
 		ribbon.name = "Driveway" if drive else "Road"
+		# Solid, so wheels and feet run on the surface that is seen.
+		var body := StaticBody3D.new()
+		body.collision_layer = 1
+		body.collision_mask = 0
+		var shape := CollisionShape3D.new()
+		shape.shape = ribbon.mesh.create_trimesh_shape()
+		body.add_child(shape)
+		ribbon.add_child(body)
 
 
 ## The pond's rough radius, metres: a circle of its area.
