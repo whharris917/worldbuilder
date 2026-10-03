@@ -145,7 +145,7 @@ func _build_ground() -> void:
 	grass.build(land, Vector2.ZERO, FIELD, land.grass_at, func(_x: float, _z: float) -> float: return 0.0,
 		style, str(_read_settings().get(GRASS_KEY, "shells")), 1.0)
 	# The gusts' pull downhill, over the land as far as the eye follows them.
-	gusts.bake_flow(land, 2048.0, 8.0)
+	gusts.bake_flow(land, 4096.0, 16.0)
 	land.terrain_mat.set_shader_parameter("reach", float(GrassField.MODELS["shells"]["reach"]))
 	_tune_grass()
 	_build_sound()
@@ -355,15 +355,15 @@ func _tune_grass() -> void:
 
 
 ## A spot above the pond to look over it from: of the points round it
-## between 35 and 60 metres out, the one standing highest over the
-## water, most open toward it.
+## from 15 to 90 metres beyond its rough edge, the one standing highest
+## over the water, most open toward it.
 func _overlook(pond: Vector2) -> Vector2:
 	var best := pond
 	var best_h := -INF
 	for a in 24:
 		var dir := Vector2(cos(TAU * a / 24.0), sin(TAU * a / 24.0))
-		var r := 35.0
-		while r <= 60.0:
+		var r := land.lake_radius() + 15.0
+		while r <= land.lake_radius() + 90.0:
 			var q := pond + dir * r
 			var h := land.height_at(q.x, q.y)
 			# Not cut off from the water by higher ground between.
@@ -415,7 +415,13 @@ func _change_look(index: int) -> void:
 ## otherwise where this look's save left them.
 func load_player() -> bool:
 	if _handoff.is_empty():
-		return super()
+		var loaded := super()
+		# A save from before the land changed may lie under the ground.
+		var p := player.global_position
+		var ground := land.height_at(p.x, p.z)
+		if loaded and p.y < ground + 0.2:
+			player.global_position.y = ground + 0.4
+		return loaded
 	player.global_position = _handoff[0]
 	player.rotation.y = _handoff[1]
 	player.camera.rotation.x = _handoff[2]

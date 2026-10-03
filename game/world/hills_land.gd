@@ -2,8 +2,10 @@ class_name HillsLand
 extends Landscape
 ## Open rolling hills of long grass: no trees, no stones, one pond, one
 ## farmhouse.
-## Long low swells with smaller rolls on them, the land rising gently
-## toward the horizon all round so the edge of the world is always a
+## Long ridges and broad valleys on the scale of open downland (swells
+## 45 m high across nearly a kilometre), rolls on them, and the small
+## undulations of a field underfoot; the land rising gently toward the
+## horizon all round, 3.5 km out, so the edge of the world is always a
 ## far hillside. The ground is hills_ground.gdshader.
 ##
 ## The pond fills a hollow near the start as rain would: of the hollows
@@ -20,10 +22,10 @@ extends Landscape
 
 ## How far from the centre a hollow may lie, the grid it is searched on,
 ## and how much water makes a pond: its area and its depth.
-const LAKE_SEARCH := 180.0
-const LAKE_STEP := 2.0
-const LAKE_MIN_AREA := 1200.0
-const LAKE_MIN_DEPTH := 1.5
+const LAKE_SEARCH := 450.0
+const LAKE_STEP := 3.0
+const LAKE_MIN_AREA := 8000.0
+const LAKE_MIN_DEPTH := 3.0
 ## How far under its rim's lowest gap the water stands.
 const LAKE_FREEBOARD := 0.3
 ## The house in its own frame (metres, +x its front): what it covers,
@@ -54,8 +56,8 @@ func _init() -> void:
 	tide_range = 0.0
 	seed = 20261010
 	cell = 1.0
-	grid_n = 600
-	mesh_reach = 1800.0
+	grid_n = 700
+	mesh_reach = 3500.0
 	ground_shader = "res://world/hills_ground.gdshader"
 	_n = FastNoiseLite.new()
 	_n.seed = seed
@@ -89,11 +91,12 @@ func _yard_distance(x: float, z: float) -> float:
 
 
 func _natural(x: float, z: float) -> float:
-	var h := 16.0 * _n.get_noise_2d(x * 0.0035, z * 0.0035) \
-		+ 6.0 * _n.get_noise_2d(x * 0.011 + 40.0, z * 0.011) \
-		+ 1.2 * _n.get_noise_2d(x * 0.035 + 90.0, z * 0.035)
+	var h := 45.0 * _n.get_noise_2d(x * 0.0012, z * 0.0012) \
+		+ 16.0 * _n.get_noise_2d(x * 0.0037 + 40.0, z * 0.0037) \
+		+ 4.0 * _n.get_noise_2d(x * 0.012 + 90.0, z * 0.012) \
+		+ 1.0 * _n.get_noise_2d(x * 0.04 + 130.0, z * 0.04)
 	var r := Vector2(x, z).length()
-	return h + 0.00003 * pow(maxf(r - 250.0, 0.0), 2.0)
+	return h + 0.00002 * pow(maxf(r - 900.0, 0.0), 2.0)
 
 
 ## Grass everywhere, under the pond too, but not under the house.
@@ -101,6 +104,11 @@ func grass_at(x: float, z: float) -> float:
 	if site.x == INF:
 		return 1.0
 	return smoothstep(0.0, 0.4, _yard_distance(x, z))
+
+
+## The pond's rough radius, metres: a circle of its area.
+func lake_radius() -> float:
+	return sqrt(float(lake_cells.size()) * LAKE_STEP * LAKE_STEP / PI)
 
 
 ## Find the farmhouse's site: round the pond, between 10 and 40 metres
@@ -115,17 +123,23 @@ func find_site() -> void:
 		if not (lake_cells.has(c + Vector2i(1, 0)) and lake_cells.has(c - Vector2i(1, 0))
 				and lake_cells.has(c + Vector2i(0, 1)) and lake_cells.has(c - Vector2i(0, 1))):
 			edge.append((Vector2(c) + Vector2(0.5, 0.5)) * LAKE_STEP)
+	# Every few cells of the shore are enough to measure from.
+	var step := maxi(1, edge.size() / 400)
+	var shore_pts: Array[Vector2] = []
+	for i in range(0, edge.size(), step):
+		shore_pts.append(edge[i])
+	var reach := lake_radius() + 80.0
 	var best := INF
 	var g := -LAKE_SEARCH
 	while g <= LAKE_SEARCH:
 		var k := -LAKE_SEARCH
 		while k <= LAKE_SEARCH:
 			var p := Vector2(g, k)
-			k += 3.0
-			if p.distance_to(lake_centre) > 110.0:
+			k += 4.0
+			if p.distance_to(lake_centre) > reach:
 				continue
 			var shore := INF
-			for e in edge:
+			for e in shore_pts:
 				shore = minf(shore, p.distance_squared_to(e))
 			shore = sqrt(shore)
 			var h := _natural(p.x, p.y)
@@ -154,7 +168,7 @@ func find_site() -> void:
 				site = p
 				site_yaw = yaw
 				site_y = h
-		g += 3.0
+		g += 4.0
 	stats["site_spread"] = best
 
 
