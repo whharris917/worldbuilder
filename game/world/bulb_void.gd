@@ -4,7 +4,8 @@ extends Node3D
 ## wall twice a person's height rings it, open in one doorway; a
 ## player who walks out and off the edge is put back at the start.
 ##
-## Controls on screen, used with the mouse freed by Esc. Left: the
+## Controls on screen, used with the mouse freed by Esc, in two panels
+## opened one at a time from two buttons at the top left. First: the
 ## viewport's debanding (1 key), a dither added before the 8-bit output;
 ## the shadow atlas (2 key), the texture all point and spot lights'
 ## shadow maps share, stepped through 4096, 8192 and 16384 texels square
@@ -14,7 +15,7 @@ extends Node3D
 ## nothing); the ball's colour, albedo, roughness, metallic, specular and
 ## segment count, each with a note on what it does; Reset all.
 ##
-## Right: indirect light, arranged by how Godot combines it. What lies
+## Second: indirect light, arranged by how Godot combines it. What lies
 ## outside the room is one of three: the void (no ambient light, no
 ## reflections), a constant ambient colour, or the procedural sky (a
 ## gradient, no sun), which is then the background, the ambient light and
@@ -41,7 +42,9 @@ extends Node3D
 
 const START := Vector3(0, 0, 3)
 const ATLAS_SIZES: Array[int] = [4096, 8192, 16384]
-const COLUMN_W := 270.0
+const COLUMN_W := 240.0
+const FONT_SIZE := 13
+const NOTE_SIZE := 11
 const SKY_PROPS: Array[String] = ["sky_top_color", "sky_horizon_color", "ground_horizon_color",
 	"ground_bottom_color", "sky_curve", "sky_energy_multiplier", "ground_curve", "ground_energy_multiplier"]
 
@@ -106,17 +109,43 @@ func _ready() -> void:
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
-	_build_left(layer)
-	_build_right(layer)
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var theme := Theme.new()
+	theme.default_font_size = FONT_SIZE
+	root.theme = theme
+	layer.add_child(root)
+	_build_tabs(root, [_build_left(root), _build_right(root)])
 	_set_outside("Void")
 	_set_bounce("None")
 	if DisplayServer.get_name() == "headless":
 		print("[worldbuilder] bulb void: floor, one bulb")
 
 
-func _build_left(layer: CanvasLayer) -> void:
-	var column := _column(layer)
-	(column.get_parent() as Control).position = Vector2(16, 16)
+## Two buttons at the top left, each opening its panel below them; one
+## panel at most is open, and pressing the open one's button closes it.
+func _build_tabs(root: Control, panels: Array) -> void:
+	var row := HBoxContainer.new()
+	row.position = Vector2(16, 16)
+	root.add_child(row)
+	var group := ButtonGroup.new()
+	group.allow_unpress = true
+	for i in panels.size():
+		var panel := panels[i] as Control
+		panel.position = Vector2(16, 48)
+		panel.visible = false
+		var tab := Button.new()
+		tab.text = ["Bulb and ball", "Indirect light"][i]
+		tab.toggle_mode = true
+		tab.button_group = group
+		tab.focus_mode = Control.FOCUS_NONE
+		tab.toggled.connect(func(on: bool) -> void: panel.visible = on)
+		row.add_child(tab)
+
+
+func _build_left(root: Control) -> Control:
+	var column := _column(root)
 	_dither = CheckButton.new()
 	_dither.text = "Dithering (1)"
 	_dither.focus_mode = Control.FOCUS_NONE
@@ -170,18 +199,11 @@ func _build_left(layer: CanvasLayer) -> void:
 	reset.focus_mode = Control.FOCUS_NONE
 	reset.pressed.connect(_reset)
 	column.add_child(reset)
+	return column.get_parent() as Control
 
 
-func _build_right(layer: CanvasLayer) -> void:
-	var column := _column(layer)
-	var panel := column.get_parent() as Control
-	panel.anchor_left = 1.0
-	panel.anchor_right = 1.0
-	panel.offset_left = -COLUMN_W - 32.0
-	panel.offset_right = -16.0
-	panel.offset_top = 16.0
-	panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_heading(column, "Indirect light")
+func _build_right(root: Control) -> Control:
+	var column := _column(root)
 	_status = _note(column, "")
 	_status.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
 
@@ -221,6 +243,7 @@ func _build_right(layer: CanvasLayer) -> void:
 		_env.ssao_enabled = on
 		_refresh())
 	_note(column, "Darkens ambient and bounce light in corners; leaves the bulb's direct light alone.")
+	return column.get_parent() as Control
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -328,14 +351,14 @@ func _describe() -> String:
 ## ---- widgets -------------------------------------------------------------
 
 ## A column of controls on a dark panel, so they read against any sky.
-func _column(layer: CanvasLayer) -> VBoxContainer:
+func _column(root: Control) -> VBoxContainer:
 	var panel := PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0, 0, 0, 0.6)
 	style.set_corner_radius_all(6)
 	style.set_content_margin_all(8)
 	panel.add_theme_stylebox_override("panel", style)
-	layer.add_child(panel)
+	root.add_child(panel)
 	var column := VBoxContainer.new()
 	column.custom_minimum_size = Vector2(COLUMN_W, 0)
 	column.add_theme_constant_override("separation", 2)
@@ -362,7 +385,7 @@ func _note(column: VBoxContainer, text: String) -> Label:
 	label.text = text
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.custom_minimum_size = Vector2(COLUMN_W, 0)
-	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_font_size_override("font_size", NOTE_SIZE)
 	label.add_theme_color_override("font_color", Color(0.72, 0.72, 0.72))
 	column.add_child(label)
 	return label
@@ -392,7 +415,7 @@ func _choice(column: VBoxContainer, title: String, options: Array, on_pick: Call
 	var row := HBoxContainer.new()
 	var label := Label.new()
 	label.text = title
-	label.custom_minimum_size = Vector2(64, 0)
+	label.custom_minimum_size = Vector2(56, 0)
 	row.add_child(label)
 	var group := ButtonGroup.new()
 	var boxes := {}
@@ -426,7 +449,7 @@ func _slider(column: VBoxContainer, title: String, lo: float, hi: float, step: f
 		value: float, on_change: Callable) -> void:
 	var row := HBoxContainer.new()
 	var label := Label.new()
-	label.custom_minimum_size = Vector2(150, 0)
+	label.custom_minimum_size = Vector2(120, 0)
 	row.add_child(label)
 	var slider := HSlider.new()
 	slider.focus_mode = Control.FOCUS_NONE
