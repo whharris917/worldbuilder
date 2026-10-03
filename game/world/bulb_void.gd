@@ -19,7 +19,7 @@ extends Node3D
 ##
 ## A second column, top right, for indirect light: ambient light (a
 ## colour and an energy, 0 as the scene opens), switches for SSAO, SSIL,
-## SDFGI and a VoxelGI box around the room (baked each time it is
+## SDFGI and a VoxelGI box around the room (one or the other) (baked each time it is
 ## switched on, so it sees the ball as it is then), and the bulb's
 ## indirect energy, its share in the GI methods.
 ##
@@ -161,6 +161,8 @@ func _ready() -> void:
 	_switch(right, "SSIL", func(on: bool) -> void: _env.ssil_enabled = on)
 	_switch(right, "SDFGI", func(on: bool) -> void: _env.sdfgi_enabled = on)
 	_switch(right, "VoxelGI", _set_voxel_gi)
+	# Two estimates of the same light: one at a time.
+	_exclusive("SDFGI", "VoxelGI")
 	_slider(right, "Indirect energy", 0.0, 4.0, 0.01, _bulb.light_indirect_energy, func(v: float) -> void:
 		_bulb.light_indirect_energy = v)
 
@@ -214,6 +216,18 @@ func _switch(column: VBoxContainer, title: String, on_toggle: Callable) -> void:
 	button.toggled.connect(func(on: bool) -> void: on_toggle.call(on))
 	_switches[title] = button
 	column.add_child(button)
+
+
+## Switching either of two switches on switches the other off.
+func _exclusive(a: String, b: String) -> void:
+	var first := _switches[a] as CheckButton
+	var second := _switches[b] as CheckButton
+	first.toggled.connect(func(on: bool) -> void:
+		if on:
+			second.button_pressed = false)
+	second.toggled.connect(func(on: bool) -> void:
+		if on:
+			first.button_pressed = false)
 
 
 ## The sky behind the scene and as the source of ambient light and
