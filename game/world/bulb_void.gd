@@ -143,7 +143,7 @@ func _ready() -> void:
 	_build_wall()
 	_build_ground()
 	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root), _build_motion(root),
-		_build_textures(root)])
+		_build_textures(root), _build_terrain(root)])
 	_set_sun("Off")
 	_fps = Label.new()
 	_fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -174,7 +174,7 @@ func _build_tabs(root: Control, panels: Array) -> void:
 		panel.position = Vector2(16, 48)
 		panel.visible = false
 		var tab := Button.new()
-		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion", "Textures"][i]
+		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion", "Textures", "Terrain"][i]
 		tab.toggle_mode = true
 		tab.button_group = group
 		tab.focus_mode = Control.FOCUS_NONE
@@ -330,6 +330,7 @@ func _build_sun(root: Control) -> Control:
 
 	_sun_far = DirectionalLight3D.new()
 	_sun_far.shadow_enabled = true
+	_sun_far.directional_shadow_max_distance = 200.0   # the near hills; 800 m cost about 80 ms a frame
 	add_child(_sun_far)
 	_sun_near = SpotLight3D.new()
 	_sun_near.shadow_enabled = true
@@ -700,7 +701,8 @@ func _reset() -> void:
 			"Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
-	for title: String in ["Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)"]:
+	for title: String in ["Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)",
+			"Hill height (m)", "Hill size (m)", "Ruggedness", "Seed"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	_surf = _surface_defaults()
 	(_choices["Edit"]["Floor"] as CheckBox).button_pressed = true
@@ -739,6 +741,11 @@ func _process(delta: float) -> void:
 		_save_in -= delta
 		if _save_in < 0.0:
 			_save_state()
+	if _terrain_in >= 0.0:
+		_terrain_in -= delta
+		if _terrain_in < 0.0:
+			_terrain.flat_r = _room_r
+			_terrain.build()
 
 
 func _notification(what: int) -> void:
@@ -1051,8 +1058,8 @@ var _wall_view: MeshInstance3D
 var _wall_shape: CollisionShape3D
 var _room_r := 15.0                     # the floor's radius and the wall's inner face
 var _ground_mat: ShaderMaterial
-var _ground_view: MeshInstance3D
-const OUTSIDE_R := 300.0                # the ground outside runs to here
+var _terrain: BulbTerrain
+var _terrain_in := -1.0                 # seconds to a terrain rebuild; below 0, none due
 const SURFACES: Array[String] = ["Floor", "Walls", "Ball", "Ground"]
 var _tex_filter := "Mipmaps"
 var _ball_map := "UV"
@@ -1086,7 +1093,7 @@ func _shape_floor() -> void:
 			[Vector2(p[0].x, p[0].z), Vector2(p[1].x, p[1].z), Vector2(p[2].x, p[2].z)])
 	st.generate_tangents()
 	($Floor/Mesh as MeshInstance3D).mesh = st.commit()
-	(($Floor/Collision as CollisionShape3D).shape as CylinderShape3D).radius = OUTSIDE_R
+	(($Floor/Collision as CollisionShape3D).shape as CylinderShape3D).radius = _room_r + 0.5
 
 
 ## The ring wall, 20 cm thick and 3.6 m high, open in a doorway 0.9 m
@@ -1140,35 +1147,21 @@ func _shape_wall() -> void:
 	_wall_shape.shape = mesh.create_trimesh_shape()
 
 
-## The ground outside the room: a ring from under the wall out to
-## OUTSIDE_R, level with the floor, its texture coordinates its x and z
-## in metres. The floor's collider reaches as far, so the player can
-## walk out through the doorway and on to its edge.
+## The ground outside the room: procedural terrain (BulbTerrain), level
+## by the room and rising into hills, textured by the ground shader. It
+## is rebuilt a third of a second after its last change (a room radius
+## or terrain slider being dragged rebuilds once, when it comes to rest).
 func _build_ground() -> void:
-	_ground_view = MeshInstance3D.new()
 	_ground_mat = ShaderMaterial.new()
 	_ground_mat.shader = load("res://world/ground_tex.gdshader") as Shader
-	_ground_view.material_override = _ground_mat
-	add_child(_ground_view)
-	_shape_ground()
+	_terrain = BulbTerrain.new(_ground_mat)
+	add_child(_terrain)
+	_terrain.flat_r = _room_r
+	_terrain.build()
 
 
 func _shape_ground() -> void:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var n := 256
-	var up: Array = [Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP]
-	for i in n:
-		var a0 := TAU * i / n
-		var a1 := TAU * (i + 1) / n
-		var p: Array = [Vector3(sin(a0), 0, cos(a0)) * _room_r, Vector3(sin(a1), 0, cos(a1)) * _room_r,
-			Vector3(sin(a1), 0, cos(a1)) * OUTSIDE_R, Vector3(sin(a0), 0, cos(a0)) * OUTSIDE_R]
-		var uv: Array = []
-		for at: Vector3 in p:
-			uv.append(Vector2(at.x, at.z))
-		_quad(st, p, up, uv)
-	st.generate_tangents()
-	_ground_view.mesh = st.commit()
+	_terrain_in = 0.33
 
 
 ## The room at a new radius: floor, wall, the hooks' paths (the ball's
@@ -1423,6 +1416,31 @@ func _dress_ground(entry: Dictionary, st: Dictionary, size: Vector2) -> void:
 	_ground_mat.set_shader_parameter("brightness", float(st["bright"]) * (0.65 if wet else 1.0))
 	_ground_mat.set_shader_parameter("variation", float(st["variation"]))
 	_ground_mat.set_shader_parameter("break_tiling", 1.0 if bool(st["tiling"]) else 0.0)
+
+
+## ---- the terrain panel -----------------------------------------------------
+
+func _build_terrain(root: Control) -> Control:
+	var column := _column(root)
+	_slider(column, "Hill height (m)", 0.0, 150.0, 1.0, _terrain.height, func(v: float) -> void:
+		_terrain.height = v
+		_shape_ground())
+	_note(column, "The highest hills; 0 is a level plain.")
+	_slider(column, "Hill size (m)", 50.0, 1500.0, 10.0, _terrain.feature, func(v: float) -> void:
+		_terrain.feature = v
+		_shape_ground())
+	_note(column, "The width of the largest hills. Each finer layer of noise is half the size of the one before.")
+	_slider(column, "Ruggedness", 0.2, 0.8, 0.01, _terrain.roughness, func(v: float) -> void:
+		_terrain.roughness = v
+		_shape_ground())
+	_note(column, "Each finer layer's height against the one before: low gives smooth downland, high rugged ground.")
+	_slider(column, "Seed", 1.0, 100.0, 1.0, float(_terrain.noise_seed), func(v: float) -> void:
+		_terrain.noise_seed = int(v)
+		_shape_ground())
+	_note(column, "A different seed, a different landscape from the same rules. The ground rebuilds when a slider comes to rest; it runs 1.5 km out.")
+	for title: String in ["Hill height (m)", "Hill size (m)", "Ruggedness", "Seed"]:
+		_defaults[title] = (_sliders[title] as HSlider).value
+	return column.get_parent() as Control
 
 
 ## ---- the motion panel ------------------------------------------------------
