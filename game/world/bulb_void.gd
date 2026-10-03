@@ -778,6 +778,8 @@ func _reset() -> void:
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
 	(_choices["Sky model"]["Gradient"] as CheckBox).button_pressed = true
 	(_choices["Units"]["Arbitrary"] as CheckBox).button_pressed = true
+	(_choices["Exposure"]["Meter"] as CheckBox).button_pressed = true
+	(_sliders["Compensation (EV)"] as HSlider).value = 0.0
 	(_choices["Curve"]["Linear"] as CheckBox).button_pressed = true
 	for title: String in ["EV100", "Bulb (lm)", "White point"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
@@ -823,6 +825,7 @@ func _process(delta: float) -> void:
 		_save_in -= delta
 		if _save_in < 0.0:
 			_save_state()
+	_adapt(delta)
 	if _terrain_in >= 0.0:
 		_terrain_in -= delta
 		if _terrain_in < 0.0:
@@ -1529,11 +1532,13 @@ func _dress_ground(entry: Dictionary, st: Dictionary, size: Vector2) -> void:
 const LUX := 1e-5                       # Godot's value for one lux
 const SUN_LUX := 127000.0
 const SKY_CAL := 1.7                    # measured: blue sky overhead about 4,900 nits with the sun 60 degrees up
-const EV_PRESETS := {"Sun 15": 15.0, "Shade 12": 12.0, "Dusk 9": 9.0, "Room 5": 5.0, "Bulb 2": 2.0, "Moon -2": -2.0}
+const EV_PRESETS := {"Noon 15": 15.0, "Shade 12": 12.0, "Dusk 9": 9.0, "Room 5": 5.0, "Bulb 2": 2.0, "Moon -2": -2.0}
 const TONEMAPS := {"Linear": Environment.TONE_MAPPER_LINEAR, "Reinhard": Environment.TONE_MAPPER_REINHARDT,
 	"Filmic": Environment.TONE_MAPPER_FILMIC, "ACES": Environment.TONE_MAPPER_ACES, "AgX": Environment.TONE_MAPPER_AGX}
 
 var _physical := false
+var _metering := true                   # exposure from the light meter, else the EV100 slider
+var _ev_now := 15.0                     # the exposure in use, easing toward the meter
 
 
 func _sun_scale() -> float:
@@ -1546,7 +1551,16 @@ func _build_camera(root: Control) -> Control:
 		_physical = option == "Physical"
 		_apply_units())
 	_note(column, "Physical: the sun in lux, the bulb in lumens, the sky in nits, as they are; the camera's exposure then decides what is bright. Arbitrary: each light's strength as set, exposure 1.")
-	_slider(column, "EV100", -4.0, 17.0, 0.1, 15.0, func(_v: float) -> void: _apply_units())
+	_choice(column, "Exposure", ["Meter", "Manual"], func(option: String) -> void:
+		_metering = option == "Meter"
+		_apply_units())
+	_note(column, "Meter: the exposure follows the light where you stand, as the eye adapts, easing over about a second. Manual: set EV100 yourself, as on a camera; a manual exposure is right only for light of that strength.")
+	_slider(column, "Compensation (EV)", -3.0, 3.0, 0.1, 0.0, func(_v: float) -> void: pass)
+	_defaults["Compensation (EV)"] = 0.0
+	_slider(column, "EV100", -4.0, 17.0, 0.1, 15.0, func(_v: float) -> void:
+		if _metering and not _restoring:
+			(_choices["Exposure"]["Manual"] as CheckBox).button_pressed = true
+		_apply_units())
 	_defaults["EV100"] = 15.0
 	var row := HBoxContainer.new()
 	for label: String in EV_PRESETS:
@@ -1554,10 +1568,12 @@ func _build_camera(root: Control) -> Control:
 		button.text = label
 		button.focus_mode = Control.FOCUS_NONE
 		button.add_theme_font_size_override("font_size", NOTE_SIZE)
-		button.pressed.connect(func() -> void: (_sliders["EV100"] as HSlider).value = float(EV_PRESETS[label]))
+		button.pressed.connect(func() -> void:
+			(_choices["Exposure"]["Manual"] as CheckBox).button_pressed = true
+			(_sliders["EV100"] as HSlider).value = float(EV_PRESETS[label]))
 		row.add_child(button)
 	column.add_child(row)
-	_note(column, "Exposure value at ISO 100: each step up halves the light let in. A sunny day is about 15, a well-lit room about 5; this room's one 60 W bulb lights the floor to about 13 lux and wants about 2; moonlight about -2. Physical units only.")
+	_note(column, "Exposure value at ISO 100: each step up halves the light let in. The presets are exposures for light of that kind: noon sun 15, open shade 12, dusk 9, a well-lit room 5, this room's one 60 W bulb 2, moonlight -2. Used in other light they come out too dark or too bright, as a camera's would. Physical units only.")
 	_slider(column, "Bulb (lm)", 100.0, 5000.0, 10.0, 800.0, func(_v: float) -> void: _apply_units())
 	_defaults["Bulb (lm)"] = 800.0
 	_note(column, "Physical units only: a 60 W incandescent bulb gives about 800 lumens, a 100 W about 1,500.")
@@ -1571,8 +1587,9 @@ func _build_camera(root: Control) -> Control:
 
 ## Every light's strength and the exposure for the units chosen.
 func _apply_units() -> void:
-	var ev := float((_sliders["EV100"] as HSlider).value)
-	_env.tonemap_exposure = 1.0 / (PI * LUX * 1.2 * pow(2.0, ev)) if _physical else 1.0
+	if not _metering:
+		_ev_now = float((_sliders["EV100"] as HSlider).value)
+	_expose()
 	if _physical:
 		var candela := float((_sliders["Bulb (lm)"] as HSlider).value) / (4.0 * PI)
 		_bulb.omni_attenuation = 2.0
@@ -1587,6 +1604,50 @@ func _apply_units() -> void:
 		_bulb.light_energy = 1.0
 		_glass_mat.emission_energy_multiplier = 1.0
 	_place_sun()
+
+
+func _expose() -> void:
+	_env.tonemap_exposure = 1.0 / (PI * LUX * 1.2 * pow(2.0, _ev_now)) if _physical else 1.0
+
+
+## An incident light meter at the player's feet: the illuminance on
+## level ground from the sun (through the air if that switch is on),
+## the sky (a share of the sun's light above the air, 12% with the sun
+## high, fading through twilight) and the bulb (its candelas by the
+## inverse square and the cosine). The exposure is the standard
+## incident-meter calibration, EV100 = log2(E / 2.5): 15 for noon sun,
+## about 2 under this room's bulb.
+func _meter_ev() -> float:
+	var e := 0.0
+	var at := player.global_position
+	if _sun_model != "Off":
+		var polar := float((_sliders["Polar angle"] as HSlider).value)
+		var top := SUN_LUX * float((_sliders["Sun energy"] as HSlider).value)
+		var through := 1.0
+		if (_switches["Sun colour from the air"] as CheckButton).button_pressed:
+			var t := _air_transmittance(polar)
+			through = 0.2126 * t.r + 0.7152 * t.g + 0.0722 * t.b
+		e += top * through * maxf(cos(deg_to_rad(polar)), 0.0)
+		if _outside == "Sky":
+			e += top * 0.12 * clampf(sin(deg_to_rad(90.0 - polar)) + 0.1, 0.0003, 1.0)
+	var to_bulb := _bulb.global_position - at
+	var d2 := maxf(to_bulb.length_squared(), 0.01)
+	var candela := float((_sliders["Bulb (lm)"] as HSlider).value) / (4.0 * PI)
+	e += candela * maxf(to_bulb.y, 0.0) / sqrt(d2) / d2
+	return clampf(log(maxf(e, 0.01) / 2.5) / log(2.0), -4.0, 17.0)
+
+
+## The meter's reading reached gradually, as the eye adapts: about
+## two thirds of the way in 0.8 s.
+func _adapt(delta: float) -> void:
+	if not (_physical and _metering):
+		return
+	var target := _meter_ev() + float((_sliders["Compensation (EV)"] as HSlider).value)
+	_ev_now += (target - _ev_now) * (1.0 - exp(-delta / 0.8))
+	_expose()
+	var slider := _sliders["EV100"] as HSlider
+	slider.set_value_no_signal(_ev_now)
+	_show_slider("EV100", _ev_now)
 
 
 ## ---- the terrain panel -----------------------------------------------------
