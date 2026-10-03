@@ -148,7 +148,7 @@ func _ready() -> void:
 	_build_wall()
 	_build_ground()
 	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root), _build_motion(root),
-		_build_textures(root), _build_terrain(root)])
+		_build_textures(root), _build_terrain(root), _build_camera(root)])
 	_set_sun("Off")
 	_fps = Label.new()
 	_fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -179,7 +179,7 @@ func _build_tabs(root: Control, panels: Array) -> void:
 		panel.position = Vector2(16, 48)
 		panel.visible = false
 		var tab := Button.new()
-		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion", "Textures", "Terrain"][i]
+		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion", "Textures", "Terrain", "Camera"][i]
 		tab.toggle_mode = true
 		tab.button_group = group
 		tab.focus_mode = Control.FOCUS_NONE
@@ -274,6 +274,11 @@ func _build_right(root: Control) -> Control:
 	_sky_slider(_grad_box, "Ground energy", "ground_energy_multiplier", 0.0, 4.0)
 	_phys_box = _box(_sky_box)
 	_phys_mat = PhysicalSkyMaterial.new()
+	# The sky materials' own dither, about 0.001, is added before the
+	# exposure; a night exposure multiplies it thousands of times into a
+	# bright speckle. The viewport's dither, after the exposure, does the job.
+	_phys_mat.use_debanding = false
+	_sky_mat.use_debanding = false
 	for spec: Array in [["Turbidity", "turbidity", 1.0, 20.0, 0.1], ["Rayleigh", "rayleigh_coefficient", 0.0, 8.0, 0.05],
 			["Mie", "mie_coefficient", 0.0, 0.05, 0.0005], ["Mie forward", "mie_eccentricity", 0.0, 0.99, 0.01],
 			["Sun disc size", "sun_disk_scale", 0.0, 20.0, 0.1], ["Air brightness", "energy_multiplier", 0.0, 4.0, 0.01]]:
@@ -399,11 +404,13 @@ func _place_sun() -> void:
 	var dir := _sun_dir()
 	var up := Vector3.FORWARD if absf(dir.y) > 0.999 else Vector3.UP
 	var aim := Basis.looking_at(-dir, up)
-	var energy := float((_sliders["Sun energy"] as HSlider).value)
+	var energy := float((_sliders["Sun energy"] as HSlider).value) * _sun_scale()
 	var d := float((_sliders["Distance (m)"] as HSlider).value)
 	_sun_far.basis = aim
 	_sun_sky.basis = aim
 	_sun_sky.light_energy = energy
+	if _phys_mat != null:
+		_phys_mat.energy_multiplier = float((_sliders["Air brightness"] as HSlider).value) * (SKY_CAL if _physical else 1.0)
 	# What reaches the ground: the sun's light less what the air scatters
 	# out of the beam on the way.
 	var through := Color(1, 1, 1)
@@ -770,6 +777,10 @@ func _reset() -> void:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
 	(_choices["Sky model"]["Gradient"] as CheckBox).button_pressed = true
+	(_choices["Units"]["Arbitrary"] as CheckBox).button_pressed = true
+	(_choices["Curve"]["Linear"] as CheckBox).button_pressed = true
+	for title: String in ["EV100", "Bulb (lm)", "White point"]:
+		(_sliders[title] as HSlider).value = float(_defaults[title])
 	for title: String in ["Turbidity", "Rayleigh", "Mie", "Mie forward", "Sun disc size", "Air brightness"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	for title: String in ["Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)",
@@ -1499,6 +1510,83 @@ func _dress_ground(entry: Dictionary, st: Dictionary, size: Vector2) -> void:
 	_ground_mat.set_shader_parameter("brightness", float(st["bright"]) * (0.65 if wet else 1.0))
 	_ground_mat.set_shader_parameter("variation", float(st["variation"]))
 	_ground_mat.set_shader_parameter("break_tiling", 1.0 if bool(st["tiling"]) else 0.0)
+
+
+## ---- the camera: light units and exposure --------------------------------
+
+## Godot's own physical light units are a project setting, read at start
+## and shared by every world, so this scene does the same arithmetic
+## itself. In Physical units each light is given its real value and
+## multiplied by LUX: the sun 127,000 lux above the air (the solar
+## constant, 1361 W/m2, at about 93 lm/W) times Sun energy; the bulb its
+## lumens over 4 pi steradians as candelas, falling off as the inverse
+## square; the bulb's glass its luminance; the physical sky calibrated so
+## its blue is about 7,000 nits. The camera then turns luminance into the
+## image by saturation-based exposure, image = L / (1.2 2^EV100), which
+## with Godot's lights carrying no 1/pi makes the exposure
+## 1 / (pi LUX 1.2 2^EV100). In Arbitrary units nothing is converted and
+## the exposure is 1.
+const LUX := 1e-5                       # Godot's value for one lux
+const SUN_LUX := 127000.0
+const SKY_CAL := 1.7                    # measured: blue sky overhead about 4,900 nits with the sun 60 degrees up
+const EV_PRESETS := {"Sun 15": 15.0, "Shade 12": 12.0, "Dusk 9": 9.0, "Room 5": 5.0, "Bulb 2": 2.0, "Moon -2": -2.0}
+const TONEMAPS := {"Linear": Environment.TONE_MAPPER_LINEAR, "Reinhard": Environment.TONE_MAPPER_REINHARDT,
+	"Filmic": Environment.TONE_MAPPER_FILMIC, "ACES": Environment.TONE_MAPPER_ACES, "AgX": Environment.TONE_MAPPER_AGX}
+
+var _physical := false
+
+
+func _sun_scale() -> float:
+	return SUN_LUX * LUX if _physical else 1.0
+
+
+func _build_camera(root: Control) -> Control:
+	var column := _column(root)
+	_choice(column, "Units", ["Arbitrary", "Physical"], func(option: String) -> void:
+		_physical = option == "Physical"
+		_apply_units())
+	_note(column, "Physical: the sun in lux, the bulb in lumens, the sky in nits, as they are; the camera's exposure then decides what is bright. Arbitrary: each light's strength as set, exposure 1.")
+	_slider(column, "EV100", -4.0, 17.0, 0.1, 15.0, func(_v: float) -> void: _apply_units())
+	_defaults["EV100"] = 15.0
+	var row := HBoxContainer.new()
+	for label: String in EV_PRESETS:
+		var button := Button.new()
+		button.text = label
+		button.focus_mode = Control.FOCUS_NONE
+		button.add_theme_font_size_override("font_size", NOTE_SIZE)
+		button.pressed.connect(func() -> void: (_sliders["EV100"] as HSlider).value = float(EV_PRESETS[label]))
+		row.add_child(button)
+	column.add_child(row)
+	_note(column, "Exposure value at ISO 100: each step up halves the light let in. A sunny day is about 15, a well-lit room about 5; this room's one 60 W bulb lights the floor to about 13 lux and wants about 2; moonlight about -2. Physical units only.")
+	_slider(column, "Bulb (lm)", 100.0, 5000.0, 10.0, 800.0, func(_v: float) -> void: _apply_units())
+	_defaults["Bulb (lm)"] = 800.0
+	_note(column, "Physical units only: a 60 W incandescent bulb gives about 800 lumens, a 100 W about 1,500.")
+	_choice(column, "Curve", ["Linear", "Reinhard", "Filmic", "ACES", "AgX"], func(option: String) -> void:
+		_env.tonemap_mode = TONEMAPS[option])
+	_slider(column, "White point", 1.0, 16.0, 0.1, 1.0, func(v: float) -> void: _env.tonemap_white = v)
+	_defaults["White point"] = 1.0
+	_note(column, "The tone curve maps light of any strength into what a screen shows. Linear cuts everything above white off flat; the others roll the highlights off gently, as film and the eye do. White point: the light that just reaches white (Linear ignores it).")
+	return column.get_parent() as Control
+
+
+## Every light's strength and the exposure for the units chosen.
+func _apply_units() -> void:
+	var ev := float((_sliders["EV100"] as HSlider).value)
+	_env.tonemap_exposure = 1.0 / (PI * LUX * 1.2 * pow(2.0, ev)) if _physical else 1.0
+	if _physical:
+		var candela := float((_sliders["Bulb (lm)"] as HSlider).value) / (4.0 * PI)
+		_bulb.omni_attenuation = 2.0
+		_bulb.omni_range = 60.0
+		_bulb.light_energy = candela * LUX
+		# The glass's luminance: its candelas over its silhouette (an
+		# ellipse 8 by 10 cm), as Godot radiance.
+		_glass_mat.emission_energy_multiplier = candela / (PI * 0.04 * 0.05) * PI * LUX
+	else:
+		_bulb.omni_attenuation = 1.0
+		_bulb.omni_range = 20.0
+		_bulb.light_energy = 1.0
+		_glass_mat.emission_energy_multiplier = 1.0
+	_place_sun()
 
 
 ## ---- the terrain panel -----------------------------------------------------
