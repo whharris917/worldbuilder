@@ -71,11 +71,19 @@ var _sky_box: VBoxContainer
 var _bounce_box: VBoxContainer
 var _specular_box: VBoxContainer
 var _voxel_gi: VoxelGI = null
+var _sun_model := "Off"                # Off, Infinite or Finite
+var _sun_far: DirectionalLight3D
+var _sun_near: SpotLight3D
+var _sun_disc: MeshInstance3D
+var _sun_box: VBoxContainer
+var _distance_box: VBoxContainer
+var _sun_note: Label
 var _sky_mat: ProceduralSkyMaterial
 var _outside := "Void"                 # Void, Colour or Sky
 var _bounce := "None"                  # None, SDFGI or VoxelGI
 var _debanding_was := false
 var _atlas_was := 4096
+var _atlas16_was := true
 var _tint := Color(1, 1, 1)            # linear, brightest channel 1
 var _albedo := 0.0                     # linear reflectance of the brightest channel
 var _defaults: Dictionary = {}         # what reset puts back
@@ -88,6 +96,7 @@ func _ready() -> void:
 	var vp := get_viewport()
 	_debanding_was = vp.use_debanding
 	_atlas_was = vp.positional_shadow_atlas_size
+	_atlas16_was = vp.positional_shadow_atlas_16_bits
 	_sky_mat = _env.sky.sky_material as ProceduralSkyMaterial
 	_set_colour(_ball_mat.albedo_color)
 	_env.ambient_light_color = Color(1, 1, 1)
@@ -116,7 +125,8 @@ func _ready() -> void:
 	theme.default_font_size = FONT_SIZE
 	root.theme = theme
 	layer.add_child(root)
-	_build_tabs(root, [_build_left(root), _build_right(root)])
+	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root)])
+	_set_sun("Off")
 	_set_outside("Void")
 	_set_bounce("None")
 	if DisplayServer.get_name() == "headless":
@@ -136,7 +146,7 @@ func _build_tabs(root: Control, panels: Array) -> void:
 		panel.position = Vector2(16, 48)
 		panel.visible = false
 		var tab := Button.new()
-		tab.text = ["Bulb and ball", "Indirect light"][i]
+		tab.text = ["Bulb and ball", "Indirect light", "Sun"][i]
 		tab.toggle_mode = true
 		tab.button_group = group
 		tab.focus_mode = Control.FOCUS_NONE
@@ -254,6 +264,122 @@ func _unhandled_input(event: InputEvent) -> void:
 				_dither.button_pressed = not _dither.button_pressed
 			KEY_2:
 				_next_atlas()
+
+
+## ---- the sun --------------------------------------------------------------
+
+## The sun two ways. Infinitely far: a directional light, every ray
+## parallel and the same strength everywhere. Finitely far: a spot light
+## at the given distance aimed at the room's centre, its cone just wide
+## enough for the room, falling off as the inverse square of distance
+## and scaled so that at the room's centre it gives what the far sun
+## gives; a glowing ball as wide as the real sun (0.53 degrees) marks
+## it. Its angles: polar from straight up, azimuth from the doorway
+## toward the ball.
+##
+## The finite sun's shadows need the shadow atlas at 32 bits a texel
+## (at 16 the whole room shadows itself) and a bias that shrinks as the
+## light's range grows (Godot scales the bias by the range); even so
+## they break up past about 150 m, so the distance stops there.
+const SUN_ANGLE := 0.533
+
+func _build_sun(root: Control) -> Control:
+	var column := _column(root)
+	_choice(column, "Sun", ["Off", "Infinite", "Finite"], _set_sun)
+	_sun_note = _note(column, "")
+	_sun_note.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
+	_sun_box = _box(column)
+	_slider(_sun_box, "Polar angle", 0.0, 180.0, 1.0, 50.0, func(_v: float) -> void: _place_sun())
+	_note(_sun_box, "From straight up: 0 overhead, 90 on the horizon.")
+	_slider(_sun_box, "Azimuth", 0.0, 360.0, 1.0, 200.0, func(_v: float) -> void: _place_sun())
+	_note(_sun_box, "Around the horizon from the doorway: 45 toward the ball, 180 behind the start.")
+	_slider(_sun_box, "Sun energy", 0.0, 4.0, 0.01, 1.0, func(_v: float) -> void: _place_sun())
+	_note(_sun_box, "Light on a surface facing the sun at the room's centre.")
+	_distance_box = _box(column)
+	_slider(_distance_box, "Distance (m)", 10.0, 150.0, 1.0, 60.0, func(_v: float) -> void: _place_sun())
+	(_sliders["Distance (m)"] as HSlider).exp_edit = true
+	_note(_distance_box, "Closer, the rays spread more: shadows grow with distance from what casts them, and the light weakens across the room. Godot's shadows for a light this far away break up past 150 m; by then it looks like the infinite sun anyway.")
+
+	_sun_far = DirectionalLight3D.new()
+	_sun_far.shadow_enabled = true
+	add_child(_sun_far)
+	_sun_near = SpotLight3D.new()
+	_sun_near.shadow_enabled = true
+	_sun_near.spot_attenuation = 2.0          # inverse square
+	add_child(_sun_near)
+	var disc_mat := StandardMaterial3D.new()
+	disc_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	disc_mat.albedo_color = Color(1.0, 0.97, 0.9)
+	var disc_mesh := SphereMesh.new()
+	disc_mesh.material = disc_mat
+	_sun_disc = MeshInstance3D.new()
+	_sun_disc.mesh = disc_mesh
+	_sun_disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_sun_disc.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	add_child(_sun_disc)
+	_defaults["Polar angle"] = 50.0
+	_defaults["Azimuth"] = 200.0
+	_defaults["Sun energy"] = 1.0
+	_defaults["Distance (m)"] = 60.0
+	return column.get_parent() as Control
+
+
+func _set_sun(option: String) -> void:
+	_sun_model = option
+	_sun_far.visible = option == "Infinite"
+	_sun_near.visible = option == "Finite"
+	_sun_disc.visible = option == "Finite"
+	_enable(_sun_box, option != "Off")
+	_enable(_distance_box, option == "Finite")
+	get_viewport().positional_shadow_atlas_16_bits = _atlas16_was and option != "Finite"
+	_place_sun()
+
+
+## Unit vector from the room's centre toward the sun.
+func _sun_dir() -> Vector3:
+	var polar := deg_to_rad(float((_sliders["Polar angle"] as HSlider).value))
+	var azimuth := deg_to_rad(float((_sliders["Azimuth"] as HSlider).value))
+	return Vector3(sin(polar) * sin(azimuth), cos(polar), -sin(polar) * cos(azimuth))
+
+
+func _place_sun() -> void:
+	var dir := _sun_dir()
+	var up := Vector3.FORWARD if absf(dir.y) > 0.999 else Vector3.UP
+	var aim := Basis.looking_at(-dir, up)
+	var energy := float((_sliders["Sun energy"] as HSlider).value)
+	var d := float((_sliders["Distance (m)"] as HSlider).value)
+	_sun_far.basis = aim
+	_sun_far.light_energy = energy
+	# The spot's range is twice its distance; its window then lets
+	# (1 - (1/2)^4)^2 of the light through at the room, which the energy
+	# makes up, with the distance squared.
+	var window := pow(1.0 - pow(0.5, 4.0), 2.0)
+	_sun_near.transform = Transform3D(aim, dir * d)
+	_sun_near.spot_range = 2.0 * d
+	_sun_near.light_energy = energy * d * d / window
+	_sun_near.spot_angle = rad_to_deg(atan(24.0 / d))
+	_sun_near.shadow_bias = 0.9 / d
+	_sun_disc.position = dir * d
+	var r := d * tan(deg_to_rad(SUN_ANGLE / 2.0))
+	(_sun_disc.mesh as SphereMesh).radius = r
+	(_sun_disc.mesh as SphereMesh).height = 2.0 * r
+	match _sun_model:
+		"Off":
+			_sun_note.text = "No sun: the bulb and the indirect light settings only."
+		"Infinite":
+			_sun_note.text = "A directional light: parallel rays, the same strength everywhere, no position. Seen as a disc only in the sky."
+		"Finite":
+			_sun_note.text = "A spot light %d m away aimed at the room: rays spread from one point. The floor's edge nearest the sun gets %d%% more light than the edge opposite." 				% [int(d), int(round((_edge_ratio(dir * d) - 1.0) * 100.0))]
+
+
+## How much more light, by distance alone, the floor's edge nearest a
+## light at this point gets than the edge opposite.
+func _edge_ratio(at: Vector3) -> float:
+	var flat := Vector3(at.x, 0.0, at.z)
+	if flat.length() < 0.001:
+		return 1.0
+	var toward := flat.normalized() * 15.0
+	return (at + toward).length_squared() / (at - toward).length_squared()
 
 
 ## ---- what the choices set -----------------------------------------------
@@ -541,6 +667,9 @@ func _reset() -> void:
 		button.button_pressed = false
 	(_choices["Outside"]["Void"] as CheckBox).button_pressed = true
 	(_choices["Bounce"]["None"] as CheckBox).button_pressed = true
+	for title: String in ["Polar angle", "Azimuth", "Sun energy", "Distance (m)"]:
+		(_sliders[title] as HSlider).value = float(_defaults[title])
+	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
 	_refresh()
 
 
@@ -559,6 +688,7 @@ func _exit_tree() -> void:
 	var vp := get_viewport()
 	vp.use_debanding = _debanding_was
 	vp.positional_shadow_atlas_size = _atlas_was
+	vp.positional_shadow_atlas_16_bits = _atlas16_was
 
 
 func _physics_process(_delta: float) -> void:
