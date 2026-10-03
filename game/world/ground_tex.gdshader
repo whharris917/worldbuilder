@@ -19,6 +19,7 @@ uniform vec3 base_color : source_color = vec3(0.5);
 uniform vec2 tile_m = vec2(1.4);            // metres one copy of the image covers
 uniform float normal_strength = 1.0;
 uniform float roughness_scale = 1.0;
+uniform float specular = 0.5;            // head-on reflectance, 0.5 = 4%
 uniform float brightness = 1.0;
 uniform float variation = 0.6;              // 0 none, 1 full
 uniform float break_tiling = 1.0;           // 0 off, 1 on
@@ -63,6 +64,7 @@ void fragment() {
 		rough = mix(texture(rough_tex, uv1).r, texture(rough_tex, uv2).r, pick);
 	}
 	ROUGHNESS = clamp(rough * roughness_scale, 0.0, 1.0);
+	SPECULAR = specular;
 	if (use_ao) {
 		AO = mix(texture(ao_tex, uv1).r, texture(ao_tex, uv2).r, pick);
 	}

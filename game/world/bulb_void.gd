@@ -1011,7 +1011,13 @@ func _draw_swing(w: Pendulum, rig: Array) -> void:
 ## size in metres, width by height of one copy of the image; Scale
 ## multiplies it. Wet pebbles are a dry scan made wet: darker, its
 ## roughness cut to a third, as water fills the surface's pores and
-## lies on it as a film. Each map has its own switch. The floor and wall
+## lies on it as a film. Grass takes a constant roughness of 0.9 in place
+## of its scan's map: the scan measured single blades (about 0.26, waxy),
+## but a flat surface standing for a lawn stands for thousands of blades at
+## every angle, which together reflect as a very rough surface; at the
+## blades' own value a low sun glares off the field. Its specular is 0.2
+## (under 1% head-on, against 4% for most surfaces): toward a low sun the
+## blades hide one another, so less light glances off the field. Each map has its own switch. The floor and wall
 ## are meshes built here whose texture coordinates are metres: the
 ## floor's its x and z, the wall's the distance round it and down from
 ## its top. The ball's run once round and pole to pole, or it is mapped
@@ -1037,7 +1043,7 @@ const LIBRARY: Array[Dictionary] = [
 	{"name": "Rough rock", "dir": "rough_rock", "size": Vector2(2.0, 1.0)},
 	{"name": "Gravel", "dir": "gravel", "size": Vector2(1.6, 1.6)},
 	{"name": "Wet pebbles", "dir": "pebbles", "size": Vector2(1.0, 1.0), "wet": true},
-	{"name": "Grass", "dir": "grass", "size": Vector2(1.4, 1.4)},
+	{"name": "Grass", "dir": "grass", "size": Vector2(1.4, 1.4), "canopy_rough": 0.9, "canopy_spec": 0.2},
 	{"name": "The Moon", "dir": "planet_moon", "size": Vector2(12.0, 6.0), "globe": true},
 	{"name": "The Earth", "dir": "planet_earth", "size": Vector2(12.0, 6.0), "globe": true},
 	{"name": "Mars", "dir": "planet_mars", "size": Vector2(12.0, 6.0), "globe": true},
@@ -1354,6 +1360,8 @@ static func _map(entry: Dictionary, st: Dictionary, title: String) -> Texture2D:
 	var dir := str(entry.get("dir", ""))
 	if dir == "" or not bool((st["maps"] as Dictionary)[title]):
 		return null
+	if title == "Roughness" and entry.has("canopy_rough"):
+		return null
 	for ext: String in [".png", ".jpg"]:
 		var path := "res://textures/" + dir + "/" + str(TEX_FILES[title]) + ext
 		if ResourceLoader.exists(path):
@@ -1380,6 +1388,9 @@ func _dress(mat: StandardMaterial3D, entry: Dictionary, st: Dictionary, scale: V
 	else:
 		_apply_colour()
 	var base_rough := 1.0 if own_colour or maps["Albedo"] != null else float((_sliders["Roughness"] as HSlider).value)
+	if entry.has("canopy_rough"):
+		base_rough = float(entry["canopy_rough"])
+	mat.metallic_specular = float(entry.get("canopy_spec", 0.5)) if maps["Albedo"] != null or own_colour 		else float((_sliders["Specular"] as HSlider).value)
 	mat.roughness = clampf(base_rough * float(st["rough"]) * (0.3 if wet else 1.0), 0.0, 1.0)
 	mat.albedo_texture = maps["Albedo"]
 	mat.roughness_texture = maps["Roughness"]
@@ -1412,7 +1423,8 @@ func _dress_ground(entry: Dictionary, st: Dictionary, size: Vector2) -> void:
 	_ground_mat.set_shader_parameter("base_color", PLAIN)
 	_ground_mat.set_shader_parameter("tile_m", size)
 	_ground_mat.set_shader_parameter("normal_strength", float(st["normal"]))
-	_ground_mat.set_shader_parameter("roughness_scale", float(st["rough"]) * (0.3 if wet else 1.0))
+	_ground_mat.set_shader_parameter("roughness_scale", float(entry.get("canopy_rough", 1.0)) * float(st["rough"]) * (0.3 if wet else 1.0))
+	_ground_mat.set_shader_parameter("specular", float(entry.get("canopy_spec", 0.5)))
 	_ground_mat.set_shader_parameter("brightness", float(st["bright"]) * (0.65 if wet else 1.0))
 	_ground_mat.set_shader_parameter("variation", float(st["variation"]))
 	_ground_mat.set_shader_parameter("break_tiling", 1.0 if bool(st["tiling"]) else 0.0)
