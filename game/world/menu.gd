@@ -22,6 +22,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/meadow.tscn", "last_look": "meadow"},
 	{"title": "OPEN HILLS", "note": "Rolling hills of long grass under a wide sky, the wind running over them in gusts; a study in wind.",
 		"scene": "res://world/grass_hills.tscn", "last_look": "hills"},
+	{"title": "ONE BULB", "note": "A gray floor in the dark under a single bare bulb.",
+		"scene": "res://world/bulb_void.tscn"},
 ]
 
 
@@ -37,7 +39,7 @@ func _ready() -> void:
 	column.set_anchors_and_offsets_preset(PRESET_CENTER)
 	column.grow_horizontal = GROW_DIRECTION_BOTH
 	column.grow_vertical = GROW_DIRECTION_BOTH
-	column.add_theme_constant_override("separation", 7)
+	column.add_theme_constant_override("separation", 4)
 	add_child(column)
 
 	var title := Label.new()
@@ -53,7 +55,7 @@ func _ready() -> void:
 	sub.add_theme_color_override("font_color", Color(0.55, 0.58, 0.55))
 	column.add_child(sub)
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 18)
+	gap.custom_minimum_size = Vector2(0, 6)
 	column.add_child(gap)
 
 	var first: Button = null
@@ -96,7 +98,7 @@ func _world_button(world: Dictionary) -> Button:
 	style.border_color = Color(0.35, 0.37, 0.40)
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(6)
-	style.set_content_margin_all(10)
+	style.set_content_margin_all(7)
 	button.add_theme_stylebox_override("normal", style)
 	var hover := style.duplicate() as StyleBoxFlat
 	hover.bg_color = Color(0.13, 0.20, 0.15)
