@@ -692,20 +692,19 @@ func _reset() -> void:
 		if slider.has_meta("prop"):
 			slider.value = float(_defaults[str(slider.get_meta("prop"))])
 	for button: CheckButton in _switches.values():
-		button.button_pressed = false
+		if not button.has_meta("per_surface"):
+			button.button_pressed = false
 	(_choices["Outside"]["Void"] as CheckBox).button_pressed = true
 	(_choices["Bounce"]["None"] as CheckBox).button_pressed = true
 	for title: String in ["Polar angle", "Azimuth", "Sun energy", "Distance (m)",
 			"Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
-	for title: String in TEX_MAPS:
-		(_switches[title] as CheckButton).set_pressed_no_signal(true)
-	for title: String in ["Normal strength", "Height depth (mm)", "Floor scale", "Walls scale", "Ball scale", "Outside scale",
-			"Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)"]:
+	for title: String in ["Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
-	for pick: OptionButton in _picks.values():
-		pick.select(int(pick.get_meta("default")))
+	_surf = _surface_defaults()
+	(_choices["Edit"]["Floor"] as CheckBox).button_pressed = true
+	_show_surface()
 	(_choices["Filter"]["Mipmaps"] as CheckBox).button_pressed = true
 	(_choices["Ball map"]["UV"] as CheckBox).button_pressed = true
 	_apply_textures()
@@ -773,15 +772,15 @@ func _changed() -> void:
 ## Every control reports a change.
 func _watch_controls() -> void:
 	for slider: HSlider in _sliders.values():
-		slider.value_changed.connect(func(_v: float) -> void: _changed())
+		if not slider.has_meta("per_surface"):
+			slider.value_changed.connect(func(_v: float) -> void: _changed())
 	for button: CheckButton in _switches.values():
-		button.toggled.connect(func(_on: bool) -> void: _changed())
+		if not button.has_meta("per_surface"):
+			button.toggled.connect(func(_on: bool) -> void: _changed())
 	_dither.toggled.connect(func(_on: bool) -> void: _changed())
 	for boxes: Dictionary in _choices.values():
 		for box: CheckBox in boxes.values():
 			box.toggled.connect(func(_on: bool) -> void: _changed())
-	for pick: OptionButton in _picks.values():
-		pick.item_selected.connect(func(_i: int) -> void: _changed())
 	for picker: ColorPickerButton in _colour_pickers().values():
 		picker.color_changed.connect(func(_c: Color) -> void: _changed())
 
@@ -797,18 +796,18 @@ func _save_state() -> void:
 	_save_in = -1.0
 	if not _remembering():
 		return
-	var state := {"sliders": {}, "switches": {}, "choices": {}, "picks": {}, "colours": {},
+	var state := {"sliders": {}, "switches": {}, "choices": {}, "colours": {}, "surfaces": _surf,
 		"dither": _dither.button_pressed, "atlas": get_viewport().positional_shadow_atlas_size}
 	for title: String in _sliders:
-		state["sliders"][title] = (_sliders[title] as HSlider).value
+		if not (_sliders[title] as HSlider).has_meta("per_surface"):
+			state["sliders"][title] = (_sliders[title] as HSlider).value
 	for title: String in _switches:
-		state["switches"][title] = (_switches[title] as CheckButton).button_pressed
+		if not (_switches[title] as CheckButton).has_meta("per_surface"):
+			state["switches"][title] = (_switches[title] as CheckButton).button_pressed
 	for title: String in _choices:
 		for option: String in _choices[title]:
 			if (_choices[title][option] as CheckBox).button_pressed:
 				state["choices"][title] = option
-	for surface: String in _picks:
-		state["picks"][surface] = str(LIBRARY[(_picks[surface] as OptionButton).selected]["name"])
 	var pickers := _colour_pickers()
 	for title: String in pickers:
 		state["colours"][title] = (pickers[title] as ColorPickerButton).color.to_html(false)
@@ -842,20 +841,26 @@ func _load_state() -> void:
 			var picker := pickers[title] as ColorPickerButton
 			picker.color = Color.html(str(colours[title]))
 			picker.color_changed.emit(picker.color)
+	# Each surface's settings over its defaults, so a setting added later
+	# keeps its default.
+	var surfaces: Dictionary = state.get("surfaces", {})
+	for surface: String in surfaces:
+		if _surf.has(surface) and surfaces[surface] is Dictionary:
+			for key: String in surfaces[surface]:
+				if (_surf[surface] as Dictionary).has(key):
+					if key == "maps":
+						(_surf[surface]["maps"] as Dictionary).merge(surfaces[surface]["maps"], true)
+					else:
+						_surf[surface][key] = surfaces[surface][key]
+	_show_surface()
 	var switches: Dictionary = state.get("switches", {})
 	for title: String in switches:
-		if _switches.has(title):
+		if _switches.has(title) and not (_switches[title] as CheckButton).has_meta("per_surface"):
 			(_switches[title] as CheckButton).button_pressed = bool(switches[title])
 	var sliders: Dictionary = state.get("sliders", {})
 	for title: String in sliders:
-		if _sliders.has(title):
+		if _sliders.has(title) and not (_sliders[title] as HSlider).has_meta("per_surface"):
 			(_sliders[title] as HSlider).value = float(sliders[title])
-	var picks: Dictionary = state.get("picks", {})
-	for surface: String in picks:
-		if _picks.has(surface):
-			for i in LIBRARY.size():
-				if str(LIBRARY[i]["name"]) == str(picks[surface]):
-					(_picks[surface] as OptionButton).select(i)
 	_dither.button_pressed = bool(state.get("dither", _dither.button_pressed))
 	var atlas := int(state.get("atlas", _atlas_was))
 	if ATLAS_SIZES.has(atlas):
@@ -1045,12 +1050,17 @@ var _wall_mat: StandardMaterial3D
 var _wall_view: MeshInstance3D
 var _wall_shape: CollisionShape3D
 var _room_r := 15.0                     # the floor's radius and the wall's inner face
-var _ground_mat: StandardMaterial3D
+var _ground_mat: ShaderMaterial
 var _ground_view: MeshInstance3D
 const OUTSIDE_R := 300.0                # the ground outside runs to here
+const SURFACES: Array[String] = ["Floor", "Walls", "Ball", "Ground"]
 var _tex_filter := "Mipmaps"
 var _ball_map := "UV"
-var _picks: Dictionary = {}             # surface -> OptionButton
+var _surf: Dictionary = {}              # surface -> its settings (see _surface_defaults)
+var _edit := "Floor"                    # the surface the panel shows
+var _mat_pick: OptionButton
+var _ground_box: VBoxContainer
+var _height_box: VBoxContainer
 
 
 ## A disc in place of the floor's cylinder, its texture coordinates its
@@ -1136,8 +1146,8 @@ func _shape_wall() -> void:
 ## walk out through the doorway and on to its edge.
 func _build_ground() -> void:
 	_ground_view = MeshInstance3D.new()
-	_ground_mat = StandardMaterial3D.new()
-	_ground_mat.albedo_color = PLAIN
+	_ground_mat = ShaderMaterial.new()
+	_ground_mat.shader = load("res://world/ground_tex.gdshader") as Shader
 	_ground_view.material_override = _ground_mat
 	add_child(_ground_view)
 	_shape_ground()
@@ -1208,70 +1218,135 @@ static func _quad(st: SurfaceTool, p: Array, n: Array, uv: Array) -> void:
 	_tri(st, [p[0], p[2], p[3]], [n[0], n[2], n[3]], [uv[0], uv[2], uv[3]])
 
 
+## Each surface keeps its own settings: its material, scale, which maps
+## are on, normal strength, parallax depth, roughness and brightness
+## multipliers, and for the ground variation and tiling. The panel shows
+## the surface chosen under Edit; its controls write to that surface only.
+static func _surface_defaults() -> Dictionary:
+	var out := {}
+	for surface in SURFACES:
+		out[surface] = {"material": "Grass" if surface == "Ground" else "Plain gray", "scale": 1.0,
+			"maps": {"Albedo": true, "Roughness": true, "Normal": true, "Height": true, "AO": true},
+			"normal": 1.0, "height": 10.0, "deep": false, "rough": 1.0, "bright": 1.0,
+			"variation": 0.6, "tiling": true}
+	return out
+
+
 func _build_textures(root: Control) -> Control:
+	_surf = _surface_defaults()
 	var column := _column(root)
-	for surface: String in ["Floor", "Walls", "Ball", "Outside"]:
-		var row := HBoxContainer.new()
-		var label := Label.new()
-		label.text = surface
-		label.custom_minimum_size = Vector2(56, 0)
-		row.add_child(label)
-		var pick := OptionButton.new()
-		pick.focus_mode = Control.FOCUS_NONE
-		pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		for entry: Dictionary in LIBRARY:
-			pick.add_item(str(entry["name"]))
-		pick.set_meta("default", _library_index("Grass") if surface == "Outside" else 0)
-		pick.select(int(pick.get_meta("default")))
-		pick.item_selected.connect(func(_i: int) -> void: _apply_textures())
-		row.add_child(pick)
-		column.add_child(row)
-		_picks[surface] = pick
-	_note(column, "Generated tiles are made here, every map from one height field; the rest are scans from ambientCG (CC0). Wet pebbles are a dry scan made darker and glossier.")
+	_choice(column, "Edit", SURFACES, func(option: String) -> void:
+		_edit = option
+		_show_surface())
+	var row := HBoxContainer.new()
+	var label := Label.new()
+	label.text = "Material"
+	label.custom_minimum_size = Vector2(56, 0)
+	row.add_child(label)
+	_mat_pick = OptionButton.new()
+	_mat_pick.focus_mode = Control.FOCUS_NONE
+	_mat_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for entry: Dictionary in LIBRARY:
+		_mat_pick.add_item(str(entry["name"]))
+	_mat_pick.item_selected.connect(func(i: int) -> void: _set_surf("material", str(LIBRARY[i]["name"])))
+	row.add_child(_mat_pick)
+	column.add_child(row)
+	_note(column, "Generated tiles are made here, every map from one height field; the rest are scans from ambientCG (CC0); the planets are NASA and USGS maps. Wet pebbles are a dry scan made darker and glossier.")
+	_surf_slider(column, "Scale", "scale", 0.25, 4.0, 0.05)
+	_note(column, "1 is the material's real size; the planets always wrap the ball once.")
 	_heading(column, "Maps")
 	for title in TEX_MAPS:
-		_switch(column, title, func(_on: bool) -> void: _apply_textures())
-		(_switches[title] as CheckButton).set_pressed_no_signal(true)
-	_note(column, "Height shifts the texture by the view angle to fake depth; outlines and shadows stay flat. AO darkens only ambient and bounce light. Marble has no AO map, nor the limestone tiles.")
-	_slider(column, "Normal strength", 0.0, 2.0, 0.01, 1.0, func(_v: float) -> void: _apply_textures())
-	_slider(column, "Height depth (mm)", 0.0, 100.0, 1.0, 10.0, func(_v: float) -> void: _apply_textures())
-	_switch(column, "Deep parallax", func(_on: bool) -> void: _apply_textures())
-	_note(column, "Steps through the height in layers so raised parts hide what lies behind them; costs more.")
-	for surface: String in ["Floor", "Walls", "Ball", "Outside"]:
-		_slider(column, surface + " scale", 0.25, 4.0, 0.05, 1.0, func(_v: float) -> void: _apply_textures())
-		_defaults[surface + " scale"] = 1.0
-	_note(column, "1 is each material's real size; the planets always wrap the ball once.")
+		_switch(column, title, func(on: bool) -> void:
+			if not _restoring:
+				(_surf[_edit]["maps"] as Dictionary)[title] = on
+				_after_surface_change())
+		(_switches[title] as CheckButton).set_meta("per_surface", true)
+	_note(column, "Height shifts the texture by the view angle to fake depth; outlines and shadows stay flat. AO darkens only ambient and bounce light. Marble and the limestone tiles have no AO map; the planets have no height map.")
+	_surf_slider(column, "Normal strength", "normal", 0.0, 2.0, 0.01)
+	_surf_slider(column, "Roughness x", "rough", 0.0, 2.0, 0.01)
+	_surf_slider(column, "Brightness", "bright", 0.0, 2.0, 0.01)
+	_height_box = _box(column)
+	_surf_slider(_height_box, "Height depth (mm)", "height", 0.0, 100.0, 1.0)
+	_switch(_height_box, "Deep parallax", func(on: bool) -> void: _set_surf("deep", on))
+	(_switches["Deep parallax"] as CheckButton).set_meta("per_surface", true)
+	_note(_height_box, "Deep parallax steps through the height in layers so raised parts hide what lies behind them; costs more.")
+	_ground_box = _box(column)
+	_surf_slider(_ground_box, "Variation", "variation", 0.0, 1.0, 0.01)
+	_switch(_ground_box, "Break up tiling", func(on: bool) -> void: _set_surf("tiling", on))
+	(_switches["Break up tiling"] as CheckButton).set_meta("per_surface", true)
+	_note(_ground_box, "The ground only. Variation lays broad patches of drier and lusher colour, 6 to 40 m across. Breaking up the tiling reads the texture again larger and turned, and lets noise choose between the two, so no repeat lines up.")
 	_choice(column, "Filter", ["Nearest", "Bilinear", "Mipmaps", "Anisotropic"], func(option: String) -> void:
 		_tex_filter = option
 		_apply_textures())
 	(_choices["Filter"]["Mipmaps"] as CheckBox).set_pressed_no_signal(true)
 	(_choices["Filter"]["Nearest"] as CheckBox).set_pressed_no_signal(false)
-	_note(column, "Look across the floor toward the wall: without mipmaps far detail shimmers; mipmaps alone blur it; anisotropic keeps it sharp.")
+	_note(column, "For floor, walls and ball (the ground filters anisotropically always). Look across the floor toward the wall: without mipmaps far detail shimmers; mipmaps alone blur it; anisotropic keeps it sharp.")
 	_choice(column, "Ball map", ["UV", "Triplanar"], func(option: String) -> void:
 		_ball_map = option
 		_apply_textures())
-	_note(column, "UV wraps the image round the ball and pinches it at the poles. Triplanar projects it from three sides, no seams, blended where they meet; Godot does no height with it. The Moon, the Earth and Mars always wrap the ball once, north pole toward the hook.")
-	_defaults["Normal strength"] = 1.0
-	_defaults["Height depth (mm)"] = 10.0
+	_note(column, "UV wraps the image round the ball and pinches it at the poles. Triplanar projects it from three sides, no seams, blended where they meet; Godot does no height with it.")
+	_show_surface()
 	return column.get_parent() as Control
 
 
+## A slider that writes one of the edited surface's settings.
+func _surf_slider(column: VBoxContainer, title: String, key: String, lo: float, hi: float, step: float) -> void:
+	_slider(column, title, lo, hi, step, 1.0, func(v: float) -> void: _set_surf(key, v))
+	(_sliders[title] as HSlider).set_meta("per_surface", true)
+
+
+func _set_surf(key: String, value: Variant) -> void:
+	if _restoring:
+		return
+	_surf[_edit][key] = value
+	_after_surface_change()
+
+
+func _after_surface_change() -> void:
+	_apply_textures()
+	_changed()
+
+
+## The panel's controls set to the edited surface's settings, quietly.
+func _show_surface() -> void:
+	var was := _restoring
+	_restoring = true
+	var st: Dictionary = _surf[_edit]
+	_mat_pick.select(_library_index(str(st["material"])))
+	for pair: Array in [["Scale", "scale"], ["Normal strength", "normal"], ["Roughness x", "rough"],
+			["Brightness", "bright"], ["Height depth (mm)", "height"], ["Variation", "variation"]]:
+		var slider := _sliders[pair[0]] as HSlider
+		slider.set_value_no_signal(float(st[pair[1]]))
+		_show_slider(str(pair[0]), slider.value)
+	for title in TEX_MAPS:
+		(_switches[title] as CheckButton).set_pressed_no_signal(bool((st["maps"] as Dictionary)[title]))
+	(_switches["Deep parallax"] as CheckButton).set_pressed_no_signal(bool(st["deep"]))
+	(_switches["Break up tiling"] as CheckButton).set_pressed_no_signal(bool(st["tiling"]))
+	_enable(_ground_box, _edit == "Ground")
+	_enable(_height_box, _edit != "Ground")
+	_restoring = was
+
+
 func _apply_textures() -> void:
-	var floor_entry := LIBRARY[(_picks["Floor"] as OptionButton).selected]
-	var wall_entry := LIBRARY[(_picks["Walls"] as OptionButton).selected]
-	var ball_entry := LIBRARY[(_picks["Ball"] as OptionButton).selected]
-	var outside_entry := LIBRARY[(_picks["Outside"] as OptionButton).selected]
-	_dress(_ground_mat, outside_entry, _repeat(outside_entry, _scale("Outside")), false, true)
-	_dress(_floor_mat, floor_entry, _repeat(floor_entry, _scale("Floor")), false, true)
-	_dress(_wall_mat, wall_entry, _repeat(wall_entry, _scale("Walls")), false, true)
-	var size: Vector2 = ball_entry.get("size", Vector2.ONE) * _scale("Ball")
-	var r := _ball_swing.radius
-	if ball_entry.get("globe", false):
-		_dress(_ball_mat, ball_entry, Vector3.ONE, false, false)
-	elif _ball_map == "Triplanar":
-		_dress(_ball_mat, ball_entry, Vector3(1.0 / size.x, 1.0 / size.y, 1.0 / size.x), true, false)
-	else:
-		_dress(_ball_mat, ball_entry, Vector3(TAU * r / size.x, PI * r / size.y, 1.0), false, false)
+	for surface in SURFACES:
+		var st: Dictionary = _surf[surface]
+		var entry := LIBRARY[_library_index(str(st["material"]))]
+		var size: Vector2 = entry.get("size", Vector2.ONE) * float(st["scale"])
+		match surface:
+			"Floor":
+				_dress(_floor_mat, entry, st, Vector3(1.0 / size.x, 1.0 / size.y, 1.0), false, true)
+			"Walls":
+				_dress(_wall_mat, entry, st, Vector3(1.0 / size.x, 1.0 / size.y, 1.0), false, true)
+			"Ground":
+				_dress_ground(entry, st, size)
+			"Ball":
+				var r := _ball_swing.radius
+				if entry.get("globe", false):
+					_dress(_ball_mat, entry, st, Vector3.ONE, false, false)
+				elif _ball_map == "Triplanar":
+					_dress(_ball_mat, entry, st, Vector3(1.0 / size.x, 1.0 / size.y, 1.0 / size.x), true, false)
+				else:
+					_dress(_ball_mat, entry, st, Vector3(TAU * r / size.x, PI * r / size.y, 1.0), false, false)
 
 
 static func _library_index(entry_name: String) -> int:
@@ -1281,61 +1356,73 @@ static func _library_index(entry_name: String) -> int:
 	return 0
 
 
-func _scale(surface: String) -> float:
-	return float((_sliders[surface + " scale"] as HSlider).value)
-
-
-## Texture repeats a metre for a surface whose coordinates are metres.
-static func _repeat(entry: Dictionary, k: float) -> Vector3:
-	var size: Vector2 = entry.get("size", Vector2.ONE) * k
-	return Vector3(1.0 / size.x, 1.0 / size.y, 1.0)
-
-
-## One material in one library entry: each map on or off, its
-## strengths, the filter, the coordinates' scale and whether they are
-## triplanar. A textured surface takes the texture's colour as it is
-## (darkened if wet); a plain one its own: gray for floor and wall, the
-## ball's colour and roughness from its panel.
-func _dress(mat: StandardMaterial3D, entry: Dictionary, scale: Vector3, triplanar: bool, own_colour: bool) -> void:
+## A library entry's map, if it has one and the surface has it on.
+static func _map(entry: Dictionary, st: Dictionary, title: String) -> Texture2D:
 	var dir := str(entry.get("dir", ""))
+	if dir == "" or not bool((st["maps"] as Dictionary)[title]):
+		return null
+	for ext: String in [".png", ".jpg"]:
+		var path := "res://textures/" + dir + "/" + str(TEX_FILES[title]) + ext
+		if ResourceLoader.exists(path):
+			return load(path) as Texture2D
+	return null
+
+
+## One material in one library entry with one surface's settings: each
+## map on or off, its strengths, the filter, the coordinates' scale and
+## whether they are triplanar. A textured surface takes the texture's
+## colour (darkened if wet) times its brightness; a plain one its own:
+## gray for floor and wall, the ball's colour and roughness from its
+## panel.
+func _dress(mat: StandardMaterial3D, entry: Dictionary, st: Dictionary, scale: Vector3, triplanar: bool, own_colour: bool) -> void:
 	var maps := {}
 	for title in TEX_MAPS:
-		var tex: Texture2D = null
-		if dir != "" and (_switches[title] as CheckButton).button_pressed:
-			for ext: String in [".png", ".jpg"]:
-				var path := "res://textures/" + dir + "/" + str(TEX_FILES[title]) + ext
-				if ResourceLoader.exists(path):
-					tex = load(path) as Texture2D
-					break
-		maps[title] = tex
+		maps[title] = _map(entry, st, title)
 	var wet: bool = entry.get("wet", false)
+	var bright := float(st["bright"]) * (0.65 if wet else 1.0)
 	if maps["Albedo"] != null:
-		mat.albedo_color = Color(0.65, 0.65, 0.65) if wet else Color.WHITE
+		mat.albedo_color = Color(bright, bright, bright)
 	elif own_colour:
-		mat.albedo_color = PLAIN
+		mat.albedo_color = Color(PLAIN.r * bright, PLAIN.g * bright, PLAIN.b * bright)
 	else:
 		_apply_colour()
-	if own_colour:
-		mat.roughness = 0.3 if wet else 1.0
-	else:
-		mat.roughness = 0.3 if wet else float((_sliders["Roughness"] as HSlider).value)
+	var base_rough := 1.0 if own_colour or maps["Albedo"] != null else float((_sliders["Roughness"] as HSlider).value)
+	mat.roughness = clampf(base_rough * float(st["rough"]) * (0.3 if wet else 1.0), 0.0, 1.0)
 	mat.albedo_texture = maps["Albedo"]
 	mat.roughness_texture = maps["Roughness"]
 	mat.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
 	mat.normal_enabled = maps["Normal"] != null
 	mat.normal_texture = maps["Normal"]
-	mat.normal_scale = float((_sliders["Normal strength"] as HSlider).value)
+	mat.normal_scale = float(st["normal"])
 	mat.heightmap_enabled = maps["Height"] != null and not triplanar
 	mat.heightmap_texture = maps["Height"]
-	mat.heightmap_scale = float((_sliders["Height depth (mm)"] as HSlider).value) / 1000.0 * scale.x * 100.0
-	mat.heightmap_deep_parallax = (_switches["Deep parallax"] as CheckButton).button_pressed
+	mat.heightmap_scale = float(st["height"]) / 1000.0 * scale.x * 100.0
+	mat.heightmap_deep_parallax = bool(st["deep"])
 	mat.ao_enabled = maps["AO"] != null
 	mat.ao_texture = maps["AO"]
 	mat.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
 	mat.texture_filter = FILTERS[_tex_filter]
 	mat.uv1_triplanar = triplanar
 	mat.uv1_world_triplanar = false
-	mat.uv1_scale = scale if dir != "" else Vector3.ONE
+	mat.uv1_scale = scale if str(entry.get("dir", "")) != "" else Vector3.ONE
+
+
+## The ground's shader with one entry and the ground's settings.
+func _dress_ground(entry: Dictionary, st: Dictionary, size: Vector2) -> void:
+	var wet: bool = entry.get("wet", false)
+	var pairs := {"Albedo": ["albedo_tex", "use_albedo"], "Normal": ["normal_tex", "use_normal"],
+		"Roughness": ["rough_tex", "use_rough"], "AO": ["ao_tex", "use_ao"]}
+	for title: String in pairs:
+		var tex := _map(entry, st, title)
+		_ground_mat.set_shader_parameter(pairs[title][0], tex)
+		_ground_mat.set_shader_parameter(pairs[title][1], tex != null)
+	_ground_mat.set_shader_parameter("base_color", PLAIN)
+	_ground_mat.set_shader_parameter("tile_m", size)
+	_ground_mat.set_shader_parameter("normal_strength", float(st["normal"]))
+	_ground_mat.set_shader_parameter("roughness_scale", float(st["rough"]) * (0.3 if wet else 1.0))
+	_ground_mat.set_shader_parameter("brightness", float(st["bright"]) * (0.65 if wet else 1.0))
+	_ground_mat.set_shader_parameter("variation", float(st["variation"]))
+	_ground_mat.set_shader_parameter("break_tiling", 1.0 if bool(st["tiling"]) else 0.0)
 
 
 ## ---- the motion panel ------------------------------------------------------
