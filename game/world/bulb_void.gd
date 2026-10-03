@@ -83,7 +83,7 @@ var _ball_swing: Pendulum
 var _bulb_swing: Pendulum
 var _ball_rig: Array = []               # the weight, its hook, its rope
 var _bulb_rig: Array = []
-var _bounce := 0.9                      # restitution of a knock: 1 loses nothing
+var _restitution := 0.9                 # of a knock: 1 loses nothing
 var _sun_model := "Off"                # Off, Infinite or Finite
 var _sun_far: DirectionalLight3D
 var _sun_near: SpotLight3D
@@ -796,7 +796,7 @@ func _knock_wall(w: Pendulum) -> void:
 	w.place(c - out * (flat.length() - limit))
 	var vn := w.velocity().dot(out)
 	if vn > 0.0:
-		w.push(-out * (1.0 + _bounce) * vn)
+		w.push(-out * (1.0 + _restitution) * vn)
 
 
 ## Two weights that meet are parted and exchange momentum along the
@@ -813,7 +813,7 @@ func _knock_each_other(a: Pendulum, b: Pendulum) -> void:
 	b.place(b.centre() + n * gap * inv_b / (inv_a + inv_b))
 	var vn := (b.velocity() - a.velocity()).dot(n)
 	if vn < 0.0:
-		var j := -(1.0 + _bounce) * vn / (inv_a + inv_b)
+		var j := -(1.0 + _restitution) * vn / (inv_a + inv_b)
 		a.push(-n * j * inv_a)
 		b.push(n * j * inv_b)
 
@@ -845,7 +845,7 @@ func _build_motion(root: Control) -> Control:
 	_slider(column, "Bulb wait", 0.0, 10.0, 0.1, _bulb_swing.wait, func(v: float) -> void: _bulb_swing.wait = v)
 	_note(column, "Speed is the hook's average along an edge, in m/s; wait is the pause at each corner, in seconds. The ball swings back and forth about every 6.6 s and the bulb every 6.3 s; a hook whose stops and starts fall in step with that swings its weight higher and higher, and the ball then strikes the wall.")
 	_heading(column, "Knocks")
-	_slider(column, "Restitution", 0.0, 1.0, 0.01, _bounce, func(v: float) -> void: _bounce = v)
+	_slider(column, "Restitution", 0.0, 1.0, 0.01, _restitution, func(v: float) -> void: _restitution = v)
 	_note(column, "The share of the closing speed kept after a knock, against the wall or between ball and bulb: 1 bounces back as fast as it came, 0 stops dead.")
 	for title: String in ["Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution"]:
 		_defaults[title] = (_sliders[title] as HSlider).value
