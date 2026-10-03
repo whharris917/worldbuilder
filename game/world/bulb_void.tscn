@@ -98,6 +98,7 @@ omni_range = 20.0
 
 [node name="Glass" type="MeshInstance3D" parent="Bulb"]
 cast_shadow = 0
+gi_mode = 0
 mesh = SubResource("bulb_mesh")
 
 [node name="Player" parent="." instance=ExtResource("2")]

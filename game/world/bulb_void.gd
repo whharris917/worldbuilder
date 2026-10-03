@@ -17,6 +17,17 @@ extends Node3D
 ## of it), and a button that puts every control back as the scene
 ## opened.
 ##
+## A second column, top right, for indirect light: ambient light (a
+## colour and an energy, 0 as the scene opens), switches for SSAO, SSIL,
+## SDFGI and a VoxelGI box around the room (baked each time it is
+## switched on, so it sees the ball as it is then), and the bulb's
+## indirect energy, its share in the GI methods.
+##
+## The bulb's glass takes no part in GI (it encloses the light, and a
+## voxel or distance-field method would count it solid and smother the
+## light), and the player's body is dynamic, so the methods that bake
+## the room do not bake the body where it stood.
+##
 ## The ball's colour is held as a linear tint, its brightest channel 1,
 ## times the albedo slider, so the slider reads as the reflectance of
 ## the brightest channel; for a gray that is the reflectance itself.
@@ -29,6 +40,7 @@ const ATLAS_SIZES: Array[int] = [4096, 8192, 16384]
 @onready var _ball_mesh: SphereMesh = ($Ball/Mesh as MeshInstance3D).mesh as SphereMesh
 @onready var _ball_mat: StandardMaterial3D = _ball_mesh.material as StandardMaterial3D
 @onready var _bulb: OmniLight3D = $Bulb
+@onready var _env: Environment = ($WorldEnvironment as WorldEnvironment).environment
 @onready var _glass_mat: StandardMaterial3D = (($Bulb/Glass as MeshInstance3D).mesh as PrimitiveMesh).material as StandardMaterial3D
 
 var _dither: CheckButton
@@ -36,6 +48,9 @@ var _atlas: Button
 var _picker: ColorPickerButton
 var _bulb_picker: ColorPickerButton
 var _sliders: Dictionary = {}          # title -> HSlider
+var _switches: Dictionary = {}         # title -> CheckButton
+var _ambient_picker: ColorPickerButton
+var _voxel_gi: VoxelGI = null
 var _debanding_was := false
 var _atlas_was := 4096
 var _tint := Color(1, 1, 1)            # linear, brightest channel 1
@@ -45,6 +60,8 @@ var _defaults: Dictionary = {}         # what reset puts back
 
 func _ready() -> void:
 	player.global_position = START
+	for node in player.find_children("*", "GeometryInstance3D", true, false):
+		(node as GeometryInstance3D).gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
 	var vp := get_viewport()
 	_debanding_was = vp.use_debanding
 	_atlas_was = vp.positional_shadow_atlas_size
@@ -57,7 +74,14 @@ func _ready() -> void:
 		"Metallic": _ball_mat.metallic,
 		"Specular": _ball_mat.metallic_specular,
 		"Segments": float(_ball_mesh.radial_segments),
+		"ambient": Color(1, 1, 1),
+		"Ambient energy": 0.0,
+		"Indirect energy": _bulb.light_indirect_energy,
 	}
+	# Ambient light from a colour; at energy 0 it is the same as none.
+	_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	_env.ambient_light_color = _defaults["ambient"] as Color
+	_env.ambient_light_energy = 0.0
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -105,6 +129,27 @@ func _ready() -> void:
 	reset.focus_mode = Control.FOCUS_NONE
 	reset.pressed.connect(_reset)
 	column.add_child(reset)
+
+	var right := VBoxContainer.new()
+	right.anchor_left = 1.0
+	right.anchor_right = 1.0
+	right.offset_left = -276.0
+	right.offset_right = -16.0
+	right.offset_top = 16.0
+	layer.add_child(right)
+	var heading := Label.new()
+	heading.text = "Indirect light"
+	right.add_child(heading)
+	_ambient_picker = _colour_row(right, "Ambient colour", _env.ambient_light_color)
+	_ambient_picker.color_changed.connect(func(c: Color) -> void: _env.ambient_light_color = c)
+	_slider(right, "Ambient energy", 0.0, 2.0, 0.01, 0.0, func(v: float) -> void:
+		_env.ambient_light_energy = v)
+	_switch(right, "SSAO", func(on: bool) -> void: _env.ssao_enabled = on)
+	_switch(right, "SSIL", func(on: bool) -> void: _env.ssil_enabled = on)
+	_switch(right, "SDFGI", func(on: bool) -> void: _env.sdfgi_enabled = on)
+	_switch(right, "VoxelGI", _set_voxel_gi)
+	_slider(right, "Indirect energy", 0.0, 4.0, 0.01, _bulb.light_indirect_energy, func(v: float) -> void:
+		_bulb.light_indirect_energy = v)
 	if DisplayServer.get_name() == "headless":
 		print("[worldbuilder] bulb void: floor, one bulb")
 
@@ -133,6 +178,31 @@ func _colour_row(column: VBoxContainer, title: String, colour: Color) -> ColorPi
 	row.add_child(picker)
 	column.add_child(row)
 	return picker
+
+
+## A switch, off as the scene opens.
+func _switch(column: VBoxContainer, title: String, on_toggle: Callable) -> void:
+	var button := CheckButton.new()
+	button.text = title
+	button.focus_mode = Control.FOCUS_NONE
+	button.toggled.connect(func(on: bool) -> void: on_toggle.call(on))
+	_switches[title] = button
+	column.add_child(button)
+
+
+## A VoxelGI box just larger than the room, baked from the scene as it
+## is now each time it is switched on.
+func _set_voxel_gi(on: bool) -> void:
+	if not on:
+		if _voxel_gi != null:
+			_voxel_gi.queue_free()
+			_voxel_gi = null
+		return
+	_voxel_gi = VoxelGI.new()
+	_voxel_gi.size = Vector3(32, 6, 32)
+	_voxel_gi.position = Vector3(0, 2.8, 0)
+	add_child(_voxel_gi)
+	_voxel_gi.bake()
 
 
 ## The light and the glass that stands for it, in one colour.
@@ -192,8 +262,13 @@ func _reset() -> void:
 	_set_colour(_defaults["colour"] as Color)
 	_apply_colour()
 	_picker.color = _ball_mat.albedo_color
-	for title: String in ["Albedo", "Roughness", "Metallic", "Specular", "Segments"]:
+	for title: String in ["Albedo", "Roughness", "Metallic", "Specular", "Segments",
+			"Ambient energy", "Indirect energy"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
+	_ambient_picker.color = _defaults["ambient"] as Color
+	_env.ambient_light_color = _ambient_picker.color
+	for button: CheckButton in _switches.values():
+		button.button_pressed = false
 
 
 func _next_atlas() -> void:
