@@ -12,12 +12,17 @@ reflected_light_source = 1
 [sub_resource type="StandardMaterial3D" id="floor_mat"]
 albedo_color = Color(0.5, 0.5, 0.5, 1)
 
-[sub_resource type="PlaneMesh" id="floor_mesh"]
+[sub_resource type="CylinderMesh" id="floor_mesh"]
 material = SubResource("floor_mat")
-size = Vector2(30, 30)
+top_radius = 15.0
+bottom_radius = 15.0
+height = 0.05
+radial_segments = 256
+rings = 1
 
-[sub_resource type="BoxShape3D" id="floor_shape"]
-size = Vector3(30, 1, 30)
+[sub_resource type="CylinderShape3D" id="floor_shape"]
+height = 1.0
+radius = 15.0
 
 [sub_resource type="StandardMaterial3D" id="bulb_mat"]
 albedo_color = Color(1, 1, 1, 1)
@@ -39,6 +44,7 @@ environment = SubResource("env")
 [node name="Floor" type="StaticBody3D" parent="."]
 
 [node name="Mesh" type="MeshInstance3D" parent="Floor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.025, 0)
 mesh = SubResource("floor_mesh")
 
 [node name="Collision" type="CollisionShape3D" parent="Floor"]

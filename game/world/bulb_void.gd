@@ -1,5 +1,5 @@
 extends Node3D
-## A gray floor in a black void lit by one bare bulb, drawn with Godot's
+## A round gray floor in a black void lit by one bare bulb, drawn with Godot's
 ## default shading: no sky, no ambient light, no post-processing. A
 ## player who walks off the edge is put back at the start. One switch
 ## on screen, also on the 1 key, turns the viewport's debanding (a
