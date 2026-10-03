@@ -153,6 +153,8 @@ func _ready() -> void:
 	root.add_child(_fps)
 	_set_outside("Void")
 	_set_bounce("None")
+	_load_state()
+	_watch_controls()
 	if DisplayServer.get_name() == "headless":
 		print("[worldbuilder] bulb void: floor, one bulb")
 
@@ -713,6 +715,7 @@ func _next_atlas() -> void:
 	var i := ATLAS_SIZES.find(vp.positional_shadow_atlas_size)
 	vp.positional_shadow_atlas_size = ATLAS_SIZES[(i + 1) % ATLAS_SIZES.size()]
 	_show_atlas()
+	_changed()
 
 
 func _show_atlas() -> void:
@@ -720,15 +723,145 @@ func _show_atlas() -> void:
 
 
 func _exit_tree() -> void:
+	if _save_in >= 0.0:
+		_save_state()
 	var vp := get_viewport()
 	vp.use_debanding = _debanding_was
 	vp.positional_shadow_atlas_size = _atlas_was
 	vp.positional_shadow_atlas_16_bits = _atlas16_was
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var fps := Engine.get_frames_per_second()
 	_fps.text = "%d fps  %.1f ms" % [fps, 1000.0 / maxf(fps, 1.0)]
+	if _save_in >= 0.0:
+		_save_in -= delta
+		if _save_in < 0.0:
+			_save_state()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and _save_in >= 0.0:
+		_save_state()
+
+
+## ---- remembering the controls --------------------------------------------
+
+## Every control's setting is kept in user://bulb_void.json: written half
+## a second after the last change (so a slider being dragged is written
+## once, when it comes to rest) and on leaving, read back on arrival.
+## Settings are found by their control's title, so a control added
+## later starts at its default and one removed is ignored. Probes and
+## headless runs neither read nor write it.
+const STATE_PATH := "user://bulb_void.json"
+
+var _save_in := -1.0                    # seconds to the next write; below 0, nothing to write
+var _restoring := false
+
+
+func _remembering() -> bool:
+	return not MouseMode.probe and DisplayServer.get_name() != "headless"
+
+
+func _changed() -> void:
+	if not _restoring and _remembering():
+		_save_in = 0.5
+
+
+## Every control reports a change.
+func _watch_controls() -> void:
+	for slider: HSlider in _sliders.values():
+		slider.value_changed.connect(func(_v: float) -> void: _changed())
+	for button: CheckButton in _switches.values():
+		button.toggled.connect(func(_on: bool) -> void: _changed())
+	_dither.toggled.connect(func(_on: bool) -> void: _changed())
+	for boxes: Dictionary in _choices.values():
+		for box: CheckBox in boxes.values():
+			box.toggled.connect(func(_on: bool) -> void: _changed())
+	for pick: OptionButton in _picks.values():
+		pick.item_selected.connect(func(_i: int) -> void: _changed())
+	for picker: ColorPickerButton in _colour_pickers().values():
+		picker.color_changed.connect(func(_c: Color) -> void: _changed())
+
+
+func _colour_pickers() -> Dictionary:
+	var out := {"Bulb colour": _bulb_picker, "Ball colour": _picker, "Ambient colour": _ambient_picker}
+	for prop: String in _sky_pickers:
+		out[prop] = _sky_pickers[prop]
+	return out
+
+
+func _save_state() -> void:
+	_save_in = -1.0
+	if not _remembering():
+		return
+	var state := {"sliders": {}, "switches": {}, "choices": {}, "picks": {}, "colours": {},
+		"dither": _dither.button_pressed, "atlas": get_viewport().positional_shadow_atlas_size}
+	for title: String in _sliders:
+		state["sliders"][title] = (_sliders[title] as HSlider).value
+	for title: String in _switches:
+		state["switches"][title] = (_switches[title] as CheckButton).button_pressed
+	for title: String in _choices:
+		for option: String in _choices[title]:
+			if (_choices[title][option] as CheckBox).button_pressed:
+				state["choices"][title] = option
+	for surface: String in _picks:
+		state["picks"][surface] = str(LIBRARY[(_picks[surface] as OptionButton).selected]["name"])
+	var pickers := _colour_pickers()
+	for title: String in pickers:
+		state["colours"][title] = (pickers[title] as ColorPickerButton).color.to_html(false)
+	var file := FileAccess.open(STATE_PATH, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(state, "\t"))
+
+
+## Each setting put back through its own control, so everything that
+## follows from it follows: choices first, then colours (the ball's sets
+## its albedo slider), then switches and sliders, then the materials.
+func _load_state() -> void:
+	if not _remembering() or not FileAccess.file_exists(STATE_PATH):
+		return
+	var file := FileAccess.open(STATE_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	if not parsed is Dictionary:
+		return
+	var state: Dictionary = parsed
+	_restoring = true
+	var choices: Dictionary = state.get("choices", {})
+	for title: String in choices:
+		if _choices.has(title) and (_choices[title] as Dictionary).has(choices[title]):
+			(_choices[title][choices[title]] as CheckBox).button_pressed = true
+	var pickers := _colour_pickers()
+	var colours: Dictionary = state.get("colours", {})
+	for title: String in colours:
+		if pickers.has(title):
+			var picker := pickers[title] as ColorPickerButton
+			picker.color = Color.html(str(colours[title]))
+			picker.color_changed.emit(picker.color)
+	var switches: Dictionary = state.get("switches", {})
+	for title: String in switches:
+		if _switches.has(title):
+			(_switches[title] as CheckButton).button_pressed = bool(switches[title])
+	var sliders: Dictionary = state.get("sliders", {})
+	for title: String in sliders:
+		if _sliders.has(title):
+			(_sliders[title] as HSlider).value = float(sliders[title])
+	var picks: Dictionary = state.get("picks", {})
+	for surface: String in picks:
+		if _picks.has(surface):
+			for i in LIBRARY.size():
+				if str(LIBRARY[i]["name"]) == str(picks[surface]):
+					(_picks[surface] as OptionButton).select(i)
+	_dither.button_pressed = bool(state.get("dither", _dither.button_pressed))
+	var atlas := int(state.get("atlas", _atlas_was))
+	if ATLAS_SIZES.has(atlas):
+		get_viewport().positional_shadow_atlas_size = atlas
+		_show_atlas()
+	_apply_textures()
+	_refresh()
+	_restoring = false
 
 
 ## ---- the swinging ball and bulb ----------------------------------------------
