@@ -11,13 +11,16 @@ extends RefCounted
 ## The rope is taut always and the weight turns with it.
 ##
 ## Speed and wait may change at any moment: the hook keeps its place
-## along the edge and only its pace changes.
+## along the edge and only its pace changes. The rope's length may
+## change too: the hook rises or falls so the weight's resting height
+## stays where it was.
 
-const HOOK_Y := 12.0
 const GRAVITY := Vector3(0, -9.8, 0)
 const DRAG := 0.03                      # 1/s
 
-var corners: Array[Vector3]             # on the floor; the hook runs HOOK_Y above them
+var corners: Array[Vector3]             # on the floor; the hook runs hook_y above them
+var rest_y: float                       # the weight's centre at rest
+var hook_y: float
 var radius: float                       # of the weight, for collisions
 var tie: float                          # from the weight's centre to where the rope is tied
 var mass: float
@@ -34,23 +37,37 @@ var _waited := 0.0
 var _tau := 0.0                         # 0 to 1 along the current edge
 
 
-func _init(p_corners: Array[Vector3], rest_y: float, p_radius: float, p_tie: float, p_mass: float) -> void:
+func _init(p_corners: Array[Vector3], p_rest_y: float, p_length: float, p_radius: float, p_tie: float, p_mass: float) -> void:
 	corners = p_corners
+	rest_y = p_rest_y
 	radius = p_radius
 	tie = p_tie
 	mass = p_mass
-	length = HOOK_Y - rest_y
+	swing = Vector3(0, -1, 0)
+	set_length(p_length)
+
+
+## A longer or shorter rope, the weight kept at the same angle.
+func set_length(l: float) -> void:
+	length = l
+	hook_y = rest_y + l
 	_turning = length * length / (length * length + 0.4 * radius * radius)
+	swing = swing.normalized() * length
+
+
+## The weight hanging straight down, still.
+func hang_still() -> void:
 	swing = Vector3(0, -length, 0)
+	swing_v = Vector3.ZERO
 
 
 func hook() -> Vector3:
 	var a := corners[_leg]
 	if not _moving:
-		return a + Vector3(0, HOOK_Y, 0)
+		return a + Vector3(0, hook_y, 0)
 	var b := corners[(_leg + 1) % corners.size()]
 	var t := _tau
-	return a.lerp(b, t * t * t * (10.0 - 15.0 * t + 6.0 * t * t)) + Vector3(0, HOOK_Y, 0)
+	return a.lerp(b, t * t * t * (10.0 - 15.0 * t + 6.0 * t * t)) + Vector3(0, hook_y, 0)
 
 
 func hook_velocity() -> Vector3:

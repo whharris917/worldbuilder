@@ -381,7 +381,7 @@ func _place_sun() -> void:
 	_sun_near.transform = Transform3D(aim, dir * d)
 	_sun_near.spot_range = 2.0 * d
 	_sun_near.light_energy = energy * d * d / window
-	_sun_near.spot_angle = rad_to_deg(atan(24.0 / d))
+	_sun_near.spot_angle = rad_to_deg(atan((_room_r + 9.0) / d))
 	_sun_near.shadow_bias = 0.9 / d
 	_sun_disc.position = dir * d
 	var r := d * tan(deg_to_rad(SUN_ANGLE / 2.0))
@@ -402,7 +402,7 @@ func _edge_ratio(at: Vector3) -> float:
 	var flat := Vector3(at.x, 0.0, at.z)
 	if flat.length() < 0.001:
 		return 1.0
-	var toward := flat.normalized() * 15.0
+	var toward := flat.normalized() * _room_r
 	return (at + toward).length_squared() / (at - toward).length_squared()
 
 
@@ -445,7 +445,7 @@ func _set_voxel_gi(on: bool) -> void:
 	if not on:
 		return
 	_voxel_gi = VoxelGI.new()
-	_voxel_gi.size = Vector3(32, 6, 32)
+	_voxel_gi.size = Vector3(2.0 * _room_r + 2.0, 6, 2.0 * _room_r + 2.0)
 	_voxel_gi.position = Vector3(0, 2.8, 0)
 	add_child(_voxel_gi)
 	_voxel_gi.bake()
@@ -697,7 +697,8 @@ func _reset() -> void:
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
 	for title: String in TEX_MAPS:
 		(_switches[title] as CheckButton).set_pressed_no_signal(true)
-	for title: String in ["Normal strength", "Height depth (mm)", "Scale"]:
+	for title: String in ["Normal strength", "Height depth (mm)", "Floor scale", "Walls scale", "Ball scale",
+			"Room radius (m)", "Ball rope (m)", "Bulb cord (m)"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	for pick: OptionButton in _picks.values():
 		pick.select(0)
@@ -732,7 +733,7 @@ func _process(_delta: float) -> void:
 
 ## ---- the swinging ball and bulb ----------------------------------------------
 
-const WALL_R := 15.0                    # the wall's inner face
+var _still := false                     # hooks stopped, weights hanging at rest
 const SUBSTEPS := 8
 
 
@@ -746,12 +747,13 @@ static func _corners(r: float, azimuths: Array) -> Array[Vector3]:
 
 
 ## The ball's hook runs a triangle nearly as wide as the room; the
-## bulb's a smaller one turned 60 degrees from it.
+## bulb's a smaller one turned 60 degrees from it. Ropes start at 4 m
+## for the ball and 2.5 m for the bulb, the hooks a little over the wall.
 func _build_swing() -> void:
-	_ball_swing = Pendulum.new(_corners(10.5, [30.0, 150.0, 270.0]), 1.3, 1.0, 1.0, 50.0)
+	_ball_swing = Pendulum.new(_corners(0.7 * _room_r, [30.0, 150.0, 270.0]), 1.3, 4.0, 1.0, 1.0, 50.0)
 	_ball_swing.speed = 1.2
 	_ball_swing.wait = 4.0
-	_bulb_swing = Pendulum.new(_corners(9.0, [90.0, 210.0, 330.0]), 2.2, 0.05, 0.05, 0.05)
+	_bulb_swing = Pendulum.new(_corners(0.6 * _room_r, [90.0, 210.0, 330.0]), 2.2, 2.5, 0.05, 0.05, 0.05)
 	_bulb_swing.speed = 1.0
 	_bulb_swing.wait = 3.0
 	_ball_rig = [_ball, _hook_mesh(), _rope_mesh(0.015)]
@@ -785,6 +787,12 @@ func _rope_mesh(r: float) -> MeshInstance3D:
 
 
 func _step_swing(delta: float) -> void:
+	if _still:
+		_ball_swing.hang_still()
+		_bulb_swing.hang_still()
+		_draw_swing(_ball_swing, _ball_rig)
+		_draw_swing(_bulb_swing, _bulb_rig)
+		return
 	var dt := delta / SUBSTEPS
 	for _i in SUBSTEPS:
 		_ball_swing.step(dt)
@@ -801,7 +809,7 @@ func _step_swing(delta: float) -> void:
 func _knock_wall(w: Pendulum) -> void:
 	var c := w.centre()
 	var flat := Vector3(c.x, 0, c.z)
-	var limit := WALL_R - w.radius
+	var limit := _room_r - w.radius
 	if flat.length() <= limit:
 		return
 	var out := flat.normalized()
@@ -890,15 +898,16 @@ const TEX_FILES := {"Albedo": "albedo", "Roughness": "roughness", "Normal": "nor
 const FILTERS := {"Nearest": BaseMaterial3D.TEXTURE_FILTER_NEAREST, "Bilinear": BaseMaterial3D.TEXTURE_FILTER_LINEAR,
 	"Mipmaps": BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS,
 	"Anisotropic": BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC}
-const FLOOR_R := 15.0
-const WALL_IN := 15.0
-const WALL_OUT := 15.2
+const WALL_T := 0.2                     # the wall's thickness
 const WALL_H := 3.6
 const DOOR_W := 0.9
 const PLAIN := Color(0.5, 0.5, 0.5)
 
 var _floor_mat: StandardMaterial3D
 var _wall_mat: StandardMaterial3D
+var _wall_view: MeshInstance3D
+var _wall_shape: CollisionShape3D
+var _room_r := 15.0                     # the floor's radius and the wall's inner face
 var _tex_filter := "Mipmaps"
 var _ball_map := "UV"
 var _picks: Dictionary = {}             # surface -> OptionButton
@@ -907,22 +916,27 @@ var _picks: Dictionary = {}             # surface -> OptionButton
 ## A disc in place of the floor's cylinder, its texture coordinates its
 ## x and z in metres, with tangents for normal maps.
 func _build_floor() -> void:
+	var node := $Floor/Mesh as MeshInstance3D
+	node.position = Vector3.ZERO
+	_floor_mat = StandardMaterial3D.new()
+	_floor_mat.albedo_color = PLAIN
+	node.material_override = _floor_mat
+	_shape_floor()
+
+
+func _shape_floor() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var n := 256
 	for i in n:
 		var a0 := TAU * i / n
 		var a1 := TAU * (i + 1) / n
-		var p: Array = [Vector3.ZERO, Vector3(sin(a0), 0, cos(a0)) * FLOOR_R, Vector3(sin(a1), 0, cos(a1)) * FLOOR_R]
+		var p: Array = [Vector3.ZERO, Vector3(sin(a0), 0, cos(a0)) * _room_r, Vector3(sin(a1), 0, cos(a1)) * _room_r]
 		_tri(st, p, [Vector3.UP, Vector3.UP, Vector3.UP],
 			[Vector2(p[0].x, p[0].z), Vector2(p[1].x, p[1].z), Vector2(p[2].x, p[2].z)])
 	st.generate_tangents()
-	var node := $Floor/Mesh as MeshInstance3D
-	node.mesh = st.commit()
-	node.position = Vector3.ZERO
-	_floor_mat = StandardMaterial3D.new()
-	_floor_mat.albedo_color = PLAIN
-	node.material_override = _floor_mat
+	($Floor/Mesh as MeshInstance3D).mesh = st.commit()
+	(($Floor/Collision as CollisionShape3D).shape as CylinderShape3D).radius = _room_r
 
 
 ## The ring wall, 20 cm thick and 3.6 m high, open in a doorway 0.9 m
@@ -930,44 +944,67 @@ func _build_floor() -> void:
 ## two sides. Texture coordinates are metres: round the wall and down
 ## from its top on the faces, x and z on the top.
 func _build_wall() -> void:
+	var body := StaticBody3D.new()
+	body.name = "Wall"
+	add_child(body)
+	_wall_view = MeshInstance3D.new()
+	_wall_mat = StandardMaterial3D.new()
+	_wall_mat.albedo_color = PLAIN
+	_wall_view.material_override = _wall_mat
+	body.add_child(_wall_view)
+	_wall_shape = CollisionShape3D.new()
+	body.add_child(_wall_shape)
+	_shape_wall()
+
+
+func _shape_wall() -> void:
+	var wall_in := _room_r
+	var wall_out := _room_r + WALL_T
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var half := asin(DOOR_W / 2.0 / WALL_IN)
+	var half := asin(DOOR_W / 2.0 / wall_in)
 	var n := 256
 	for i in n:
 		var a0 := half + (TAU - 2.0 * half) * i / n
 		var a1 := half + (TAU - 2.0 * half) * (i + 1) / n
 		var in0 := Vector3(-sin(a0), 0, cos(a0))
 		var in1 := Vector3(-sin(a1), 0, cos(a1))
-		_quad(st, [_round(WALL_IN, a0, 0), _round(WALL_IN, a1, 0), _round(WALL_IN, a1, WALL_H), _round(WALL_IN, a0, WALL_H)],
+		_quad(st, [_round(wall_in, a0, 0), _round(wall_in, a1, 0), _round(wall_in, a1, WALL_H), _round(wall_in, a0, WALL_H)],
 			[in0, in1, in1, in0],
-			[Vector2(WALL_IN * a0, WALL_H), Vector2(WALL_IN * a1, WALL_H), Vector2(WALL_IN * a1, 0), Vector2(WALL_IN * a0, 0)])
-		_quad(st, [_round(WALL_OUT, a0, 0), _round(WALL_OUT, a1, 0), _round(WALL_OUT, a1, WALL_H), _round(WALL_OUT, a0, WALL_H)],
+			[Vector2(wall_in * a0, WALL_H), Vector2(wall_in * a1, WALL_H), Vector2(wall_in * a1, 0), Vector2(wall_in * a0, 0)])
+		_quad(st, [_round(wall_out, a0, 0), _round(wall_out, a1, 0), _round(wall_out, a1, WALL_H), _round(wall_out, a0, WALL_H)],
 			[-in0, -in1, -in1, -in0],
-			[Vector2(-WALL_OUT * a0, WALL_H), Vector2(-WALL_OUT * a1, WALL_H), Vector2(-WALL_OUT * a1, 0), Vector2(-WALL_OUT * a0, 0)])
-		var top: Array = [_round(WALL_IN, a0, WALL_H), _round(WALL_IN, a1, WALL_H), _round(WALL_OUT, a1, WALL_H), _round(WALL_OUT, a0, WALL_H)]
+			[Vector2(-wall_out * a0, WALL_H), Vector2(-wall_out * a1, WALL_H), Vector2(-wall_out * a1, 0), Vector2(-wall_out * a0, 0)])
+		var top: Array = [_round(wall_in, a0, WALL_H), _round(wall_in, a1, WALL_H), _round(wall_out, a1, WALL_H), _round(wall_out, a0, WALL_H)]
 		_quad(st, top, [Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP],
 			[Vector2(top[0].x, top[0].z), Vector2(top[1].x, top[1].z), Vector2(top[2].x, top[2].z), Vector2(top[3].x, top[3].z)])
 	for side: float in [-1.0, 1.0]:
 		var a := half if side < 0.0 else TAU - half
 		var out := Vector3(cos(a), 0, sin(a)) * side
-		_quad(st, [_round(WALL_IN, a, 0), _round(WALL_OUT, a, 0), _round(WALL_OUT, a, WALL_H), _round(WALL_IN, a, WALL_H)],
+		_quad(st, [_round(wall_in, a, 0), _round(wall_out, a, 0), _round(wall_out, a, WALL_H), _round(wall_in, a, WALL_H)],
 			[out, out, out, out],
-			[Vector2(0, WALL_H), Vector2(WALL_OUT - WALL_IN, WALL_H), Vector2(WALL_OUT - WALL_IN, 0), Vector2(0, 0)])
+			[Vector2(0, WALL_H), Vector2(wall_out - wall_in, WALL_H), Vector2(wall_out - wall_in, 0), Vector2(0, 0)])
 	st.generate_tangents()
 	var mesh := st.commit()
-	var body := StaticBody3D.new()
-	body.name = "Wall"
-	add_child(body)
-	var view := MeshInstance3D.new()
-	view.mesh = mesh
-	_wall_mat = StandardMaterial3D.new()
-	_wall_mat.albedo_color = PLAIN
-	view.material_override = _wall_mat
-	body.add_child(view)
-	var shape := CollisionShape3D.new()
-	shape.shape = mesh.create_trimesh_shape()
-	body.add_child(shape)
+	_wall_view.mesh = mesh
+	_wall_shape.shape = mesh.create_trimesh_shape()
+
+
+## The room at a new radius: floor, wall, the hooks' paths (the ball's
+## 0.7 of the radius out, the bulb's 0.6), the player kept inside, the
+## finite sun's aim.
+func _set_room(r: float) -> void:
+	_room_r = r
+	_shape_floor()
+	_shape_wall()
+	_ball_swing.corners = _corners(0.7 * r, [30.0, 150.0, 270.0])
+	_bulb_swing.corners = _corners(0.6 * r, [90.0, 210.0, 330.0])
+	var at := player.global_position
+	var flat := Vector2(at.x, at.z)
+	if flat.length() > r - 0.6:
+		flat = flat.normalized() * (r - 0.6)
+		player.global_position = Vector3(flat.x, at.y, flat.y)
+	_place_sun()
 
 
 ## A point on the wall: radius, azimuth from the doorway toward the
@@ -1022,8 +1059,10 @@ func _build_textures(root: Control) -> Control:
 	_slider(column, "Height depth (mm)", 0.0, 100.0, 1.0, 10.0, func(_v: float) -> void: _apply_textures())
 	_switch(column, "Deep parallax", func(_on: bool) -> void: _apply_textures())
 	_note(column, "Steps through the height in layers so raised parts hide what lies behind them; costs more.")
-	_slider(column, "Scale", 0.25, 4.0, 0.05, 1.0, func(_v: float) -> void: _apply_textures())
-	_note(column, "1 is each material's real size.")
+	for surface: String in ["Floor", "Walls", "Ball"]:
+		_slider(column, surface + " scale", 0.25, 4.0, 0.05, 1.0, func(_v: float) -> void: _apply_textures())
+		_defaults[surface + " scale"] = 1.0
+	_note(column, "1 is each material's real size; the planets always wrap the ball once.")
 	_choice(column, "Filter", ["Nearest", "Bilinear", "Mipmaps", "Anisotropic"], func(option: String) -> void:
 		_tex_filter = option
 		_apply_textures())
@@ -1036,18 +1075,16 @@ func _build_textures(root: Control) -> Control:
 	_note(column, "UV wraps the image round the ball and pinches it at the poles. Triplanar projects it from three sides, no seams, blended where they meet; Godot does no height with it. The Moon, the Earth and Mars always wrap the ball once, north pole toward the hook.")
 	_defaults["Normal strength"] = 1.0
 	_defaults["Height depth (mm)"] = 10.0
-	_defaults["Scale"] = 1.0
 	return column.get_parent() as Control
 
 
 func _apply_textures() -> void:
-	var k := float((_sliders["Scale"] as HSlider).value)
 	var floor_entry := LIBRARY[(_picks["Floor"] as OptionButton).selected]
 	var wall_entry := LIBRARY[(_picks["Walls"] as OptionButton).selected]
 	var ball_entry := LIBRARY[(_picks["Ball"] as OptionButton).selected]
-	_dress(_floor_mat, floor_entry, _repeat(floor_entry, k), false, true)
-	_dress(_wall_mat, wall_entry, _repeat(wall_entry, k), false, true)
-	var size: Vector2 = ball_entry.get("size", Vector2.ONE) * k
+	_dress(_floor_mat, floor_entry, _repeat(floor_entry, _scale("Floor")), false, true)
+	_dress(_wall_mat, wall_entry, _repeat(wall_entry, _scale("Walls")), false, true)
+	var size: Vector2 = ball_entry.get("size", Vector2.ONE) * _scale("Ball")
 	var r := _ball_swing.radius
 	if ball_entry.get("globe", false):
 		_dress(_ball_mat, ball_entry, Vector3.ONE, false, false)
@@ -1055,6 +1092,10 @@ func _apply_textures() -> void:
 		_dress(_ball_mat, ball_entry, Vector3(1.0 / size.x, 1.0 / size.y, 1.0 / size.x), true, false)
 	else:
 		_dress(_ball_mat, ball_entry, Vector3(TAU * r / size.x, PI * r / size.y, 1.0), false, false)
+
+
+func _scale(surface: String) -> float:
+	return float((_sliders[surface + " scale"] as HSlider).value)
 
 
 ## Texture repeats a metre for a surface whose coordinates are metres.
@@ -1114,17 +1155,28 @@ func _dress(mat: StandardMaterial3D, entry: Dictionary, scale: Vector3, triplana
 
 func _build_motion(root: Control) -> Control:
 	var column := _column(root)
+	_switch(column, "Hold still", func(on: bool) -> void: _still = on)
+	_note(column, "Stops both hooks where they are and lets the ball and bulb hang straight down, at rest.")
+	_heading(column, "Room")
+	_slider(column, "Room radius (m)", 5.0, 30.0, 0.5, _room_r, func(v: float) -> void: _set_room(v))
+	(_sliders["Room radius (m)"] as HSlider).drag_ended.connect(func(_changed: bool) -> void:
+		if _bounce == "VoxelGI":
+			_set_voxel_gi(true))
+	_note(column, "Floor and wall rebuilt as you drag; the hooks' paths scale with it. A VoxelGI box is baked again when you let go.")
 	_heading(column, "Ball's hook")
+	_slider(column, "Ball rope (m)", 1.0, 10.0, 0.1, _ball_swing.length, func(v: float) -> void: _ball_swing.set_length(v))
 	_slider(column, "Ball speed", 0.2, 3.0, 0.05, _ball_swing.speed, func(v: float) -> void: _ball_swing.speed = v)
 	_slider(column, "Ball wait", 0.0, 10.0, 0.1, _ball_swing.wait, func(v: float) -> void: _ball_swing.wait = v)
 	_heading(column, "Bulb's hook")
+	_slider(column, "Bulb cord (m)", 0.5, 10.0, 0.1, _bulb_swing.length, func(v: float) -> void: _bulb_swing.set_length(v))
 	_slider(column, "Bulb speed", 0.2, 3.0, 0.05, _bulb_swing.speed, func(v: float) -> void: _bulb_swing.speed = v)
 	_slider(column, "Bulb wait", 0.0, 10.0, 0.1, _bulb_swing.wait, func(v: float) -> void: _bulb_swing.wait = v)
-	_note(column, "Speed is the hook's average along an edge, in m/s; wait is the pause at each corner, in seconds. The ball swings back and forth about every 6.6 s and the bulb every 6.3 s; a hook whose stops and starts fall in step with that swings its weight higher and higher, and the ball then strikes the wall.")
+	_note(column, "Speed is the hook's average along an edge, in m/s; wait is the pause at each corner, in seconds. A rope's swing takes 2 pi root(L / g): 4 s at 4 m, 6.3 s at 10 m. A hook whose stops and starts fall in step with that swings its weight higher and higher, until the ball strikes the wall.")
 	_heading(column, "Knocks")
 	_slider(column, "Restitution", 0.0, 1.0, 0.01, _restitution, func(v: float) -> void: _restitution = v)
 	_note(column, "The share of the closing speed kept after a knock, against the wall or between ball and bulb: 1 bounces back as fast as it came, 0 stops dead.")
-	for title: String in ["Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution"]:
+	for title: String in ["Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution",
+			"Room radius (m)", "Ball rope (m)", "Bulb cord (m)"]:
 		_defaults[title] = (_sliders[title] as HSlider).value
 	return column.get_parent() as Control
 
