@@ -322,10 +322,11 @@ func _after_build() -> void:
 		hud.toast("Open hills of long grass, painted. O options: the time of day, the grass, the look. F5/F9 save/load")
 	else:
 		hud.toast("Open hills of long grass. O options: the time of day, the grass, the look. F5/F9 save/load")
-	print("[worldbuilder] hills: terrain %d ms, grass %d ms over %d chunks; pond %d m2, %.1f m deep at (%d, %d), level %.2f; farmhouse at (%d, %d), %.1f m over the water, yard spread %.2f m%s"
+	print("[worldbuilder] hills: terrain %d ms, grass %d ms over %d chunks; pond %d m2, %.1f m deep at (%d, %d), level %.2f; farmhouse at (%d, %d), %.1f m over the water, yard spread %.2f m; road %.1f km%s"
 		% [int(land.stats.get("ms_terrain", 0)), int(grass.stats.get("ms", 0)), int(grass.stats.get("chunks_with_grass", 0)),
 		int(land.stats.get("lake_m2", 0)), land.lake_depth, int(land.lake_centre.x), int(land.lake_centre.y), land.lake_level,
 		int(land.site.x), int(land.site.y), land.site_y - land.lake_level, float(land.stats.get("site_spread", 0.0)),
+		float(land.stats.get("road_km", 0.0)),
 		" (BROKEN: it fails its checks)" if house != null and house.broken else ""])
 	if DisplayServer.get_name() == "headless":
 		_report_in = 20

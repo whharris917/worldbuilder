@@ -10,7 +10,8 @@ extends Node
 ## grass's model. Two views follow the world: "start", where the
 ## player arrives, and "edge", at the pond's edge looking across it;
 ## "house" the farmhouse from its yard, "parlor" the parlour through the front door,
-## "inside" in it at eye height, "kitchen" the kitchen.
+## "inside" in it at eye height, "kitchen" the kitchen; "lane" down
+## the driveway, "road" along the road a way off.
 
 ## name, hour, fov, camera (x, height over ground, z), target (x, height over ground, z).
 const VIEWS := [
@@ -27,6 +28,8 @@ const VIEWS := [
 	["parlor", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
 	["kitchen", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
 	["inside", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
+	["lane", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
+	["road", 15.0, 60.0, Vector3.ZERO, Vector3.ZERO],
 ]
 
 
@@ -90,6 +93,21 @@ func _run(world: GrassHills) -> void:
 			var pair: Array = rooms[v[0]]
 			at = b.to_global(pair[0])
 			to = b.to_global(pair[1])
+		elif v[0] == "lane" or v[0] == "road":
+			# "lane": from the back of the yard along the driveway to the
+			# road; "road": on the road a way off, looking along it.
+			var land: HillsLand = world.land
+			if v[0] == "lane":
+				var a2: Vector2 = land.drive_pts[0]
+				var b2: Vector2 = land.drive_pts[land.drive_pts.size() - 1]
+				at = Vector3(a2.x, land.height_at(a2.x, a2.y) + 1.6, a2.y)
+				to = Vector3(b2.x, land.height_at(b2.x, b2.y) + 1.0, b2.y)
+			else:
+				var k := mini(land.road_pts.size() - 1, land.road_pts.size() / 2 + 60)
+				var a2: Vector2 = land.road_pts[k]
+				var b2: Vector2 = land.road_pts[mini(land.road_pts.size() - 1, k + 40)]
+				at = Vector3(a2.x, land.height_at(a2.x, a2.y) + 1.6, a2.y)
+				to = Vector3(b2.x, land.height_at(b2.x, b2.y) + 1.0, b2.y)
 		elif v[0] == "edge":
 			var pond: Vector2 = world.land.lake_centre
 			var from := Vector2(world.player.global_position.x, world.player.global_position.z)
