@@ -7,7 +7,8 @@ extends Node
 ## WORLDBUILDER_HILLS_VIEWS=name:hour:fov:x,y,z:tx,ty,tz;... takes its
 ## own (heights over the ground); WORLDBUILDER_HILLS_PRESET picks the
 ## graphics preset (Medium by default); WORLDBUILDER_HILLS_GRASS the
-## grass's model; WORLDBUILDER_HILLS_DRIVE=1 drives the truck. Two views follow the world: "start", where the
+## grass's model; WORLDBUILDER_HILLS_DRIVE=1 drives the truck, =2 throws
+## it into a hard turn after WORLDBUILDER_HILLS_RUNUP seconds (6). Two views follow the world: "start", where the
 ## player arrives, and "edge", at the pond's edge looking across it;
 ## "house" the farmhouse from its yard, "parlor" the parlour through the front door,
 ## "inside" in it at eye height, "kitchen" the kitchen; "lane" down
@@ -71,6 +72,29 @@ func _run(world: GrassHills) -> void:
 	# WORLDBUILDER_HILLS_DRIVE=1: get into the truck, drive it down the
 	# lane with the throttle open, steering a little, and photograph from
 	# the seat and from behind, printing its speed.
+	# WORLDBUILDER_HILLS_DRIVE=2: up to speed, then the wheel hard over,
+	# printing how upright it stays.
+	if OS.get_environment("WORLDBUILDER_HILLS_DRIVE") == "2":
+		world.set_time_of_day(15.0)
+		cam.current = false
+		world.truck.use()
+		Input.action_press("move_forward")
+		await get_tree().create_timer(float(OS.get_environment("WORLDBUILDER_HILLS_RUNUP")) if OS.get_environment("WORLDBUILDER_HILLS_RUNUP") != "" else 6.0).timeout
+		print("[probe] at %.1f m/s, wheel hard over" % world.truck.linear_velocity.length())
+		Input.action_press("move_left")
+		var least := 1.0
+		for i in 60:
+			await get_tree().create_timer(0.1).timeout
+			least = minf(least, world.truck.global_basis.y.y)
+		print("[probe] hard turn at %.1f m/s: least upright %.2f, now %.2f" % [world.truck.linear_velocity.length(), least, world.truck.global_basis.y.y])
+		Input.action_release("move_left")
+		Input.action_press("move_right")
+		for i in 40:
+			await get_tree().create_timer(0.1).timeout
+			least = minf(least, world.truck.global_basis.y.y)
+		print("[probe] and back: least upright %.2f" % least)
+		get_tree().quit()
+		return
 	if OS.get_environment("WORLDBUILDER_HILLS_DRIVE") == "1":
 		world.set_time_of_day(15.0)
 		cam.current = false

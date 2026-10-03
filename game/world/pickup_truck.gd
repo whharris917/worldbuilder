@@ -17,6 +17,12 @@ extends VehicleBody3D
 ## (engine_loop.wav) runs while it is driven, its pitch through three
 ## gears with the road speed, louder with the throttle; the headlamps
 ## light while it is driven.
+##
+## It keeps its feet: the weight rides low, the tyres slide before they
+## grip hard enough to roll it, and an anti-roll bar (a torque against
+## the body's lean, damped) holds it level through turns. Turned over
+## all the same and come to rest, it is set back on its wheels after
+## RIGHTING seconds.
 
 const RED := Color(0.52, 0.07, 0.05)
 const WHEEL_R := 0.38
@@ -30,6 +36,9 @@ const STEER_HIGH := 0.14             # rad at top speed
 const GEARS: Array[float] = [7.0, 15.0, 24.0]   # m/s at the top of each gear
 const DRIVER_EYE := Vector3(0.36, 1.66, -0.08)
 const CHASE := Vector3(0.0, 3.2, -8.5)
+const ROLL_STIFF := 14000.0          # N m a radian of lean
+const ROLL_DAMP := 3500.0            # N m a radian a second
+const RIGHTING := 2.0                # s on its side or back, still, before it is righted
 
 var world: WorldBase
 var driving := false
@@ -42,12 +51,13 @@ var _chase_cam: Camera3D
 var _engine: AudioStreamPlayer3D
 var _lamps: Array[SpotLight3D] = []
 var _player_layers := Vector2i.ZERO
+var _over := 0.0
 
 
 func _init() -> void:
 	mass = 1400.0
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
-	center_of_mass = Vector3(0.0, 0.65, 0.2)
+	center_of_mass = Vector3(0.0, 0.3, 0.2)
 	brake = PARK_BRAKE
 	set_meta("view", self)
 
@@ -169,6 +179,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_keep_upright(delta)
 	if not driving:
 		engine_force = 0.0
 		steering = move_toward(steering, 0.0, delta)
@@ -209,6 +220,31 @@ func _process(delta: float) -> void:
 	var t := 1.0 - exp(-6.0 * delta)
 	_chase_cam.global_position = _chase_cam.global_position.lerp(want, t) if _chase else want
 	_chase_cam.look_at(global_transform * Vector3(0.0, 1.2, 6.0), Vector3.UP)
+
+
+## The anti-roll bar, and righting the truck if it is over anyway.
+func _keep_upright(delta: float) -> void:
+	var fwd := global_basis.z
+	var up := global_basis.y
+	# The lean about the truck's own length, from the level.
+	var side := global_basis.x
+	var lean := asin(clampf(side.y, -1.0, 1.0))
+	var spin := angular_velocity.dot(fwd)
+	if up.y > 0.3:
+		# Left side up is a positive turn about the length: push it back.
+		apply_torque(-fwd * (lean * ROLL_STIFF + spin * ROLL_DAMP))
+		_over = 0.0
+		return
+	if linear_velocity.length() < 1.0 and angular_velocity.length() < 1.0:
+		_over += delta
+		if _over > RIGHTING:
+			_over = 0.0
+			var yaw := atan2(fwd.x, fwd.z)
+			global_transform = Transform3D(Basis(Vector3.UP, yaw), global_position + Vector3.UP * 1.2)
+			linear_velocity = Vector3.ZERO
+			angular_velocity = Vector3.ZERO
+	else:
+		_over = 0.0
 
 
 ## The engine through three gears: its pitch climbs through each gear
@@ -317,7 +353,7 @@ func _build_wheels() -> void:
 			w.suspension_stiffness = 42.0
 			w.damping_compression = 2.2
 			w.damping_relaxation = 3.0
-			w.wheel_friction_slip = 2.6
+			w.wheel_friction_slip = 2.2
 			w.suspension_max_force = 12000.0
 			w.use_as_traction = z < 0.0
 			w.use_as_steering = z > 0.0

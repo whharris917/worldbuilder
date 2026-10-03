@@ -327,11 +327,20 @@ func _after_build() -> void:
 	settings.add_choice("Grass", ["Full", "Light", "Fluffy", "Shells", "None"],
 		GrassField.MODEL_NAMES.find(grass.model), _change_grass)
 	if not FileAccess.file_exists(save_path):
-		# On the slope above the pond, looking down over it; with no
-		# pond, on the first rise facing into the wind.
+		# In the farm's back yard, to the side of the way from the house
+		# to the truck, looking toward the house with the truck in view;
+		# with no farm, above the pond; with no pond, on the first rise
+		# facing into the wind.
 		var at := Vector2.ZERO
 		var look := -WIND_DIR.normalized()
-		if not land.lake_cells.is_empty():
+		if truck != null:
+			var house_at := land.site
+			var truck_at := Vector2(truck.position.x, truck.position.z)
+			var mid := (house_at + truck_at) * 0.5
+			var across := (truck_at - house_at).normalized().orthogonal()
+			at = mid + across * 9.0
+			look = (house_at.lerp(truck_at, 0.35) - at).normalized()
+		elif not land.lake_cells.is_empty():
 			at = _overlook(land.lake_centre)
 			look = (land.lake_centre - at).normalized()
 		player.global_position = Vector3(at.x, land.surface_height(at.x, at.y) + 0.4, at.y)
