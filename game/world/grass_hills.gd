@@ -12,8 +12,9 @@ class_name GrassHills
 ## grass model.
 ##
 ## A farmhouse stands by the pond (HillsLand.find_site), and in its
-## parlour a console radio plays a swing tune of the 1940s
-## (radio_loop.wav), heard through the open doors and windows: it fades
+## parlour a console radio plays "Levittown Levity" (the director's
+## recording, levittown_levity.mp3), heard through the open doors and
+## windows: it fades
 ## with distance and loses its brightness first, so from up the hill it
 ## is a faint, muffled tune over the wind.
 ##
@@ -205,10 +206,8 @@ func _build_radio() -> void:
 	radio.add_child(glow)
 	if DisplayServer.get_name() == "headless":
 		return
-	var stream := load("res://audio/radio_loop.wav") as AudioStreamWAV
-	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	stream.loop_begin = 0
-	stream.loop_end = int(stream.get_length() * stream.mix_rate)
+	var stream := load("res://audio/levittown_levity.mp3") as AudioStreamMP3
+	stream.loop = true
 	var sound := AudioStreamPlayer3D.new()
 	sound.stream = stream
 	sound.position = Vector3(0.0, 0.5, 0.0)
@@ -288,8 +287,8 @@ func _process(delta: float) -> void:
 		g += gusts.at(at + offset, grass.travel, wind, wd)
 	g /= 5.0
 	_hiss_level = lerpf(_hiss_level, g, clampf(delta * 3.0, 0.0, 1.0))
-	_air.volume_db = linear_to_db(0.12 + 0.6 * wind) - 4.0
-	_hiss.volume_db = linear_to_db(0.03 + 0.9 * _hiss_level * (0.4 + 0.6 * wind)) - 2.0
+	_air.volume_db = linear_to_db(0.12 + 0.6 * wind) - 8.0
+	_hiss.volume_db = linear_to_db(0.03 + 0.9 * _hiss_level * (0.4 + 0.6 * wind)) - 6.0
 
 
 func _after_build() -> void:

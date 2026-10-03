@@ -23,8 +23,6 @@ Writes to game/audio/:
   leaves_loop.wav 14 s seamless wind in a summer wood's leaves
   air_loop.wav    12 s seamless steady low rush of moving air
   grass_hiss_loop.wav  10 s seamless hiss of long grass bending
-  radio_loop.wav  60 s seamless original 1940s-style swing tune heard on
-                  a console radio of the time
   crickets_loop.wav  10 s seamless field crickets and tree crickets
   bird_*.wav      white-throated sparrow, chickadee, robin, wood thrush
                   (two), barred owl
@@ -694,191 +692,6 @@ def make_grass_wind() -> None:
     write_wav(OUT_DIR / "grass_hiss_loop.wav", [out], normalize_to=0.35)
 
 
-# ---- the farmhouse radio ----------------------------------------------------
-# An original tune in the manner of a 1940s small swing band, heard on a
-# console radio of the time. AABA, 32 bars in F at 128 BPM (a beat is
-# exactly 15000 samples, a bar 60000; the eighths swung two to one).
-# Walking bass, four-to-the-bar rhythm chords, brushes and a ride
-# cymbal, and a clarinet carrying the tune; the A sections share their
-# melody, the bridge has its own. Every note that runs past the end
-# wraps to the start, so the loop is seamless. Then the set: the band
-# narrowed to the radio's speaker, warmed by a little saturation, with a
-# faint hiss and a crackle now and then.
-
-_RADIO_BEAT = 15000
-_RADIO_BAR = 4 * _RADIO_BEAT
-
-_RADIO_CHORDS = {
-    "F6": [53, 57, 60, 62], "D7": [50, 54, 57, 60], "Gm7": [55, 58, 62, 65],
-    "C7": [48, 52, 55, 58], "Am7": [57, 60, 64, 67], "A7": [57, 61, 64, 67],
-    "G7": [55, 59, 62, 65], "Bb6": [58, 62, 65, 67], "F7": [53, 57, 60, 63],
-}
-_RADIO_FORM = (
-    ["F6", "D7", "Gm7", "C7", "Am7", "D7", "Gm7", "C7"]
-    + ["F6", "D7", "Gm7", "C7", "Bb6", "C7", "F6", "F6"]
-    + ["A7", "A7", "D7", "D7", "G7", "G7", "C7", "C7"]
-    + ["F6", "D7", "Gm7", "C7", "Bb6", "C7", "F6", "F6"]
-)
-# Rhythms for a bar of melody: (start, length) in swung eighths.
-_RADIO_RHYTHMS = [
-    [(0, 2), (2, 1), (3, 1), (4, 3)],
-    [(1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 2)],
-    [(0, 3), (4, 2), (6, 2)],
-    [(0, 1), (1, 1), (2, 2), (5, 3)],
-]
-
-
-def _midi(m: float) -> float:
-    return 440.0 * 2.0 ** ((m - 69) / 12.0)
-
-
-def _eighth_at(bar: int, e: int) -> int:
-    """Sample at swung eighth e (0-8) of bar."""
-    beat, off = divmod(e, 2)
-    return bar * _RADIO_BAR + beat * _RADIO_BEAT + (10000 if off else 0)
-
-
-def _clarinet(f: float, n: int) -> list[float]:
-    out = [0.0] * n
-    attack, release = int(0.03 * SR), int(0.08 * SR)
-    ph = 0.0
-    for i in range(n):
-        t = i / SR
-        vib = 1.0 + 0.004 * math.sin(2.0 * math.pi * 5.5 * t) * min(1.0, t / 0.2)
-        ph += 2.0 * math.pi * f * vib / SR
-        s = (math.sin(ph) + 0.35 * math.sin(3 * ph) + 0.18 * math.sin(5 * ph)
-             + 0.08 * math.sin(7 * ph))
-        env = min(1.0, i / attack, (n - i) / release)
-        out[i] = s * env
-    return out
-
-
-def _bass_note(f: float, n: int) -> list[float]:
-    out = [0.0] * n
-    for i in range(n):
-        t = i / SR
-        env = min(1.0, t / 0.005) * math.exp(-t / 0.35) * min(1.0, (n - i) / (0.02 * SR))
-        out[i] = (math.sin(2.0 * math.pi * f * t) + 0.4 * math.sin(4.0 * math.pi * f * t)) * env
-    return out
-
-
-def _stab(notes: list[int], n: int) -> list[float]:
-    out = [0.0] * n
-    for m in notes:
-        f = _midi(m)
-        for i in range(n):
-            t = i / SR
-            env = min(1.0, t / 0.004) * math.exp(-t / 0.12)
-            s = 0.0
-            for k in range(1, 6):
-                s += math.sin(2.0 * math.pi * f * k * t) / k
-            out[i] += s * env
-    return out
-
-
-def _radio_melody(r: random.Random, chords: list[str]) -> list[tuple[int, int, int]]:
-    """Notes (midi, start eighth from the section's start, eighths long)
-    for a section of eight bars: four-bar phrases, the fourth bar of
-    each held or resting; downbeats on chord tones, steps between."""
-    scale = [53, 55, 57, 58, 60, 62, 64, 65, 67, 69, 70, 72, 74, 76, 77]
-    notes = []
-    cur = 69
-    for bar, name in enumerate(chords):
-        tones = [m + 12 * k for m in _RADIO_CHORDS[name] for k in (0, 1) if 62 <= m + 12 * k <= 77]
-        if bar % 4 == 3:
-            rhythm = [(0, 5)] if r.random() < 0.6 else [(0, 2), (2, 4)]
-        else:
-            rhythm = _RADIO_RHYTHMS[r.randrange(len(_RADIO_RHYTHMS))]
-        for start, length in rhythm:
-            if start % 2 == 0:
-                cur = min(tones, key=lambda m: abs(m - cur) + r.random() * 3.0)
-            else:
-                i = min(range(len(scale)), key=lambda k: abs(scale[k] - cur))
-                i = max(0, min(len(scale) - 1, i + r.choice([-1, 1, 1, 2])))
-                cur = min(max(scale[i], 62), 77)
-            notes.append((cur, bar * 8 + start, length))
-    return notes
-
-
-def make_radio() -> None:
-    r = random.Random(20261012)
-    bars = len(_RADIO_FORM)
-    n = bars * _RADIO_BAR
-    band = [0.0] * n
-    # The tune: the A sections share their melody, the bridge its own.
-    a_tune = _radio_melody(r, _RADIO_FORM[0:8])
-    # The second and last A end on the tonic: their last two bars anew.
-    ending = _radio_melody(r, _RADIO_FORM[8:16])
-    a2_tune = [x for x in a_tune if x[1] < 48] + [x for x in ending if x[1] >= 48]
-    bridge = _radio_melody(r, _RADIO_FORM[16:24])
-    for section, tune in ((0, a_tune), (8, a2_tune), (16, bridge), (24, a2_tune)):
-        for m, e, length in tune:
-            bar = section + e // 8
-            start = _eighth_at(bar, e % 8)
-            end = _eighth_at(bar + (e % 8 + length) // 8, (e % 8 + length) % 8)
-            _add_wrapped(band, start, _clarinet(_midi(m), max(end - start - 400, 2000)), 0.32)
-    for bar, name in enumerate(_RADIO_FORM):
-        chord = _RADIO_CHORDS[name]
-        nxt = _RADIO_CHORDS[_RADIO_FORM[(bar + 1) % bars]][0]
-        root = chord[0] - 12
-        # Walking bass: root, a chord tone, another, and a step into the
-        # next bar's root.
-        walk = [root, chord[r.choice([1, 2])] - 12, chord[2] - 12 if r.random() < 0.5 else chord[3] - 12,
-                nxt - 12 + r.choice([-1, 1])]
-        for beat, m in enumerate(walk):
-            _add_wrapped(band, bar * _RADIO_BAR + beat * _RADIO_BEAT, _bass_note(_midi(m), _RADIO_BEAT - 300), 0.42)
-        # Rhythm chords on every beat, the backbeat a little stronger.
-        for beat in range(4):
-            _add_wrapped(band, bar * _RADIO_BAR + beat * _RADIO_BEAT, _stab(chord, int(0.22 * SR)),
-                         0.055 if beat % 2 else 0.04)
-    # Drums: the ride on every beat and the swung last eighth of 2 and 4,
-    # brushes on 2 and 4, a soft bass drum on 1 and 3.
-    for bar in range(bars):
-        for beat in range(4):
-            at = bar * _RADIO_BAR + beat * _RADIO_BEAT
-            hits = [at] + ([at + 10000] if beat % 2 else [])
-            for h in hits:
-                ln = int(0.3 * SR)
-                ride = [0.0] * ln
-                last = 0.0
-                for i in range(ln):
-                    t = i / SR
-                    w = r.random() * 2.0 - 1.0
-                    ride[i] = ((w - last) * 0.5 + 0.3 * math.sin(2.0 * math.pi * 5200 * t)
-                               + 0.2 * math.sin(2.0 * math.pi * 6900 * t)) * math.exp(-t / 0.12)
-                    last = w
-                _add_wrapped(band, h, ride, 0.05)
-            if beat % 2:
-                ln = int(0.18 * SR)
-                brush = [(r.random() * 2.0 - 1.0) * math.exp(-(i / SR) / 0.06) for i in range(ln)]
-                _add_wrapped(band, at, brush, 0.06)
-            else:
-                ln = int(0.2 * SR)
-                kick = [math.sin(2.0 * math.pi * 58.0 * (i / SR)) * math.exp(-(i / SR) / 0.09) for i in range(ln)]
-                _add_wrapped(band, at, kick, 0.25)
-    # The set. Filters run over the loop's tail first, so the seam is
-    # as smooth as the rest.
-    pre = int(0.5 * SR)
-    x = band[-pre:] + band
-    low = _lowpass(x, 0.05)
-    x = [a - b for a, b in zip(x, low)]
-    x = _lowpass(_lowpass(x, 0.45), 0.45)
-    x = x[pre:]
-    peak = max(abs(v) for v in x)
-    x = [math.tanh(1.8 * v / peak) / math.tanh(1.8) for v in x]
-    fade = int(0.5 * SR)
-    hiss = _noise_r(r, n + fade)
-    hiss = [a - b for a, b in zip(hiss, _lowpass(hiss, 0.2))]
-    hiss = loop_crossfade(hiss, 0.5)
-    out = [v * 0.85 + h * 0.03 for v, h in zip(x, hiss)]
-    for _k in range(int(n / SR * 2.5)):
-        at = r.randrange(n)
-        amp = r.uniform(0.04, 0.15)
-        for i in range(r.randrange(20, 90)):
-            out[(at + i) % n] += (r.random() * 2.0 - 1.0) * amp * math.exp(-i / 25.0)
-    write_wav(OUT_DIR / "radio_loop.wav", [out], normalize_to=0.45)
-
-
 def make_crickets() -> None:
     """A summer night in a meadow: field crickets near and far, each
     chirping three or four pulses of a pure note round 4.5 kHz at its
@@ -1058,7 +871,6 @@ def main() -> None:
     make_bells()
     make_leaves()
     make_grass_wind()
-    make_radio()
     make_crickets()
     make_birds()
     print("done")
