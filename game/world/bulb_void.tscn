@@ -1,10 +1,16 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://world/bulb_void.gd" id="1"]
 [ext_resource type="PackedScene" path="res://player/player.tscn" id="2"]
 
+[sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
+
+[sub_resource type="Sky" id="sky"]
+sky_material = SubResource("sky_mat")
+
 [sub_resource type="Environment" id="env"]
 background_mode = 1
+sky = SubResource("sky")
 background_color = Color(0, 0, 0, 1)
 ambient_light_source = 1
 reflected_light_source = 1

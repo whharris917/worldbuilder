@@ -23,6 +23,13 @@ extends Node3D
 ## switched on, so it sees the ball as it is then), and the bulb's
 ## indirect energy, its share in the GI methods.
 ##
+## Below them, a sky: a switch that puts Godot's procedural sky (a
+## gradient, no sun) behind the scene in place of the black void, and
+## makes it the source of the ambient light and of reflections; then
+## its four colours and its curves and energies. Ambient energy still
+## scales the sky's ambient light; the ambient colour is unused while
+## the sky is on.
+##
 ## The bulb's glass takes no part in GI (it encloses the light, and a
 ## voxel or distance-field method would count it solid and smother the
 ## light), and the player's body is dynamic, so the methods that bake
@@ -51,6 +58,8 @@ var _sliders: Dictionary = {}          # title -> HSlider
 var _switches: Dictionary = {}         # title -> CheckButton
 var _ambient_picker: ColorPickerButton
 var _voxel_gi: VoxelGI = null
+var _sky_mat: ProceduralSkyMaterial
+var _sky_pickers: Dictionary = {}      # material property -> ColorPickerButton
 var _debanding_was := false
 var _atlas_was := 4096
 var _tint := Color(1, 1, 1)            # linear, brightest channel 1
@@ -78,6 +87,10 @@ func _ready() -> void:
 		"Ambient energy": 0.0,
 		"Indirect energy": _bulb.light_indirect_energy,
 	}
+	_sky_mat = _env.sky.sky_material as ProceduralSkyMaterial
+	for prop: String in ["sky_top_color", "sky_horizon_color", "ground_bottom_color", "ground_horizon_color",
+			"sky_curve", "ground_curve", "sky_energy_multiplier", "ground_energy_multiplier"]:
+		_defaults[prop] = _sky_mat.get(prop)
 	# Ambient light from a colour; at energy 0 it is the same as none.
 	_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	_env.ambient_light_color = _defaults["ambient"] as Color
@@ -150,6 +163,19 @@ func _ready() -> void:
 	_switch(right, "VoxelGI", _set_voxel_gi)
 	_slider(right, "Indirect energy", 0.0, 4.0, 0.01, _bulb.light_indirect_energy, func(v: float) -> void:
 		_bulb.light_indirect_energy = v)
+
+	var sky_heading := Label.new()
+	sky_heading.text = "Sky"
+	right.add_child(sky_heading)
+	_switch(right, "Sky", _set_sky)
+	_sky_colour(right, "Sky top", "sky_top_color")
+	_sky_colour(right, "Sky horizon", "sky_horizon_color")
+	_sky_colour(right, "Ground horizon", "ground_horizon_color")
+	_sky_colour(right, "Ground bottom", "ground_bottom_color")
+	_sky_slider(right, "Sky curve", "sky_curve", 0.001, 1.0)
+	_sky_slider(right, "Sky energy", "sky_energy_multiplier", 0.0, 4.0)
+	_sky_slider(right, "Ground curve", "ground_curve", 0.001, 1.0)
+	_sky_slider(right, "Ground energy", "ground_energy_multiplier", 0.0, 4.0)
 	if DisplayServer.get_name() == "headless":
 		print("[worldbuilder] bulb void: floor, one bulb")
 
@@ -188,6 +214,32 @@ func _switch(column: VBoxContainer, title: String, on_toggle: Callable) -> void:
 	button.toggled.connect(func(on: bool) -> void: on_toggle.call(on))
 	_switches[title] = button
 	column.add_child(button)
+
+
+## The sky behind the scene and as the source of ambient light and
+## reflections, or the black void with ambient light from a colour and
+## no reflections.
+func _set_sky(on: bool) -> void:
+	if on:
+		_env.background_mode = Environment.BG_SKY
+		_env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+		_env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	else:
+		_env.background_mode = Environment.BG_COLOR
+		_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		_env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+
+
+func _sky_colour(column: VBoxContainer, title: String, prop: String) -> void:
+	var picker := _colour_row(column, title, _sky_mat.get(prop) as Color)
+	picker.color_changed.connect(func(c: Color) -> void: _sky_mat.set(prop, c))
+	_sky_pickers[prop] = picker
+
+
+func _sky_slider(column: VBoxContainer, title: String, prop: String, lo: float, hi: float) -> void:
+	_slider(column, title, lo, hi, 0.001 if hi <= 1.0 else 0.01, float(_sky_mat.get(prop)),
+		func(v: float) -> void: _sky_mat.set(prop, v))
+	(_sliders[title] as HSlider).set_meta("prop", prop)
 
 
 ## A VoxelGI box just larger than the room, baked from the scene as it
@@ -269,6 +321,13 @@ func _reset() -> void:
 	_env.ambient_light_color = _ambient_picker.color
 	for button: CheckButton in _switches.values():
 		button.button_pressed = false
+	for prop: String in _sky_pickers:
+		var picker := _sky_pickers[prop] as ColorPickerButton
+		picker.color = _defaults[prop] as Color
+		_sky_mat.set(prop, picker.color)
+	for slider: HSlider in _sliders.values():
+		if slider.has_meta("prop"):
+			slider.value = float(_defaults[str(slider.get_meta("prop"))])
 
 
 func _next_atlas() -> void:
