@@ -27,8 +27,8 @@ Writes to game/audio/:
   crickets_loop.wav  10 s seamless field crickets and tree crickets
   bird_*.wav      white-throated sparrow, chickadee, robin, wood thrush
                   (two), barred owl
-  knock_1..3.wav  a heavy ball striking a stone wall: a falling low
-                  body tone, a mid knock, a stone click
+  knock_1..3.wav  a heavy stone ball striking a stone wall: a deep
+                  falling thump, a dull low rumble, a little grit
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -890,39 +890,47 @@ def make_birds() -> None:
     write_wav(OUT_DIR / "bird_owl.wav", [out], normalize_to=0.45)
 
 
-def make_knock(path: Path, r: random.Random, f0: float, decay: float, mid: float) -> None:
-    """A heavy ball striking a stone wall: the ball's body as a low tone
-    falling in pitch as the contact springs back, a short mid knock of
-    band-limited noise from the contact itself, and a brief bright click
-    of stone, over half a second. Its own generator, so the other files
+def make_knock(path: Path, r: random.Random, f0: float, decay: float, rumble_hz: float) -> None:
+    """A heavy stone ball striking a stone wall. Large stone is heavy and
+    damped: it does not ring in the middle register as wood does, so
+    there is no tonal knock. A deep body thump falling in pitch as the
+    contact springs back, a dull low rumble carried through the mass
+    (noise between about 60 Hz and rumble_hz, which small speakers can
+    still play), and a few sparse soft crackles of grit crushed at the
+    contact in the first 40 ms. Its own generator, so the other files
     stay as they are."""
-    duration = 0.6
+    duration = 0.7
     n = int(duration * SR)
     noise = _noise_r(r, n)
-    # The knock: noise between about mid / 2 and mid * 2.
-    low = 1.0 - math.exp(-2.0 * math.pi * mid * 2.0 / SR)
-    high = 1.0 - math.exp(-2.0 * math.pi * mid * 0.5 / SR)
-    band = _lowpass(_lowpass(noise, low), low)
-    under = _lowpass(band, high)
-    knock = [band[i] - under[i] for i in range(n)]
-    click = _noise_r(r, n)
+    top = 1.0 - math.exp(-2.0 * math.pi * rumble_hz / SR)
+    bottom = 1.0 - math.exp(-2.0 * math.pi * 60.0 / SR)
+    low = _lowpass(_lowpass(_lowpass(noise, top), top), top)
+    under = _lowpass(low, bottom)
+    rumble = [low[i] - under[i] for i in range(n)]
+    # Grit: a handful of tiny impulses, softened so they crackle rather
+    # than click.
+    grit = [0.0] * n
+    for _ in range(14):
+        at = int(r.random() ** 2 * 0.04 * SR)
+        grit[at] += (r.random() * 2.0 - 1.0) * (1.0 - at / (0.04 * SR))
+    grit = _lowpass(_lowpass(grit, 1.0 - math.exp(-2.0 * math.pi * 2200.0 / SR)), 1.0 - math.exp(-2.0 * math.pi * 2200.0 / SR))
     phase = 0.0
     buf = [0.0] * n
     for i in range(n):
         t = i / SR
-        attack = min(1.0, t / 0.0015)
-        phase += 2.0 * math.pi * (f0 * (0.62 + 0.38 * math.exp(-t * 18.0))) / SR
+        attack = min(1.0, t / 0.002)
+        phase += 2.0 * math.pi * (f0 * (0.64 + 0.36 * math.exp(-t * 14.0))) / SR
         body = math.sin(phase) * math.exp(-t * decay)
-        thump = knock[i] * 16.0 * math.exp(-t * 35.0)
-        tick = click[i] * 0.7 * math.exp(-t * 600.0)
-        buf[i] = (body + thump + tick) * attack
+        boom = rumble[i] * 40.0 * math.exp(-t * 14.0)
+        crackle = grit[i] * 24.0
+        buf[i] = (body + boom + crackle) * attack
     write_wav(path, [buf], normalize_to=0.6)
 
 
 def make_knocks() -> None:
     r = random.Random(20261003)
-    for idx, (f0, decay, mid) in enumerate([(92.0, 9.0, 420.0), (84.0, 8.0, 380.0), (100.0, 10.0, 470.0)], start=1):
-        make_knock(OUT_DIR / f"knock_{idx}.wav", r, f0, decay, mid)
+    for idx, (f0, decay, rumble_hz) in enumerate([(55.0, 7.0, 240.0), (50.0, 6.5, 220.0), (60.0, 7.5, 260.0)], start=1):
+        make_knock(OUT_DIR / f"knock_{idx}.wav", r, f0, decay, rumble_hz)
 
 
 def main() -> None:
