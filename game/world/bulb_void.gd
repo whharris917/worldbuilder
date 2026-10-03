@@ -9,7 +9,9 @@ extends Node3D
 ## the shadow atlas, the texture all point and spot lights' shadow maps
 ## share, through 4096, 8192 and 16384 texels square (the atlas is a
 ## power of two); both are put back as found when the scene closes.
-## Then, used with the mouse freed by Esc, the ball's material and
+## Then, used with the mouse freed by Esc: a colour picker for the bulb,
+## which sets both the light's colour and the glass's emission (the
+## light is invisible; the glass is drawn and lights nothing); the ball's material and
 ## shape: a colour picker for its hue, sliders for albedo, roughness,
 ## metallic, specular and the sphere mesh's segment count (rings half
 ## of it), and a button that puts every control back as the scene
@@ -26,10 +28,13 @@ const ATLAS_SIZES: Array[int] = [4096, 8192, 16384]
 @onready var player: Player = $Player
 @onready var _ball_mesh: SphereMesh = ($Ball/Mesh as MeshInstance3D).mesh as SphereMesh
 @onready var _ball_mat: StandardMaterial3D = _ball_mesh.material as StandardMaterial3D
+@onready var _bulb: OmniLight3D = $Bulb
+@onready var _glass_mat: StandardMaterial3D = (($Bulb/Glass as MeshInstance3D).mesh as PrimitiveMesh).material as StandardMaterial3D
 
 var _dither: CheckButton
 var _atlas: Button
 var _picker: ColorPickerButton
+var _bulb_picker: ColorPickerButton
 var _sliders: Dictionary = {}          # title -> HSlider
 var _debanding_was := false
 var _atlas_was := 4096
@@ -45,6 +50,7 @@ func _ready() -> void:
 	_atlas_was = vp.positional_shadow_atlas_size
 	_set_colour(_ball_mat.albedo_color)
 	_defaults = {
+		"bulb": _bulb.light_color,
 		"colour": _ball_mat.albedo_color,
 		"Albedo": _albedo,
 		"Roughness": _ball_mat.roughness,
@@ -71,22 +77,14 @@ func _ready() -> void:
 	column.add_child(_atlas)
 	_show_atlas()
 
-	var colour_row := HBoxContainer.new()
-	var colour_label := Label.new()
-	colour_label.text = "Colour"
-	colour_row.add_child(colour_label)
-	_picker = ColorPickerButton.new()
-	_picker.focus_mode = Control.FOCUS_NONE
-	_picker.edit_alpha = false
-	_picker.custom_minimum_size = Vector2(60, 24)
-	_picker.color = _ball_mat.albedo_color
+	_bulb_picker = _colour_row(column, "Bulb colour", _bulb.light_color)
+	_bulb_picker.color_changed.connect(_set_bulb)
+	_picker = _colour_row(column, "Ball colour", _ball_mat.albedo_color)
 	_picker.color_changed.connect(func(c: Color) -> void:
 		_set_colour(c)
 		_apply_colour()
 		(_sliders["Albedo"] as HSlider).set_value_no_signal(_albedo)
 		_show_slider("Albedo", _albedo))
-	colour_row.add_child(_picker)
-	column.add_child(colour_row)
 
 	_slider(column, "Albedo", 0.0, 1.0, 0.01, _albedo, func(v: float) -> void:
 		_albedo = v
@@ -119,6 +117,28 @@ func _unhandled_input(event: InputEvent) -> void:
 				_dither.button_pressed = not _dither.button_pressed
 			KEY_2:
 				_next_atlas()
+
+
+## A label and a colour swatch that opens a picker.
+func _colour_row(column: VBoxContainer, title: String, colour: Color) -> ColorPickerButton:
+	var row := HBoxContainer.new()
+	var label := Label.new()
+	label.text = title
+	row.add_child(label)
+	var picker := ColorPickerButton.new()
+	picker.focus_mode = Control.FOCUS_NONE
+	picker.edit_alpha = false
+	picker.custom_minimum_size = Vector2(60, 24)
+	picker.color = colour
+	row.add_child(picker)
+	column.add_child(row)
+	return picker
+
+
+## The light and the glass that stands for it, in one colour.
+func _set_bulb(c: Color) -> void:
+	_bulb.light_color = c
+	_glass_mat.emission = c
 
 
 ## Split an sRGB colour into a linear tint (brightest channel 1) and
@@ -167,6 +187,8 @@ func _reset() -> void:
 	_dither.button_pressed = _debanding_was
 	get_viewport().positional_shadow_atlas_size = _atlas_was
 	_show_atlas()
+	_bulb_picker.color = _defaults["bulb"] as Color
+	_set_bulb(_bulb_picker.color)
 	_set_colour(_defaults["colour"] as Color)
 	_apply_colour()
 	_picker.color = _ball_mat.albedo_color
