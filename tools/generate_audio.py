@@ -28,7 +28,7 @@ Writes to game/audio/:
   bird_*.wav      white-throated sparrow, chickadee, robin, wood thrush
                   (two), barred owl
   knock_1..3.wav  a heavy stone ball striking a stone wall: a deep
-                  falling thump, a dull low rumble, a little grit
+                  falling thump, a heavy low rumble, dense grit, saturated
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -894,12 +894,14 @@ def make_knock(path: Path, r: random.Random, f0: float, decay: float, rumble_hz:
     """A heavy stone ball striking a stone wall. Large stone is heavy and
     damped: it does not ring in the middle register as wood does, so
     there is no tonal knock. A deep body thump falling in pitch as the
-    contact springs back, a dull low rumble carried through the mass
-    (noise between about 60 Hz and rumble_hz, which small speakers can
-    still play), and a few sparse soft crackles of grit crushed at the
-    contact in the first 40 ms. Its own generator, so the other files
-    stay as they are."""
-    duration = 0.7
+    contact springs back; a heavy low rumble carried through the mass
+    (noise between about 60 Hz and rumble_hz); grit crushed at the
+    contact, a dense spatter of crackles over 60 ms with a short crunch
+    of noise under them; then gentle saturation, which adds the thump's
+    harmonics at 100 to 200 Hz, where small speakers still play and the
+    ear hears the deep fundamental from them. Its own generator, so the
+    other files stay as they are."""
+    duration = 0.8
     n = int(duration * SR)
     noise = _noise_r(r, n)
     top = 1.0 - math.exp(-2.0 * math.pi * rumble_hz / SR)
@@ -907,24 +909,33 @@ def make_knock(path: Path, r: random.Random, f0: float, decay: float, rumble_hz:
     low = _lowpass(_lowpass(_lowpass(noise, top), top), top)
     under = _lowpass(low, bottom)
     rumble = [low[i] - under[i] for i in range(n)]
-    # Grit: a handful of tiny impulses, softened so they crackle rather
-    # than click.
+    # Grit: many tiny impulses, denser at first, softened to crackle.
     grit = [0.0] * n
-    for _ in range(14):
-        at = int(r.random() ** 2 * 0.04 * SR)
-        grit[at] += (r.random() * 2.0 - 1.0) * (1.0 - at / (0.04 * SR))
-    grit = _lowpass(_lowpass(grit, 1.0 - math.exp(-2.0 * math.pi * 2200.0 / SR)), 1.0 - math.exp(-2.0 * math.pi * 2200.0 / SR))
+    for _ in range(45):
+        at = int(r.random() ** 2 * 0.06 * SR)
+        grit[at] += (r.random() * 2.0 - 1.0) * (1.0 - at / (0.06 * SR))
+    soft = 1.0 - math.exp(-2.0 * math.pi * 3500.0 / SR)
+    grit = _lowpass(_lowpass(grit, soft), soft)
+    # Crunch: noise from about 800 Hz to 4 kHz in the first 25 ms.
+    hiss = _noise_r(r, n)
+    upper = _lowpass(_lowpass(hiss, 1.0 - math.exp(-2.0 * math.pi * 4000.0 / SR)), 1.0 - math.exp(-2.0 * math.pi * 4000.0 / SR))
+    lower = _lowpass(upper, 1.0 - math.exp(-2.0 * math.pi * 800.0 / SR))
+    crunch = [upper[i] - lower[i] for i in range(n)]
     phase = 0.0
     buf = [0.0] * n
     for i in range(n):
         t = i / SR
-        attack = min(1.0, t / 0.002)
-        phase += 2.0 * math.pi * (f0 * (0.64 + 0.36 * math.exp(-t * 14.0))) / SR
-        body = math.sin(phase) * math.exp(-t * decay)
-        boom = rumble[i] * 40.0 * math.exp(-t * 14.0)
-        crackle = grit[i] * 24.0
-        buf[i] = (body + boom + crackle) * attack
-    write_wav(path, [buf], normalize_to=0.6)
+        attack = min(1.0, t / 0.0015)
+        phase += 2.0 * math.pi * (f0 * (0.64 + 0.36 * math.exp(-t * 12.0))) / SR
+        body = 1.6 * math.sin(phase) * math.exp(-t * decay)
+        boom = rumble[i] * 70.0 * math.exp(-t * 10.0)
+        crackle = grit[i] * 70.0
+        crush = crunch[i] * 3.0 * math.exp(-t * 120.0)
+        buf[i] = (body + boom + crackle + crush) * attack
+    peak = max(abs(v) for v in buf)
+    drive = 2.2
+    buf = [math.tanh(drive * v / peak) / math.tanh(drive) for v in buf]
+    write_wav(path, [buf], normalize_to=0.9)
 
 
 def make_knocks() -> None:

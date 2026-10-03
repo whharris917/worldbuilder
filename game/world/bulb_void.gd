@@ -1096,7 +1096,7 @@ func _knock_wall(w: Pendulum) -> float:
 
 ## The ball striking the wall, heard where it struck: a knock whose
 ## amplitude goes as the speed of impact (6 dB louder for twice as
-## fast), 0 dB at 3 m/s and at most +6, its pitch varied a little from
+## fast), 0 dB at 2 m/s and at most +6, its pitch varied a little from
 ## knock to knock.
 ## It plays through the radio's own path to the ear (the radio sits on
 ## the ball), so outside the wall it comes muffled over the top like the
@@ -1130,7 +1130,7 @@ func _knock_sound(speed: float, at: Vector3, delta: float) -> void:
 			break
 	player.stream = load(KNOCKS[randi() % KNOCKS.size()]) as AudioStream
 	player.global_position = at
-	player.volume_db = minf(20.0 * log(speed / 3.0) / log(10.0), 6.0)
+	player.volume_db = minf(20.0 * log(speed / 2.0) / log(10.0), 6.0)
 	player.pitch_scale = randf_range(0.92, 1.0)
 	player.play()
 
