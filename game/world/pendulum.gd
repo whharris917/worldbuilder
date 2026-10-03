@@ -12,15 +12,14 @@ extends RefCounted
 ##
 ## Speed and wait may change at any moment: the hook keeps its place
 ## along the edge and only its pace changes. The rope's length may
-## change too: the hook rises or falls so the weight's resting height
-## stays where it was.
+## change too: the hook stays at its height and the weight rises or
+## falls.
 
 const GRAVITY := Vector3(0, -9.8, 0)
 const DRAG := 0.03                      # 1/s
 
 var corners: Array[Vector3]             # on the floor; the hook runs hook_y above them
-var rest_y: float                       # the weight's centre at rest
-var hook_y: float
+var hook_y: float                       # the hook's height
 var radius: float                       # of the weight, for collisions
 var tie: float                          # from the weight's centre to where the rope is tied
 var mass: float
@@ -37,9 +36,9 @@ var _waited := 0.0
 var _tau := 0.0                         # 0 to 1 along the current edge
 
 
-func _init(p_corners: Array[Vector3], p_rest_y: float, p_length: float, p_radius: float, p_tie: float, p_mass: float) -> void:
+func _init(p_corners: Array[Vector3], p_hook_y: float, p_length: float, p_radius: float, p_tie: float, p_mass: float) -> void:
 	corners = p_corners
-	rest_y = p_rest_y
+	hook_y = p_hook_y
 	radius = p_radius
 	tie = p_tie
 	mass = p_mass
@@ -50,7 +49,6 @@ func _init(p_corners: Array[Vector3], p_rest_y: float, p_length: float, p_radius
 ## A longer or shorter rope, the weight kept at the same angle.
 func set_length(l: float) -> void:
 	length = l
-	hook_y = rest_y + l
 	_turning = length * length / (length * length + 0.4 * radius * radius)
 	swing = swing.normalized() * length
 

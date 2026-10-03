@@ -700,7 +700,7 @@ func _reset() -> void:
 	for title: String in TEX_MAPS:
 		(_switches[title] as CheckButton).set_pressed_no_signal(true)
 	for title: String in ["Normal strength", "Height depth (mm)", "Floor scale", "Walls scale", "Ball scale",
-			"Room radius (m)", "Ball rope (m)", "Bulb cord (m)"]:
+			"Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	for pick: OptionButton in _picks.values():
 		pick.select(0)
@@ -866,6 +866,7 @@ func _load_state() -> void:
 
 ## ---- the swinging ball and bulb ----------------------------------------------
 
+const HOOK_Y := 12.0
 var _still := false                     # hooks stopped, weights hanging at rest
 const SUBSTEPS := 8
 
@@ -880,13 +881,14 @@ static func _corners(r: float, azimuths: Array) -> Array[Vector3]:
 
 
 ## The ball's hook runs a triangle nearly as wide as the room; the
-## bulb's a smaller one turned 60 degrees from it. Ropes start at 4 m
-## for the ball and 2.5 m for the bulb, the hooks a little over the wall.
+## bulb's a smaller one turned 60 degrees from it. Both hooks run 12 m
+## up; the ropes start long enough to hang the ball's centre 1.3 m over
+## the floor and the bulb 2.2 m, and a shorter rope lifts its weight.
 func _build_swing() -> void:
-	_ball_swing = Pendulum.new(_corners(0.7 * _room_r, [30.0, 150.0, 270.0]), 1.3, 4.0, 1.0, 1.0, 50.0)
+	_ball_swing = Pendulum.new(_corners(0.7 * _room_r, [30.0, 150.0, 270.0]), HOOK_Y, HOOK_Y - 1.3, 1.0, 1.0, 50.0)
 	_ball_swing.speed = 1.2
 	_ball_swing.wait = 4.0
-	_bulb_swing = Pendulum.new(_corners(0.6 * _room_r, [90.0, 210.0, 330.0]), 2.2, 2.5, 0.05, 0.05, 0.05)
+	_bulb_swing = Pendulum.new(_corners(0.6 * _room_r, [90.0, 210.0, 330.0]), HOOK_Y, HOOK_Y - 2.2, 0.05, 0.05, 0.05)
 	_bulb_swing.speed = 1.0
 	_bulb_swing.wait = 3.0
 	_ball_rig = [_ball, _hook_mesh(), _rope_mesh(0.015)]
@@ -937,13 +939,13 @@ func _step_swing(delta: float) -> void:
 	_draw_swing(_bulb_swing, _bulb_rig)
 
 
-## A weight that reaches the wall is put back against it and bounces
+## A weight that reaches the wall, below its top, is put back against it and bounces
 ## off, leaving the restitution's share of its speed toward the wall.
 func _knock_wall(w: Pendulum) -> void:
 	var c := w.centre()
 	var flat := Vector3(c.x, 0, c.z)
 	var limit := _room_r - w.radius
-	if flat.length() <= limit:
+	if flat.length() <= limit or c.y - w.radius >= WALL_H:
 		return
 	var out := flat.normalized()
 	w.place(c - out * (flat.length() - limit))
@@ -1297,19 +1299,19 @@ func _build_motion(root: Control) -> Control:
 			_set_voxel_gi(true))
 	_note(column, "Floor and wall rebuilt as you drag; the hooks' paths scale with it. A VoxelGI box is baked again when you let go.")
 	_heading(column, "Ball's hook")
-	_slider(column, "Ball rope (m)", 1.0, 10.0, 0.1, _ball_swing.length, func(v: float) -> void: _ball_swing.set_length(v))
+	_slider(column, "Ball rope length (m)", 1.0, HOOK_Y - 1.3, 0.1, _ball_swing.length, func(v: float) -> void: _ball_swing.set_length(v))
 	_slider(column, "Ball speed", 0.2, 3.0, 0.05, _ball_swing.speed, func(v: float) -> void: _ball_swing.speed = v)
 	_slider(column, "Ball wait", 0.0, 10.0, 0.1, _ball_swing.wait, func(v: float) -> void: _ball_swing.wait = v)
 	_heading(column, "Bulb's hook")
-	_slider(column, "Bulb cord (m)", 0.5, 10.0, 0.1, _bulb_swing.length, func(v: float) -> void: _bulb_swing.set_length(v))
+	_slider(column, "Bulb cord length (m)", 0.5, HOOK_Y - 0.3, 0.1, _bulb_swing.length, func(v: float) -> void: _bulb_swing.set_length(v))
 	_slider(column, "Bulb speed", 0.2, 3.0, 0.05, _bulb_swing.speed, func(v: float) -> void: _bulb_swing.speed = v)
 	_slider(column, "Bulb wait", 0.0, 10.0, 0.1, _bulb_swing.wait, func(v: float) -> void: _bulb_swing.wait = v)
-	_note(column, "Speed is the hook's average along an edge, in m/s; wait is the pause at each corner, in seconds. A rope's swing takes 2 pi root(L / g): 4 s at 4 m, 6.3 s at 10 m. A hook whose stops and starts fall in step with that swings its weight higher and higher, until the ball strikes the wall.")
+	_note(column, "Speed is the hook's average along an edge, in m/s; wait is the pause at each corner, in seconds. The hooks run 12 m up; a shorter rope lifts its weight. A rope's swing takes 2 pi root(L / g): 2.8 s at 2 m, 6.6 s at 10.7 m. A hook whose stops and starts fall in step with that swings its weight higher and higher, until the ball strikes the wall.")
 	_heading(column, "Knocks")
 	_slider(column, "Restitution", 0.0, 1.0, 0.01, _restitution, func(v: float) -> void: _restitution = v)
 	_note(column, "The share of the closing speed kept after a knock, against the wall or between ball and bulb: 1 bounces back as fast as it came, 0 stops dead.")
 	for title: String in ["Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution",
-			"Room radius (m)", "Ball rope (m)", "Bulb cord (m)"]:
+			"Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)"]:
 		_defaults[title] = (_sliders[title] as HSlider).value
 	return column.get_parent() as Control
 
