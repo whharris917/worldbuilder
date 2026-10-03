@@ -1,0 +1,3 @@
+Tiles142 from ambientCG (https://ambientcg.com/view?id=Tiles142), 1K PNG, licensed CC0 1.0.
+Files renamed: Color -> albedo, Roughness -> roughness, NormalGL -> normal, Displacement -> height.
+The image covers 2 m square. The set has no ambient occlusion map.

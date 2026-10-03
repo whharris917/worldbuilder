@@ -139,7 +139,9 @@ func _ready() -> void:
 	root.theme = theme
 	layer.add_child(root)
 	_build_swing()
-	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root), _build_motion(root)])
+	_build_floor()
+	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root), _build_motion(root),
+		_build_textures(root)])
 	_set_sun("Off")
 	_fps = Label.new()
 	_fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -167,7 +169,7 @@ func _build_tabs(root: Control, panels: Array) -> void:
 		panel.position = Vector2(16, 48)
 		panel.visible = false
 		var tab := Button.new()
-		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion"][i]
+		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion", "Textures"][i]
 		tab.toggle_mode = true
 		tab.button_group = group
 		tab.focus_mode = Control.FOCUS_NONE
@@ -692,6 +694,14 @@ func _reset() -> void:
 			"Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	(_choices["Sun"]["Off"] as CheckBox).button_pressed = true
+	for title: String in TEX_MAPS:
+		(_switches[title] as CheckButton).set_pressed_no_signal(true)
+	for title: String in ["Normal strength", "Height depth (mm)", "Tile size (m)"]:
+		(_sliders[title] as HSlider).value = float(_defaults[title])
+	(_choices["Set"]["None"] as CheckBox).button_pressed = true
+	(_choices["Filter"]["Mipmaps"] as CheckBox).button_pressed = true
+	(_choices["Ball map"]["UV"] as CheckBox).button_pressed = true
+	_apply_textures()
 	_refresh()
 
 
@@ -831,6 +841,135 @@ func _draw_swing(w: Pendulum, rig: Array) -> void:
 	(rig[1] as Node3D).position = hook
 	var end := w.rope_end()
 	(rig[2] as Node3D).global_transform = Transform3D(aim.scaled_local(Vector3(1, (end - hook).length(), 1)), (hook + end) * 0.5)
+
+
+## ---- the textures panel ----------------------------------------------------
+
+## The floor, and the ball if chosen, dressed in one of two stone-tile
+## sets, each 2 m square: one generated (tools/build_textures.py, every
+## map derived from one height field), one scanned (ambientCG Tiles142,
+## CC0; it has no occlusion map). Each map has its own switch. The floor
+## is a disc whose texture coordinates are its x and z in metres, so the
+## tile size is exact; the ball's run once round and pole to pole, or the
+## ball is mapped triplanar in its own space, which needs none. Height is
+## parallax: the texture shifted by the view angle, the surface still
+## flat; its depth is given in millimetres and turned into Godot's
+## heightmap scale (hundredths of a texture repeat).
+const TEX_MAPS: Array[String] = ["Albedo", "Roughness", "Normal", "Height", "AO"]
+const TEX_DIRS := {"Generated": "res://textures/generated_tiles/", "ambientCG": "res://textures/ambientcg_tiles142/"}
+const TEX_FILES := {"Albedo": "albedo", "Roughness": "roughness", "Normal": "normal", "Height": "height", "AO": "ao"}
+const FILTERS := {"Nearest": BaseMaterial3D.TEXTURE_FILTER_NEAREST, "Bilinear": BaseMaterial3D.TEXTURE_FILTER_LINEAR,
+	"Mipmaps": BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS,
+	"Anisotropic": BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC}
+const FLOOR_R := 15.0
+const FLOOR_GRAY := Color(0.5, 0.5, 0.5)
+
+var _floor_mat: StandardMaterial3D
+var _tex_set := "None"
+var _tex_filter := "Mipmaps"
+var _ball_map := "UV"
+var _tex_on_ball := false
+
+
+## A disc in place of the floor's cylinder, its texture coordinates its
+## x and z in metres, with tangents for normal maps.
+func _build_floor() -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 256
+	for i in n:
+		var a0 := TAU * i / n
+		var a1 := TAU * (i + 1) / n
+		for at: Vector3 in [Vector3.ZERO, Vector3(sin(a1), 0, cos(a1)) * FLOOR_R, Vector3(sin(a0), 0, cos(a0)) * FLOOR_R]:
+			st.set_normal(Vector3.UP)
+			st.set_uv(Vector2(at.x, at.z))
+			st.add_vertex(at)
+	st.generate_tangents()
+	var node := $Floor/Mesh as MeshInstance3D
+	node.mesh = st.commit()
+	node.position = Vector3.ZERO
+	_floor_mat = StandardMaterial3D.new()
+	_floor_mat.albedo_color = FLOOR_GRAY
+	node.material_override = _floor_mat
+
+
+func _build_textures(root: Control) -> Control:
+	var column := _column(root)
+	_choice(column, "Set", ["None", "Generated", "ambientCG"], func(option: String) -> void:
+		_tex_set = option
+		_apply_textures())
+	_note(column, "Generated: made here from one height field, every map agreeing. ambientCG: scanned limestone tiles (CC0), no occlusion map.")
+	_heading(column, "Maps")
+	for title in TEX_MAPS:
+		_switch(column, title, func(_on: bool) -> void: _apply_textures())
+		(_switches[title] as CheckButton).set_pressed_no_signal(true)
+	_note(column, "Height shifts the texture by the view angle to fake depth; outlines and shadows stay flat. AO darkens only ambient and bounce light.")
+	_slider(column, "Normal strength", 0.0, 2.0, 0.01, 1.0, func(_v: float) -> void: _apply_textures())
+	_slider(column, "Height depth (mm)", 0.0, 100.0, 1.0, 10.0, func(_v: float) -> void: _apply_textures())
+	_switch(column, "Deep parallax", func(_on: bool) -> void: _apply_textures())
+	_note(column, "Steps through the height in layers so raised parts hide what lies behind them; costs more.")
+	_slider(column, "Tile size (m)", 0.25, 8.0, 0.05, 2.0, func(_v: float) -> void: _apply_textures())
+	_note(column, "The width one copy of the image covers; both sets are 2 m as made.")
+	_choice(column, "Filter", ["Nearest", "Bilinear", "Mipmaps", "Anisotropic"], func(option: String) -> void:
+		_tex_filter = option
+		_apply_textures())
+	(_choices["Filter"]["Mipmaps"] as CheckBox).set_pressed_no_signal(true)
+	(_choices["Filter"]["Nearest"] as CheckBox).set_pressed_no_signal(false)
+	_note(column, "Look across the floor toward the wall: without mipmaps far tiles shimmer; mipmaps alone blur them; anisotropic keeps them sharp.")
+	_switch(column, "On the ball too", func(on: bool) -> void:
+		_tex_on_ball = on
+		_apply_textures())
+	_choice(column, "Ball map", ["UV", "Triplanar"], func(option: String) -> void:
+		_ball_map = option
+		_apply_textures())
+	_note(column, "UV wraps the image round the ball and pinches it at the poles. Triplanar projects it from three sides, no seams, blended where they meet; Godot does no height with it.")
+	_defaults["Normal strength"] = 1.0
+	_defaults["Height depth (mm)"] = 10.0
+	_defaults["Tile size (m)"] = 2.0
+	return column.get_parent() as Control
+
+
+func _apply_textures() -> void:
+	var tile := float((_sliders["Tile size (m)"] as HSlider).value)
+	_dress(_floor_mat, _tex_set, Vector3(1.0 / tile, 1.0 / tile, 1.0), false)
+	_floor_mat.albedo_color = Color.WHITE if _floor_mat.albedo_texture != null else FLOOR_GRAY
+	var ball_set := _tex_set if _tex_on_ball else "None"
+	var r := _ball_swing.radius
+	if _ball_map == "Triplanar":
+		_dress(_ball_mat, ball_set, Vector3.ONE / tile, true)
+	else:
+		_dress(_ball_mat, ball_set, Vector3(TAU * r / tile, PI * r / tile, 1.0), false)
+
+
+## One material in one set: each map on or off, its strengths, the
+## filter, the coordinates' scale and whether they are triplanar.
+func _dress(mat: StandardMaterial3D, set_name: String, scale: Vector3, triplanar: bool) -> void:
+	var tile := float((_sliders["Tile size (m)"] as HSlider).value)
+	var maps := {}
+	for title in TEX_MAPS:
+		var tex: Texture2D = null
+		if set_name != "None" and (_switches[title] as CheckButton).button_pressed:
+			var path := str(TEX_DIRS[set_name]) + str(TEX_FILES[title]) + ".png"
+			if ResourceLoader.exists(path):
+				tex = load(path) as Texture2D
+		maps[title] = tex
+	mat.albedo_texture = maps["Albedo"]
+	mat.roughness_texture = maps["Roughness"]
+	mat.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	mat.normal_enabled = maps["Normal"] != null
+	mat.normal_texture = maps["Normal"]
+	mat.normal_scale = float((_sliders["Normal strength"] as HSlider).value)
+	mat.heightmap_enabled = maps["Height"] != null and not triplanar
+	mat.heightmap_texture = maps["Height"]
+	mat.heightmap_scale = float((_sliders["Height depth (mm)"] as HSlider).value) / 1000.0 / tile * 100.0
+	mat.heightmap_deep_parallax = (_switches["Deep parallax"] as CheckButton).button_pressed
+	mat.ao_enabled = maps["AO"] != null
+	mat.ao_texture = maps["AO"]
+	mat.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	mat.texture_filter = FILTERS[_tex_filter]
+	mat.uv1_triplanar = triplanar
+	mat.uv1_world_triplanar = false
+	mat.uv1_scale = scale if set_name != "None" else Vector3.ONE
 
 
 ## ---- the motion panel ------------------------------------------------------
