@@ -1,19 +1,17 @@
 extends Node
-## Debug harness for the pool room: boots it, walks the player through
-## the water to raise ripples, and photographs it from free cameras,
-## printing the frame rate with each. Run windowed:
+## Debug harness for the light pool room: boots it and photographs it
+## from free cameras, printing the frame rate with each. Run windowed:
 ##   godot --path game res://world/pool_probe.tscn
 ## WORLDBUILDER_POOL_SHOTS=name,name limits it to those views;
 ## WORLDBUILDER_POOL_VIEWS=name:fov:x,y,z:tx,ty,tz;... takes its own;
-## WORLDBUILDER_POOL_STILL=1 leaves the water untouched;
-## WORLDBUILDER_POOL_OFF=gi,caustics,water,shadow,glow,probe switches
-## those parts off, to see what each costs.
+## WORLDBUILDER_POOL_OFF=gi,shadow,glow switches those parts off, to see
+## what each costs.
 
 ## name, fov, camera, target.
 const VIEWS := [
-	["deck", 60.0, Vector3(0.0, 1.6, 4.6), Vector3(0.0, 2.5, -5.0)],
+	["deck", 60.0, Vector3(-2.5, 1.6, 4.4), Vector3(0.0, 1.5, -5.0)],
 	["ceiling", 70.0, Vector3(3.5, 1.6, 4.2), Vector3(-1.0, 10.0, -2.0)],
-	["water", 60.0, Vector3(4.4, 1.6, 4.4), Vector3(0.0, -0.3, 0.0)],
+	["opening", 60.0, Vector3(4.4, 1.6, 4.4), Vector3(0.0, -2.5, -0.5)],
 	["corner", 75.0, Vector3(4.6, 8.5, 4.6), Vector3(-3.0, 0.0, -3.0)],
 	["stair", 70.0, Vector3(4.6, 1.6, 3.6), Vector3(0.0, -2.2, 4.5)],
 	["chamber", 75.0, Vector3(-1.5, -1.6, 4.5), Vector3(2.0, -2.0, -3.0)],
@@ -31,34 +29,14 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	var player := _world.player
 	await get_tree().create_timer(2.0).timeout
-	if OS.get_environment("WORLDBUILDER_POOL_STILL") == "":
-		# Wade across the pool and back, then stand.
-		player.global_position = Vector3(-3.0, -0.3, 2.0)
-		var path: Array[Vector3] = [Vector3(2.5, -0.3, 1.0), Vector3(1.0, -0.3, -2.5), Vector3(-1.5, -0.3, 0.5)]
-		for target in path:
-			var t := 0.0
-			var from := player.global_position
-			var length := from.distance_to(target)
-			while t < length / 2.0:
-				await get_tree().process_frame
-				t += get_process_delta_time()
-				var p := from.lerp(target, clampf(t * 2.0 / length, 0.0, 1.0))
-				player.global_position = Vector3(p.x, player.global_position.y, p.z)
-	player.visible = false
+	_world.player.visible = false
 	var off := OS.get_environment("WORLDBUILDER_POOL_OFF").split(",")
 	for n: Node in _world.find_children("*", "", true, false):
 		if "gi" in off and n is VoxelGI:
 			(n as VoxelGI).visible = false
-		if "probe" in off and n is ReflectionProbe:
-			(n as ReflectionProbe).visible = false
 		if "shadow" in off and n is OmniLight3D:
 			(n as OmniLight3D).shadow_enabled = false
-		if "caustics" in off and n is SubViewport and (n as SubViewport).own_world_3d:
-			(n as SubViewport).render_target_update_mode = SubViewport.UPDATE_DISABLED
-		if "water" in off and n is MeshInstance3D and (n as MeshInstance3D).mesh is PlaneMesh and n.get_parent() == _world:
-			(n as MeshInstance3D).visible = false
 	if "glow" in off:
 		(_world.get_node("WorldEnvironment") as WorldEnvironment).environment.glow_enabled = false
 	for layer: Node in get_tree().root.find_children("*", "CanvasLayer", true, false):
