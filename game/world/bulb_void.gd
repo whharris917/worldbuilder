@@ -81,6 +81,7 @@ var _fps: Label
 @onready var _ball: AnimatableBody3D = $Ball
 var _ball_swing: Pendulum
 var _radio: BulbRadio
+var _acoustics: BulbAcoustics
 var _sound_status: Label
 var _sound_clock := 0.0
 var _bulb_swing: Pendulum
@@ -248,7 +249,7 @@ func _build_left(root: Control) -> Control:
 	reset.focus_mode = Control.FOCUS_NONE
 	reset.pressed.connect(_reset)
 	column.add_child(reset)
-	return column.get_parent() as Control
+	return _panel_of(column)
 
 
 func _build_right(root: Control) -> Control:
@@ -319,7 +320,7 @@ func _build_right(root: Control) -> Control:
 		_env.ssao_enabled = on
 		_refresh())
 	_note(column, "Darkens ambient and bounce light in corners; leaves the bulb's direct light alone.")
-	return column.get_parent() as Control
+	return _panel_of(column)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -397,7 +398,7 @@ func _build_sun(root: Control) -> Control:
 	_defaults["Azimuth"] = 200.0
 	_defaults["Sun energy"] = 1.0
 	_defaults["Distance (m)"] = 60.0
-	return column.get_parent() as Control
+	return _panel_of(column)
 
 
 func _set_sun(option: String) -> void:
@@ -612,11 +613,42 @@ func _column(root: Control) -> VBoxContainer:
 	style.set_content_margin_all(8)
 	panel.add_theme_stylebox_override("panel", style)
 	root.add_child(panel)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
+	_scrolls.append(scroll)
+	var gutter := MarginContainer.new()
+	gutter.add_theme_constant_override("margin_right", 12)      # clear of the scroll bar
+	scroll.add_child(gutter)
 	var column := VBoxContainer.new()
 	column.custom_minimum_size = Vector2(COLUMN_W, 0)
 	column.add_theme_constant_override("separation", 2)
-	panel.add_child(column)
+	gutter.add_child(column)
 	return column
+
+
+## The panel a column stands on.
+func _panel_of(column: VBoxContainer) -> Control:
+	var node: Node = column
+	while not node is PanelContainer:
+		node = node.get_parent()
+	return node as Control
+
+
+## The open panel stands as tall as its controls, up to the bottom of the
+## window less a margin; beyond that it scrolls (mouse wheel or its bar).
+var _scrolls: Array[ScrollContainer] = []
+
+
+func _fit_panels() -> void:
+	var room := get_viewport().get_visible_rect().size.y - 48.0 - 16.0 - 16.0
+	for scroll in _scrolls:
+		if not scroll.is_visible_in_tree():
+			continue
+		var want := minf((scroll.get_child(0) as Control).get_combined_minimum_size().y, room)
+		if absf(scroll.custom_minimum_size.y - want) > 0.5:
+			scroll.custom_minimum_size = Vector2(0.0, want)
+			(scroll.get_parent() as Control).reset_size()
 
 
 func _box(column: VBoxContainer) -> VBoxContainer:
@@ -844,10 +876,6 @@ func _exit_tree() -> void:
 	if _save_in >= 0.0:
 		_save_state()
 	_swooshes.clear()
-	for bus_name in SWOOSH_BUSES:
-		var idx := AudioServer.get_bus_index(bus_name)
-		if idx != -1:
-			AudioServer.remove_bus(idx)
 	var vp := get_viewport()
 	vp.use_debanding = _debanding_was
 	vp.positional_shadow_atlas_size = _atlas_was
@@ -863,6 +891,7 @@ func _process(delta: float) -> void:
 			_save_state()
 	_adapt(delta)
 	_hear(delta)
+	_fit_panels()
 	if _terrain_in >= 0.0:
 		_terrain_in -= delta
 		if _terrain_in < 0.0:
@@ -1029,12 +1058,18 @@ func _build_swing() -> void:
 	_bulb_swing.wait = 3.0
 	_ball_rig = [_ball, _hook_mesh(), _rope_mesh(0.015)]
 	_bulb_rig = [_bulb, _hook_mesh(), _rope_mesh(0.006)]
+	_acoustics = BulbAcoustics.new()
+	add_child(_acoustics)
+	player.footstep.connect(_acoustics.step)
 	# The radio sits on the ball 35 degrees from its top, upright to the
 	# ball's surface there.
 	_radio = BulbRadio.new()
 	var n := Vector3(0.0, cos(deg_to_rad(35.0)), -sin(deg_to_rad(35.0)))
 	_radio.transform = Transform3D(Basis(Vector3.RIGHT, n, Vector3.RIGHT.cross(n)), n * 1.12)
 	_ball.add_child(_radio)
+	_acoustics.add_source("radio", _radio, BulbRadio.song())
+	_acoustics.set_level("radio", -6.0)
+	_acoustics.add_source("knock", null, null, [], 3)
 	_draw_swing(_ball_swing, _ball_rig)
 	_draw_swing(_bulb_swing, _bulb_rig)
 
@@ -1119,12 +1154,11 @@ func _underfoot() -> void:
 ## amplitude goes as the speed of impact (6 dB louder for twice as
 ## fast), 0 dB at 2 m/s and at most +6, its pitch varied a little from
 ## knock to knock.
-## It plays through the radio's own path to the ear (the radio sits on
-## the ball), so outside the wall it comes muffled over the top like the
-## music. A knock under 3 cm/s, or within a tenth of a second of the
+## It is a source in the scene's acoustics, heard from where it struck:
+## muffled over the wall from outside, with the wall's echoes. A knock
+## under 3 cm/s, or within a tenth of a second of the
 ## last, is the ball settling against the wall, and is not heard.
 const KNOCKS: Array[String] = ["res://audio/knock_1.wav", "res://audio/knock_2.wav", "res://audio/knock_3.wav"]
-var _knock_players: Array[AudioStreamPlayer3D] = []
 var _knock_gap := 0.0
 
 
@@ -1132,28 +1166,9 @@ func _knock_sound(speed: float, at: Vector3, delta: float) -> void:
 	_knock_gap -= delta
 	if speed < 0.03 or _knock_gap > 0.0 or not (_switches["Knocks"] as CheckButton).button_pressed:
 		return
-	if DisplayServer.get_name() == "headless":
-		return
 	_knock_gap = 0.1
-	if _knock_players.is_empty():
-		for i in 3:
-			var p := AudioStreamPlayer3D.new()
-			p.unit_size = 2.0
-			p.max_distance = 0.0
-			p.attenuation_filter_db = 0.0
-			p.bus = "BulbRadio"
-			add_child(p)
-			_knock_players.append(p)
-	var player := _knock_players[0]
-	for p in _knock_players:
-		if not p.playing:
-			player = p
-			break
-	player.stream = load(KNOCKS[randi() % KNOCKS.size()]) as AudioStream
-	player.global_position = at
-	player.volume_db = minf(20.0 * log(speed / 2.0) / log(10.0), 6.0)
-	player.pitch_scale = randf_range(0.92, 1.0)
-	player.play()
+	_acoustics.play("knock", load(KNOCKS[randi() % KNOCKS.size()]) as AudioStream, at,
+		minf(20.0 * log(speed / 2.0) / log(10.0), 6.0), randf_range(0.92, 1.0))
 
 
 ## Two weights that meet are parted and exchange momentum along the
@@ -1479,7 +1494,7 @@ func _build_textures(root: Control) -> Control:
 		_apply_textures())
 	_note(column, "UV wraps the image round the ball and pinches it at the poles. Triplanar projects it from three sides, no seams, blended where they meet; Godot does no height with it.")
 	_show_surface()
-	return column.get_parent() as Control
+	return _panel_of(column)
 
 
 ## A slider that writes one of the edited surface's settings.
@@ -1691,7 +1706,7 @@ func _build_camera(root: Control) -> Control:
 	_slider(column, "White point", 1.0, 16.0, 0.1, 1.0, func(v: float) -> void: _env.tonemap_white = v)
 	_defaults["White point"] = 1.0
 	_note(column, "The tone curve maps light of any strength into what a screen shows. Linear cuts everything above white off flat; the others roll the highlights off gently, as film and the eye do. White point: the light that just reaches white (Linear ignores it).")
-	return column.get_parent() as Control
+	return _panel_of(column)
 
 
 ## Every light's strength and the exposure for the units chosen.
@@ -1761,7 +1776,7 @@ func _adapt(delta: float) -> void:
 
 ## ---- the sound panel --------------------------------------------------------
 
-const SOUND_ON: Array[String] = ["Radio playing (3)", "Knocks", "Swooshes", "Air absorption", "Over the wall", "Through the doorway", "Room reverb", "Doppler"]
+const SOUND_ON: Array[String] = ["Radio playing (3)", "Knocks", "Swooshes", "Air absorption", "Over the wall", "Through the doorway", "Room reverb", "Echoes", "Doppler"]
 
 
 func _build_sound(root: Control) -> Control:
@@ -1775,8 +1790,10 @@ func _build_sound(root: Control) -> Control:
 	_slider(column, "Master volume (dB)", -24.0, 12.0, 0.5, AudioOutput.master_db, func(v: float) -> void: AudioOutput.set_master_db(v))
 	_defaults["Master volume (dB)"] = 0.0
 	_note(column, "For every world. Speakers: a gentle compressor and a limiter lift the level small speakers need, evening loudness far less than a laptop's own loudness equaliser does. Headphones: the full range of loudness, the stereo narrowed a little so sounds sit less inside your head.")
-	_switch(column, "Radio playing (3)", func(on: bool) -> void: _radio.playing = on)
-	_slider(column, "Volume (dB)", -30.0, 6.0, 0.5, -6.0, func(v: float) -> void: _radio.volume_db = v)
+	_switch(column, "Radio playing (3)", func(on: bool) -> void:
+		_radio.playing = on
+		_acoustics.set_paused("radio", not on))
+	_slider(column, "Volume (dB)", -30.0, 6.0, 0.5, -6.0, func(v: float) -> void: _acoustics.set_level("radio", v))
 	_defaults["Volume (dB)"] = -6.0
 	_note(column, "The director's recording, Levittown Levity, on a radio sitting on the ball.")
 	_switch(column, "Swooshes", func(_on: bool) -> void: pass)
@@ -1785,48 +1802,53 @@ func _build_sound(root: Control) -> Control:
 	_note(column, "Air rushing past the ball and the bulb, heard only when they move fast: its power grows as speed to the sixth times the frontal area, so twice as fast is 18 dB louder, and the bulb, being small, is near silent. A broad rush with no pitch, its upper edge rising with speed over size, fluttering as turbulence does.")
 	_switch(column, "Knocks", func(_on: bool) -> void: pass)
 	_note(column, "The ball striking the wall, loud as the speed it struck at: twice as fast, 6 dB louder. Raise the ball's hook speed under Motion to make it swing into the wall.")
-	_choice(column, "Spreading", ["1/d", "1/d²", "Log", "None"], func(option: String) -> void: _radio.spreading = option)
+	_heading(column, "How sound travels")
+	_note(column, "These belong to the room and apply to every sound alike: the radio, the knocks, the swooshes and your footsteps.")
+	_choice(column, "Spreading", ["1/d", "1/d²", "Log", "None"], func(option: String) -> void: _acoustics.spreading = option)
 	_note(column, "1/d in amplitude is the physical law, -6 dB each time the distance doubles (Godot calls it inverse distance). Godot's inverse square is 1/d² in amplitude, -12 dB a doubling: too steep.")
-	_switch(column, "Air absorption", func(on: bool) -> void: _radio.air = on)
+	_switch(column, "Air absorption", func(on: bool) -> void: _acoustics.air = on)
 	_note(column, "Air takes the treble with distance, about 0.1 dB a metre at 8 kHz: little across the room, a muffled tune from a far hill.")
-	_switch(column, "Over the wall", func(on: bool) -> void: _radio.over_wall = on)
+	_switch(column, "Over the wall", func(on: bool) -> void: _acoustics.over_wall = on)
 	_note(column, "With the wall between, sound bends over its top edge: quieter, and the treble most (Maekawa's barrier). Off: only what passes through the masonry, about -45 dB.")
-	_switch(column, "Through the doorway", func(on: bool) -> void: _radio.doorway = on)
+	_switch(column, "Through the doorway", func(on: bool) -> void: _acoustics.doorway = on)
 	_note(column, "With the wall between, the music also comes from the doorway, duller the more sharply its path bends there.")
-	_switch(column, "Room reverb", func(on: bool) -> void: _radio.reverb = on)
+	_switch(column, "Room reverb", func(on: bool) -> void: _acoustics.reverb = on)
 	_note(column, "Sabine's reverberation time from the room's size and its floor and wall materials; the open top absorbs most, so it is short, as in a walled courtyard.")
 	_switch(column, "Doppler", func(on: bool) -> void:
-		_radio.doppler = on
+		_acoustics.doppler = on
 		var cam := get_viewport().get_camera_3d()
 		if cam != null:
 			cam.doppler_tracking = Camera3D.DOPPLER_TRACKING_PHYSICS_STEP if on else Camera3D.DOPPLER_TRACKING_DISABLED)
+	_switch(column, "Echoes", func(on: bool) -> void: _acoustics.echoes = on)
+	_note(column, "Footsteps and knocks come back off the wall, later the farther it is: about 87 ms from the middle of the room. The curved wall gathers its echo toward the middle like a mirror, so there it is loudest, arriving from all round at once. Outside, the wall's outer face spreads its echo thin.")
 	_note(column, "The pitch rises as the radio swings toward you and falls as it swings away; a few hundredths of a semitone at these speeds.")
 	for title in SOUND_ON:
 		(_switches[title] as CheckButton).set_pressed_no_signal(true)
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
 		cam.doppler_tracking = Camera3D.DOPPLER_TRACKING_PHYSICS_STEP
-	return column.get_parent() as Control
+	return _panel_of(column)
 
 
-## The radio's paths worked out for the ear (the camera) each frame.
+## The room as it stands handed to the acoustics, which works out every
+## source's paths for the ear (the camera) each frame.
 func _hear(delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
-	if _radio == null or cam == null:
+	if _acoustics == null or cam == null:
 		return
-	_radio.room_r = _room_r
-	_radio.wall_h = _wall_h
-	_radio.wall_t = WALL_T
-	_radio.door_w = DOOR_W
-	_radio.alpha_floor = float(LIBRARY[_library_index(str(_surf["Floor"]["material"]))].get("alpha", 0.02))
-	_radio.alpha_wall = float(LIBRARY[_library_index(str(_surf["Walls"]["material"]))].get("alpha", 0.02))
-	_radio.listen(cam.global_position)
+	_acoustics.room_r = _room_r
+	_acoustics.wall_h = _wall_h
+	_acoustics.wall_t = WALL_T
+	_acoustics.door_w = DOOR_W
+	_acoustics.alpha_floor = float(LIBRARY[_library_index(str(_surf["Floor"]["material"]))].get("alpha", 0.02))
+	_acoustics.alpha_wall = float(LIBRARY[_library_index(str(_surf["Walls"]["material"]))].get("alpha", 0.02))
+	_acoustics.listen(cam.global_transform, player.global_position)
 	_swoosh(delta)
 	_underfoot()
 	_sound_clock -= delta
 	if _sound_clock <= 0.0:
 		_sound_clock = 0.25
-		_sound_status.text = _radio.status
+		_sound_status.text = _acoustics.status + " Radio " + _acoustics.source_note("radio") + "."
 
 
 ## ---- swooshes ---------------------------------------------------------------
@@ -1845,10 +1867,8 @@ func _hear(delta: float) -> void:
 ## turned the noise into a hum like a foghorn. The loudness flutters by
 ## about 3 dB at a few hertz, as turbulence does, so it never settles
 ## into a tone. Speed is the body's own through the air, the hook's
-## motion included, eased over a tenth of a second. Each plays from its
-## body through the radio's path to the ear, so the room's reverb and the
-## wall's muffling apply (for the bulb, as if it stood where the ball does).
-const SWOOSH_BUSES: Array[String] = ["BulbSwooshBall", "BulbSwooshBulb"]
+## motion included, eased over a tenth of a second. Each is a source in
+## the scene's acoustics, carried by its body, its two filters its own.
 var _swooshes: Array[Dictionary] = []
 var _flutter := FastNoiseLite.new()
 var _flutter_t := 0.0
@@ -1862,30 +1882,14 @@ func _build_swooshes() -> void:
 	stream.loop_begin = 0
 	stream.loop_end = int(stream.get_length() * stream.mix_rate)
 	_flutter.frequency = 1.0
-	var specs := [[SWOOSH_BUSES[0], _ball_swing, 2.0, _ball], [SWOOSH_BUSES[1], _bulb_swing, 0.08, _bulb]]
+	var specs := [["swoosh_ball", _ball_swing, 2.0, _ball], ["swoosh_bulb", _bulb_swing, 0.08, _bulb]]
 	for spec: Array in specs:
-		var bus_name := str(spec[0])
-		if AudioServer.get_bus_index(bus_name) == -1:
-			var i := AudioServer.bus_count
-			AudioServer.add_bus(i)
-			AudioServer.set_bus_name(i, bus_name)
-			AudioServer.set_bus_send(i, "BulbRadio")
-			AudioServer.add_bus_effect(i, AudioEffectHighPassFilter.new())
-			AudioServer.add_bus_effect(i, AudioEffectLowPassFilter.new())
-		var idx := AudioServer.get_bus_index(bus_name)
-		var player := AudioStreamPlayer3D.new()
-		player.stream = stream
-		player.bus = bus_name
-		player.unit_size = 2.0
-		player.max_distance = 0.0
-		player.attenuation_filter_db = 0.0
-		player.volume_db = -80.0
-		player.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_PHYSICS_STEP
-		(spec[3] as Node3D).add_child(player)
-		player.play()
-		_swooshes.append({"player": player, "high": AudioServer.get_bus_effect(idx, 0),
-			"low": AudioServer.get_bus_effect(idx, 1), "swing": spec[1], "size": float(spec[2]), "speed": 0.0,
-			"seed": float(_swooshes.size()) * 97.0})
+		var high := AudioEffectHighPassFilter.new()
+		var low := AudioEffectLowPassFilter.new()
+		_acoustics.add_source(str(spec[0]), spec[3] as Node3D, stream, [high, low])
+		_acoustics.set_level(str(spec[0]), -80.0)
+		_swooshes.append({"id": spec[0], "high": high, "low": low, "swing": spec[1], "size": float(spec[2]),
+			"speed": 0.0, "seed": float(_swooshes.size()) * 97.0})
 
 
 func _swoosh(delta: float) -> void:
@@ -1897,14 +1901,14 @@ func _swoosh(delta: float) -> void:
 		var speed := lerpf(float(sw["speed"]), u, 1.0 - exp(-delta / 0.1))
 		sw["speed"] = speed
 		var size := float(sw["size"])
-		var player := sw["player"] as AudioStreamPlayer3D
+		var id := str(sw["id"])
 		if not on or speed < 0.05:
-			player.volume_db = -80.0
+			_acoustics.set_level(id, -80.0)
 			continue
 		var db := 60.0 * log(speed / 3.0) / log(10.0) + 20.0 * log(size) / log(10.0) - 42.0 + level
 		db += 20.0 * log(maxf(smoothstep(0.8, 1.6, speed), 0.0001)) / log(10.0)
 		db += 3.0 * _flutter.get_noise_1d(_flutter_t * 4.0 + float(sw["seed"]))
-		player.volume_db = clampf(db, -80.0, -18.0 + level)
+		_acoustics.set_level(id, clampf(db, -80.0, -18.0 + level))
 		var edge := clampf(250.0 * pow(speed / size, 0.45), 120.0, 4000.0)
 		(sw["low"] as AudioEffectLowPassFilter).cutoff_hz = edge
 		(sw["low"] as AudioEffectLowPassFilter).resonance = 0.3
@@ -1934,7 +1938,7 @@ func _build_terrain(root: Control) -> Control:
 	_note(column, "A different seed, a different landscape from the same rules. The ground rebuilds when a slider comes to rest; it runs 1.5 km out.")
 	for title: String in ["Hill height (m)", "Hill size (m)", "Ruggedness", "Seed"]:
 		_defaults[title] = (_sliders[title] as HSlider).value
-	return column.get_parent() as Control
+	return _panel_of(column)
 
 
 ## ---- the motion panel ------------------------------------------------------
@@ -1971,7 +1975,7 @@ func _build_motion(root: Control) -> Control:
 	for title: String in ["Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution",
 			"Room radius (m)", "Wall height (m)", "Ball rope length (m)", "Bulb cord length (m)"]:
 		_defaults[title] = (_sliders[title] as HSlider).value
-	return column.get_parent() as Control
+	return _panel_of(column)
 
 
 func _physics_process(delta: float) -> void:

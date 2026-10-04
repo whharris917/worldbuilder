@@ -60,6 +60,9 @@ var figure: PlayerFigure
 var _step_streams: Array[AudioStream] = []
 var _land_stream: AudioStream
 var _step_surface := ""
+
+## A footstep is about to sound (a world's acoustics may set its echoes).
+signal footstep
 var _steps: AudioStreamPlayer
 var _was_on_floor: bool = true
 var _fall_speed: float = 0.0
@@ -260,6 +263,7 @@ func use_steps(surface: String) -> void:
 func _play(stream: AudioStream, pitch: float) -> void:
 	if _silent:
 		return
+	footstep.emit()
 	_steps.stream = stream
 	_steps.pitch_scale = pitch
 	_steps.volume_db = -17.0 + randf_range(-2.0, 0.0)
