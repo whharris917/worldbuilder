@@ -5,8 +5,9 @@ extends Node3D
 ## lamp on a stand. The lamp is the only light, so the room is lit from
 ## below through the opening: the ceiling brightest, the walls fading
 ## downward, the deck around the opening in the room's own reflected
-## light. A stair along the south wall goes down into the chamber;
-## stepping off the deck into the opening drops the player into it.
+## light. A stair along the south wall goes down into the chamber.
+## Across the opening, 35 cm below the deck, lies one pane of glass 4 cm
+## thick, set into the deck's sides all round, solid to walk on.
 ##
 ## Everything is drawn by the engine's own lighting: an omni light with
 ## shadows and standard materials, in an environment with a black
@@ -22,7 +23,16 @@ extends Node3D
 ## engine's default, which here gives no bounce), VoxelGI's quality (Low
 ## to begin, the engine's default), SSIL and SSAO, and the tone curve (AgX to begin).
 ## Viewport: dithering (1 key) and the shadow atlas (2 key: 4096, 8192,
-## 16384 texels square). Dithering, the atlas, half
+## 16384 texels square). Glass: its opacity, tint, roughness and
+## specular, and whether the bounce methods see it.
+##
+## The glass is the standard material with alpha blending: drawn after
+## everything opaque, its shaded colour mixed over what lies behind it by
+## its opacity. It casts no shadow (the engine's rule for alpha-blended
+## materials), is left out of the buffers SSAO and screen-space effects
+## read, and to begin with is left out of the bounce (GI mode Disabled):
+## VoxelGI and SDFGI would otherwise treat it as solid and block the
+## lamp's light through it. Dithering, the atlas, half
 ## resolution and VoxelGI quality are engine-wide and put back as found
 ## when the scene closes. Settings are kept in user://light_pool.json.
 
@@ -45,6 +55,10 @@ const STAIR_Z := 4.05                  # its north side; the room's wall is its 
 const RISERS := 18
 const GOING := 0.28                    # m, each tread front to back
 const HOLE_WEST := -0.3                # the deck's stair opening ends here: 2 m headroom past it
+const GLASS_TOP := -0.35               # the pane's upper face, below the deck
+const GLASS_THICK := 0.04
+const GLASS_TINT := Color(0.88, 0.95, 0.92) # the faint green of float glass
+const GLASS_ALPHA := 0.1
 
 const ATLAS_SIZES: Array[int] = [4096, 8192, 16384]
 const TONEMAPS := {"Linear": Environment.TONE_MAPPER_LINEAR, "Reinhard": Environment.TONE_MAPPER_REINHARDT,
@@ -66,6 +80,8 @@ var _sdfgi_box: VBoxContainer
 var _voxel_box: VBoxContainer
 var _atlas_button: Button
 var _was: Dictionary = {}               # the engine-wide settings as found
+var _glass_pane: MeshInstance3D
+var _glass_mat: StandardMaterial3D
 
 
 func _ready() -> void:
@@ -82,6 +98,7 @@ func _ready() -> void:
 	_build_room()
 	_build_deck()
 	_build_lamp()
+	_build_glass()
 	_build_panels()
 	RenderingServer.gi_set_use_half_resolution(true)
 	RenderingServer.voxel_gi_set_quality(RenderingServer.VOXEL_GI_QUALITY_LOW)
@@ -167,6 +184,24 @@ func _build_panels() -> void:
 	_panel.note(light, "How light, which has no upper limit, is mapped to the screen's 0 to 1. Linear clips everything brighter than white; the others roll it off, each with its own shape.")
 	_env.tonemap_mode = Environment.TONE_MAPPER_AGX
 
+	var glass := _panel.panel("Glass")
+	_panel.slider(glass, "Opacity", 0.0, 1.0, 0.01, GLASS_ALPHA, func(v: float) -> void:
+		_glass_mat.albedo_color.a = v)
+	_panel.note(glass, "Alpha: how much of the glass's own shaded colour covers what lies behind it, which shows through at 1 minus this. A model of partial coverage, not of light passing through a material.")
+	_panel.colour(glass, "Tint", GLASS_TINT, func(c: Color) -> void:
+		_glass_mat.albedo_color = Color(c.r, c.g, c.b, _glass_mat.albedo_color.a))
+	_panel.slider(glass, "Roughness", 0.0, 1.0, 0.01, 0.05, func(v: float) -> void:
+		_glass_mat.roughness = v)
+	_panel.note(glass, "How widely its reflections spread; polished glass is near 0.")
+	_panel.slider(glass, "Specular", 0.0, 1.0, 0.01, 0.5, func(v: float) -> void:
+		_glass_mat.metallic_specular = v)
+	_panel.note(glass, "Reflection strength face on; 0.5 is about 4%, as for glass. Stronger toward grazing angles by the engine's Fresnel term.")
+	_panel.switch(glass, "In the bounce", false, func(on: bool) -> void:
+		_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_STATIC if on else GeometryInstance3D.GI_MODE_DISABLED
+		if _bounce == "VoxelGI":
+			_set_bounce("VoxelGI"))
+	_panel.note(glass, "Whether VoxelGI and SDFGI see the pane. They take it as solid, so on it blocks the lamp's light through it; VoxelGI is baked again when this changes.")
+
 	var view := _panel.panel("Viewport")
 	_panel.note(view, "Settings of the viewport, the image the camera renders into, not of the scene.")
 	_panel.switch(view, "Dithering (1)", vp.use_debanding, func(on: bool) -> void: vp.use_debanding = on)
@@ -247,6 +282,13 @@ func _reset() -> void:
 	_panel.pick("VoxelGI quality", "Low")
 	_panel.pick("Curve", "AgX")
 	_panel.pick("Bounce", "VoxelGI")
+	(_panel.sliders["Opacity"] as HSlider).value = GLASS_ALPHA
+	var tint := _panel.pickers["Tint"] as ColorPickerButton
+	tint.color = GLASS_TINT
+	tint.color_changed.emit(GLASS_TINT)
+	(_panel.sliders["Roughness"] as HSlider).value = 0.05
+	(_panel.sliders["Specular"] as HSlider).value = 0.5
+	(_panel.switches["In the bounce"] as CheckButton).button_pressed = false
 	_refresh()
 
 
@@ -424,6 +466,21 @@ func _solid(centre: Vector3, size: Vector3, basis: Basis) -> void:
 	body.add_child(shape)
 	body.transform = Transform3D(basis, centre)
 	add_child(body)
+
+
+## ---- the glass -------------------------------------------------------------
+
+## One pane across the opening, its edges in the deck's sides, solid.
+func _build_glass() -> void:
+	_glass_mat = StandardMaterial3D.new()
+	_glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_glass_mat.albedo_color = Color(GLASS_TINT.r, GLASS_TINT.g, GLASS_TINT.b, GLASS_ALPHA)
+	_glass_mat.roughness = 0.05
+	_glass_mat.metallic_specular = 0.5
+	var size := Vector3(2.0 * OPENING_HALF, GLASS_THICK, 2.0 * OPENING_HALF)
+	var centre := Vector3(OPENING_CENTRE.x, GLASS_TOP - GLASS_THICK * 0.5, OPENING_CENTRE.y)
+	_glass_pane = _slab(centre, size, _glass_mat)
+	_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 
 
 ## ---- the lamp --------------------------------------------------------------
