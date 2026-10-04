@@ -1815,13 +1815,14 @@ func _hear(delta: float) -> void:
 ## The rush of air past the ball and the bulb as they move. The noise is
 ## the turbulent wake's (dipole flow noise, after Curle): its power
 ## grows as speed^6 times frontal area, so its amplitude goes as U^3 D:
-## level = 60 log10(U / 2 m/s) + 20 log10(D / 1 m) - 30 dB, plus the
-## slider, never above -6 dB: the ball's rush about -24 dB at 2 m/s, the
-## bulb's a whisper some 28 dB under it. Its pitch goes as U / D, the
+## level = 60 log10(U / 3 m/s) + 20 log10(D / 1 m) - 30 dB, plus the
+## slider, never above -6 dB: the ball's rush about -34 dB at 2 m/s,
+## -24 at 3, -16 at 4; the bulb's a whisper some 28 dB under it. Under
+## about 1.2 m/s it fades out, so a slow swing is silent. Its pitch goes as U / D, the
 ## Strouhal relation; the true shedding tone for bodies this size lies
 ## under 1 Hz, so what is heard is the turbulence's broadband noise above
-## it, in a broad band at 150 (U / D)^0.45 Hz: about 180 Hz for the ball,
-## 750 Hz for the bulb (a narrow band up at 2 to 4 kHz sounded like
+## it, in a broad band at 80 (U / D)^0.45 Hz: about 95 Hz for the ball,
+## 400 Hz for the bulb (a narrow band up at 2 to 4 kHz sounded like
 ## compressed air). Speed is the body's own through the air, the hook's motion
 ## included, eased over a tenth of a second. Each plays from its body
 ## through the radio's path to the ear, so the room's reverb and the
@@ -1873,10 +1874,11 @@ func _swoosh(delta: float) -> void:
 		if not on or speed < 0.05:
 			player.volume_db = -80.0
 			continue
-		var db := 60.0 * log(speed / 2.0) / log(10.0) + 20.0 * log(size) / log(10.0) - 30.0 + level
+		var db := 60.0 * log(speed / 3.0) / log(10.0) + 20.0 * log(size) / log(10.0) - 30.0 + level
+		db += 20.0 * log(maxf(smoothstep(0.8, 1.6, speed), 0.0001)) / log(10.0)
 		player.volume_db = clampf(db, -80.0, -6.0 + level)
 		var band := sw["band"] as AudioEffectBandPassFilter
-		band.cutoff_hz = clampf(150.0 * pow(speed / size, 0.45), 60.0, 4000.0)
+		band.cutoff_hz = clampf(80.0 * pow(speed / size, 0.45), 40.0, 3000.0)
 		band.resonance = 0.2
 
 
