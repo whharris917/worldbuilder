@@ -13,7 +13,8 @@ extends Node3D
 ## standard materials, in an environment with a black background, no
 ## ambient light, no sky reflections and no glow), with two stand-ins
 ## for the glass, described below: a custom shader that shows what lies
-## behind the opaque pane, and an area light for the light through it.
+## behind the opaque pane, and a second spot light at the lamp for the
+## light through it.
 ##
 ## Controls in four panels (BenchPanel), with the mouse freed by Esc, as
 ## in the one-bulb scene. Lamp: its colour and energy (the glass's glow
@@ -44,12 +45,19 @@ extends Node3D
 ## water, tilt the pane's surface and shift the picture behind it (see the
 ## shader); two engine-made noise normal maps slide across it, moved here.
 ## The light the glass would let
-## through is a rectangle area light over the pane facing up (`_through`),
-## lighting everything but the pane, its colour the lamp's filtered by
-## the tint, its energy the lamp's energy times 1 minus the opacity
-## times THROUGH_SCALE, measured so that the ceiling's
-## middle gets what the lamp gave it through clear glass. It is soft
-## and casts no shadows: a glowing rectangle, not the bulb's sharp
+## through is a second spot light at the lamp's own place, pointing up
+## through the opening (`_through`): it lights only the room (the
+## chamber's surfaces and the pane are on render layers it is told to
+## leave alone, CHAMBER and PANE), and the pane casts no shadow for it
+## (`shadow_caster_mask`), so it lights the room as the bulb would through
+## clear glass, with the bulb's falloff and its sharp shadows; its colour
+## is the lamp's times the tint, its energy the lamp's times 1 minus the
+## opacity. It carries a projector texture, a web of bright lines made by
+## the engine's cellular noise, standing for caustics; the light turns
+## slowly about its axis and sways a little so the web moves, at a rate
+## set by the ripples' speed. The pattern is not worked out from the
+## ripples. Its energy is divided by the pattern's average brightness, so
+## the pattern moves light about without adding or taking any.
 ## shadows. The pane is always in the bounce (GI mode Static), so the
 ## bounce methods find the lamp's light blocked, as the shadow does; the
 ## picture it shows lights nothing. Dithering, the atlas, half
@@ -85,11 +93,12 @@ const RIPPLE_SPEED := 0.15             # m/s, the first map; the second at 0.8 o
 const RIPPLE_STRENGTH := 0.3
 const RIPPLE_BEND := 0.02
 const RIPPLE_DIRS: Array[Vector2] = [Vector2(0.8, 0.6), Vector2(-0.5, 0.87)]
+const CAUSTIC_CELLS := 70.0           # cells of the caustic web across its texture
+const CAUSTIC_PX := 2048               # the caustic texture's size; smaller shows its pixels on the ceiling
+const CAUSTIC_TURN := 0.6              # radians the light through turns per metre the ripples travel
 const PANE := 2                        # render layer of the glass, unseen by the second camera
-# The area light's energy for the lamp's light through clear glass, per
-# unit of the lamp's energy: measured so the ceiling's middle gets the
-# same direct light from either.
-const THROUGH_SCALE := 0.80            # measured: lamp 0.0500, area light at the lamp's energy 0.0628
+const CHAMBER := 4                     # render layer of what lies in the chamber, unlit by the light through the glass
+const THROUGH_ANGLE := 72.0            # degrees: the spot's half-angle, past the opening's corners (69) seen from the lamp
 
 const ATLAS_SIZES: Array[int] = [4096, 8192, 16384]
 const TONEMAPS := {"Linear": Environment.TONE_MAPPER_LINEAR, "Reinhard": Environment.TONE_MAPPER_REINHARDT,
@@ -116,7 +125,13 @@ var _glass_mat: ShaderMaterial
 var _portal: SubViewport
 var _portal_cam: Camera3D
 var _portal_env: Environment
-var _through: AreaLight3D
+var _through: SpotLight3D
+var _layer := 1                         # the render layer _shape gives what it makes
+var _caustics: NoiseTexture2D
+var _caustic_mean := 1.0                # the pattern's average brightness, once made
+var _caustics_on := true
+var _spin := 0.0                        # radians the light through has turned
+var _sway_t := 0.0
 var _opacity := GLASS_ALPHA
 var _tint := GLASS_TINT
 var _ripple_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO]
@@ -245,7 +260,7 @@ func _build_panels() -> void:
 		_opacity = v
 		_glass_mat.set_shader_parameter("opacity", v)
 		_set_through())
-	_panel.note(glass, "The pane is opaque. It gives off the second camera's picture of what lies behind it times 1 minus this, filtered by the tint, and shows its own colour times this. The light through it is an area light over the pane, at the lamp's light filtered by the tint, times 1 minus this.")
+	_panel.note(glass, "The pane is opaque. It gives off the second camera's picture of what lies behind it times 1 minus this, filtered by the tint, and shows its own colour times this. The light through it is a second light at the lamp that lights only the room, at the lamp's light filtered by the tint, times 1 minus this.")
 	_panel.heading(glass, "Water on the glass")
 	_panel.slider(glass, "Ripple strength", 0.0, 1.0, 0.01, RIPPLE_STRENGTH, func(v: float) -> void:
 		_glass_mat.set_shader_parameter("ripple_strength", v))
@@ -259,6 +274,14 @@ func _build_panels() -> void:
 	_panel.slider(glass, "Picture bend", 0.0, 0.1, 0.001, RIPPLE_BEND, func(v: float) -> void:
 		_glass_mat.set_shader_parameter("bend", v))
 	_panel.note(glass, "How far the picture behind shifts per unit of slope, as a share of the screen. Real water bends far things further than near ones; the picture holds no depth, so here all shift alike.")
+	_panel.switch(glass, "Caustic pattern", true, func(on: bool) -> void:
+		_caustics_on = on
+		_through.light_projector = _caustics if on else null
+		_set_through())
+	_panel.note(glass, "Shines a web of bright lines into the light through the glass, as a projector does, standing for the light that ripples gather into lines. It is engine noise, not worked out from the ripples; it turns and sways at the ripples' speed. The light's energy is divided by the pattern's average brightness, so the pattern moves light about without adding or taking any.")
+	_panel.slider(glass, "Caustic cells", 10.0, 200.0, 1.0, CAUSTIC_CELLS, func(v: float) -> void:
+		_make_caustics(v))
+	_panel.note(glass, "Cells of the web across the whole picture the light projects; the ceiling sees about a tenth of it across, the walls more, stretched.")
 	_panel.heading(glass, "Glass")
 	_panel.colour(glass, "Tint", GLASS_TINT, func(c: Color) -> void:
 		_glass_mat.set_shader_parameter("tint", c)
@@ -358,6 +381,8 @@ func _reset() -> void:
 	(_panel.sliders["Ripple size (m)"] as HSlider).value = RIPPLE_SIZE
 	(_panel.sliders["Ripple speed (m/s)"] as HSlider).value = RIPPLE_SPEED
 	(_panel.sliders["Picture bend"] as HSlider).value = RIPPLE_BEND
+	(_panel.switches["Caustic pattern"] as CheckButton).button_pressed = true
+	(_panel.sliders["Caustic cells"] as HSlider).value = CAUSTIC_CELLS
 	_panel.pick("Curve", "AgX")
 	_panel.pick("Bounce", "VoxelGI")
 	(_panel.sliders["Opacity"] as HSlider).value = GLASS_ALPHA
@@ -387,11 +412,13 @@ func _build_room() -> void:
 	_slab_between(Vector3(-h - WALL, 0.0, -h - WALL), Vector3(h + WALL, ROOM, -h), bricks)
 
 	var pebbles := _textured("pebbles", Vector2(1.0, 1.0), true, false)
+	_layer = CHAMBER
 	_slab_between(Vector3(-h - WALL, CHAMBER_FLOOR - WALL, -h - WALL), Vector3(h + WALL, CHAMBER_FLOOR, h + WALL), pebbles)
 	_slab_between(Vector3(h, CHAMBER_FLOOR, -h - WALL), Vector3(h + WALL, 0.0, h + WALL), bricks)
 	_slab_between(Vector3(-h - WALL, CHAMBER_FLOOR, -h - WALL), Vector3(-h, 0.0, h + WALL), bricks)
 	_slab_between(Vector3(-h, CHAMBER_FLOOR, h), Vector3(h, 0.0, h + WALL), bricks)
 	_slab_between(Vector3(-h, CHAMBER_FLOOR, -h - WALL), Vector3(h, 0.0, -h), bricks)
+	_layer = 1
 
 
 ## ---- the deck --------------------------------------------------------------
@@ -405,7 +432,11 @@ func _build_deck() -> void:
 	concrete.albedo_color = Color(0.30, 0.30, 0.29)
 	concrete.roughness = 0.9
 	_deck_layer(-TILE, 0.0, _textured("generated_tiles", Vector2(2.0, 2.0), false, false))
-	_deck_layer(SLAB_BOTTOM, -TILE, _textured("old_stone_bricks", BRICK, false, true))
+	var bricks := _textured("old_stone_bricks", BRICK, false, true)
+	_deck_layer(GLASS_TOP, -TILE, bricks)
+	_layer = CHAMBER
+	_deck_layer(SLAB_BOTTOM, GLASS_TOP, bricks)
+	_layer = 1
 	_build_stair(concrete)
 
 
@@ -432,6 +463,7 @@ func _build_stair(concrete: Material) -> void:
 	var h := ROOM * 0.5
 	var rise := -CHAMBER_FLOOR / RISERS
 	var width := h - STAIR_Z
+	_layer = CHAMBER
 	for i in range(1, RISERS):
 		var x1 := STAIR_TOP - (i - 1) * GOING
 		var y1 := -i * rise
@@ -449,6 +481,7 @@ func _build_stair(concrete: Material) -> void:
 	_solid(mid - normal * 0.1, Vector3(length, 0.2, width), Basis(Vector3.BACK, angle))
 	var steel := _steel()
 	_stair_rail(Vector3(STAIR_TOP, 0.0, STAIR_Z + 0.03), Vector3(foot, CHAMBER_FLOOR, STAIR_Z + 0.03), steel)
+	_layer = 1
 	_railing(Vector3(HOLE_WEST, 0.0, STAIR_Z - 0.03), Vector3(STAIR_TOP, 0.0, STAIR_Z - 0.03), steel)
 	_railing(Vector3(HOLE_WEST - 0.03, 0.0, STAIR_Z), Vector3(HOLE_WEST - 0.03, 0.0, h), steel)
 
@@ -546,6 +579,7 @@ func _shape(centre: Vector3, size: Vector3, mat: Material) -> MeshInstance3D:
 	mi.mesh = box
 	mi.material_override = mat
 	mi.position = centre
+	mi.layers = _layer
 	add_child(mi)
 	return mi
 
@@ -565,8 +599,8 @@ func _solid(centre: Vector3, size: Vector3, basis: Basis) -> void:
 ## ---- the glass -------------------------------------------------------------
 
 ## One opaque pane across the opening, its edges in the deck's sides,
-## solid; the second camera that sees past it; the area light that stands
-## for the lamp's light through it.
+## solid; the second camera that sees past it; the spot light that
+## stands for the lamp's light through it.
 func _build_glass() -> void:
 	_glass_mat = ShaderMaterial.new()
 	_glass_mat.shader = load("res://world/pool_glass.gdshader")
@@ -619,20 +653,69 @@ func _build_glass() -> void:
 	_portal_cam.current = true
 	_glass_mat.set_shader_parameter("behind", _portal.get_texture())
 
-	_through = AreaLight3D.new()
-	_through.area_size = Vector2(2.0 * OPENING_HALF, 2.0 * OPENING_HALF)
-	_through.area_range = 40.0
-	_through.area_attenuation = 2.0
-	_through.light_cull_mask = 0xFFFFF & ~PANE
-	# No shadows: Godot's area-light shadows drew wing-shaped dark patches
-	# in the room's corners. Without them the foot of the walls gets a
-	# little light the deck's rim would block.
-	_through.shadow_enabled = false
+	_through = SpotLight3D.new()
+	_through.spot_angle = THROUGH_ANGLE
+	_through.spot_angle_attenuation = 0.01
+	_through.spot_range = 40.0
+	_through.spot_attenuation = 2.0
+	_through.light_cull_mask = 0xFFFFF & ~(PANE | CHAMBER)
+	_through.shadow_enabled = true
+	_through.shadow_caster_mask = 0xFFFFF & ~PANE
 	add_child(_through)
-	_through.global_transform = Transform3D(Basis.looking_at(Vector3.UP, Vector3.BACK),
-		Vector3(OPENING_CENTRE.x, GLASS_TOP + 0.01, OPENING_CENTRE.y))
+	_aim_through()
+	_make_caustics(CAUSTIC_CELLS)
 	_set_through()
 	_set_through_colour()
+
+
+## The caustic web: the engine's cellular noise as the difference of the
+## distances to a point's two nearest cell centres, small along the
+## borders between cells, mapped so the borders are bright lines on a dim
+## ground. Made on a worker thread; its average brightness is measured
+## once it is ready.
+func _make_caustics(cells: float) -> void:
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_CELLULAR
+	noise.cellular_return_type = FastNoiseLite.RETURN_DISTANCE2_SUB
+	noise.cellular_distance_function = FastNoiseLite.DISTANCE_EUCLIDEAN
+	noise.frequency = cells / float(CAUSTIC_PX)
+	noise.seed = 11
+	var ramp := Gradient.new()
+	ramp.set_offset(0, 0.0)
+	ramp.set_color(0, Color(1, 1, 1))
+	ramp.set_offset(1, 0.25)
+	ramp.set_color(1, Color(0.08, 0.08, 0.08))
+	ramp.add_point(0.06, Color(0.45, 0.45, 0.45))
+	_caustics = NoiseTexture2D.new()
+	_caustics.width = CAUSTIC_PX
+	_caustics.height = CAUSTIC_PX
+	_caustics.seamless = true
+	_caustics.noise = noise
+	_caustics.color_ramp = ramp
+	_caustics.changed.connect(_measure_caustics, CONNECT_ONE_SHOT)
+	if _caustics_on:
+		_through.light_projector = _caustics
+
+
+func _measure_caustics() -> void:
+	var img := _caustics.get_image()
+	if img == null:
+		return
+	var sum := 0.0
+	for y in range(0, img.get_height(), 4):
+		for x in range(0, img.get_width(), 4):
+			sum += img.get_pixel(x, y).srgb_to_linear().r
+	_caustic_mean = maxf(sum / float((img.get_height() / 4) * (img.get_width() / 4)), 0.01)
+	_set_through()
+
+
+## The light through points straight up from the lamp, turned about that
+## axis by `_spin` and tilted a little by the sway.
+func _aim_through() -> void:
+	var tilt := Vector3(sin(_sway_t * 0.37), 0.0, cos(_sway_t * 0.29)) * deg_to_rad(1.5)
+	var basis := Basis.looking_at(Vector3.UP, Vector3.BACK).rotated(Vector3.UP, _spin)
+	basis = Basis.from_euler(tilt) * basis
+	_through.global_transform = Transform3D(basis, LAMP)
 
 
 ## The colour of the light through the glass: the lamp's filtered by the
@@ -669,11 +752,13 @@ func _set_thickness(t: float) -> void:
 
 
 ## The light through the glass: the lamp's energy times what the glass
-## lets through.
+## lets through, divided by the pattern's average so it moves light
+## about without adding or taking any.
 func _set_through() -> void:
 	if _through == null or _light == null:
 		return
-	_through.light_energy = _light.light_energy * (1.0 - _opacity) * THROUGH_SCALE
+	var pattern := _caustic_mean if _caustics_on else 1.0
+	_through.light_energy = _light.light_energy * (1.0 - _opacity) / pattern
 
 
 ## Each frame: the second camera where the eye is, with the same lens, at
@@ -700,6 +785,9 @@ func _follow_eye() -> void:
 func _process(delta: float) -> void:
 	_follow_eye()
 	_slide_ripples(delta)
+	_spin += _ripple_speed * CAUSTIC_TURN * delta
+	_sway_t += _ripple_speed * delta * 4.0
+	_aim_through()
 	if _rebake_in >= 0.0:
 		_rebake_in -= delta
 		if _rebake_in < 0.0 and _bounce == "VoxelGI":
@@ -727,6 +815,7 @@ func _build_lamp() -> void:
 		mi.mesh = mesh
 		mi.position = Vector3(LAMP.x, part[1], LAMP.z)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.layers = CHAMBER
 		add_child(mi)
 	_solid(Vector3(LAMP.x, CHAMBER_FLOOR + 0.5, LAMP.z), Vector3(0.3, 1.0, 0.3), Basis.IDENTITY)
 	var light := OmniLight3D.new()
