@@ -59,6 +59,7 @@ var figure: PlayerFigure
 
 var _step_streams: Array[AudioStream] = []
 var _land_stream: AudioStream
+var _step_surface := ""
 var _steps: AudioStreamPlayer
 var _was_on_floor: bool = true
 var _fall_speed: float = 0.0
@@ -92,8 +93,7 @@ func _ready() -> void:
 	MouseMode.capture()
 	figure = PlayerFigure.new()
 	add_child(figure)
-	for i in range(1, 5):
-		_step_streams.append(load("res://audio/step_%d.wav" % i))
+	use_steps("")
 	_land_stream = load("res://audio/land.wav")
 	_steps = AudioStreamPlayer.new()
 	_steps.bus = "Room"
@@ -240,6 +240,19 @@ func _update_landing() -> void:
 		else:
 			_play(_step_streams[randi() % _step_streams.size()], randf_range(0.88, 1.12))
 	_was_on_floor = on_floor
+
+
+## The footsteps for the ground underfoot: "" for the ordinary ones
+## (step_1..4.wav), or a surface's own set, step_<surface>_1..4.wav
+## (pebbles). A world calls it when the ground under the player changes.
+func use_steps(surface: String) -> void:
+	if surface == _step_surface and not _step_streams.is_empty():
+		return
+	_step_surface = surface
+	_step_streams.clear()
+	var stem := "res://audio/step_%d.wav" if surface == "" else "res://audio/step_" + surface + "_%d.wav"
+	for i in range(1, 5):
+		_step_streams.append(load(stem % i))
 
 
 ## A headless run mixes no audio, so a sound started there is never

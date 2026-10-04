@@ -8,8 +8,8 @@ Writes to game/audio/:
   music_loop.wav  40 s seamless clockwork sequencer piece in D minor:
                   a tick on every beat, a sixteenth-note pluck arpeggio,
                   a pulsing sub bass, detuned pads, a sparse lead
-  step_1..4.wav   footsteps: a soft mid-range tock of the sole, a softened
-                  strike, a light floor knock, the roll on to the toe
+  step_1..4.wav   footsteps: a soft thud of the sole, a faint strike, a
+                  light floor knock, the roll on to the toe
   land.wav        heavier landing thump
   surf_loop.wav   16 s seamless surf on a ledge, swells breaking as hiss
   wind_loop.wav   12 s seamless wind off the water, gusting
@@ -31,6 +31,8 @@ Writes to game/audio/:
   knock_1..3.wav  a heavy stone ball striking a stone wall: a deep
                   falling thump, a heavy low rumble, dense grit, saturated
   swoosh_loop.wav 6 s seamless broadband rush, for air past a moving body
+  step_pebbles_1..4.wav  footsteps on wet pebbles: a soft thud, the stones
+                  shifting, a wet squelch, a bubble
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -305,12 +307,11 @@ def make_music() -> None:
 
 def make_step(path: Path, f0: float, decay: float, noise_amp: float,
               duration: float = 0.28, level: float = 0.30) -> None:
-    """A shoe on a floor: a soft mid-range tock, not a click. The sole
-    meeting the floor is noise from about 150 to 500 Hz over some 40 ms;
-    the strike on top is softened noise from about 300 Hz to 2.5 kHz that
-    rises over 1.5 ms and fades over about 8 ms; a light knock of the floor
-    near 140 Hz under it; and 50 to 90 ms later the roll on to the ball of
-    the foot, softer and duller. A crack up at 1 to 6 kHz dying in a
+    """A shoe on a floor: a soft thud. The sole meeting the floor is noise
+    from about 120 to 450 Hz over some 40 ms, rising over 3 ms; a faint
+    strike on top, noise from 300 Hz to 1.5 kHz fading over 9 ms; a light
+    knock of the floor near 140 Hz; and 50 to 90 ms later the roll on to
+    the ball of the foot, softer. A crack up at 1 to 6 kHz dying in a
     millisecond, with a little tone of the sole, sounded like clicks; a low
     thump with no strike at all, before that, like a heartbeat.
 
@@ -330,22 +331,22 @@ def make_step(path: Path, f0: float, decay: float, noise_amp: float,
         under = _lowpass(_lowpass(upper, bottom), bottom)
         return [upper[i] - under[i] for i in range(n)]
 
-    sole = band(150.0, 500.0)
-    strike = band(300.0, 2500.0)
+    sole = band(120.0, 450.0)
+    strike = band(300.0, 1500.0)
     floor_low = _lowpass(floor_noise, 1.0 - math.exp(-2.0 * math.pi * 400.0 / SR))
     roll = 0.05 + r.random() * 0.04                      # heel to ball of the foot, s
     knock_hz = 95.0 + f0 * 0.6
     buf = [0.0] * n
     for i in range(n):
         t = i / SR
-        rise = min(1.0, t / 0.0015)
-        hit = sole[i] * 2.2 * math.exp(-t * 28.0) + strike[i] * 1.1 * math.exp(-t * 120.0)
+        rise = min(1.0, t / 0.003)
+        hit = sole[i] * 2.4 * math.exp(-t * 26.0) + strike[i] * 0.35 * math.exp(-t * 110.0)
         knock = math.sin(2.0 * math.pi * knock_hz * t) * 0.12 * math.exp(-t * 55.0)
         body = floor_low[i] * noise_amp * 0.25 * math.exp(-t * 35.0)
         tr = t - roll
         toe = 0.0
         if tr > 0.0:
-            toe = (sole[i] * 1.0 * math.exp(-tr * 40.0) + strike[i] * 0.3 * math.exp(-tr * 150.0)) * min(1.0, tr / 0.003)
+            toe = (sole[i] * 0.9 * math.exp(-tr * 40.0) + strike[i] * 0.1 * math.exp(-tr * 150.0)) * min(1.0, tr / 0.004)
         buf[i] = (hit + knock + body) * rise + toe
     write_wav(path, [buf], normalize_to=level)
 
@@ -981,6 +982,64 @@ def make_swoosh() -> None:
     write_wav(OUT_DIR / "swoosh_loop.wav", [out], normalize_to=0.5)
 
 
+def make_pebble_step(path: Path, r: random.Random) -> None:
+    """A foot on wet pebbles: a soft thud of the foot (noise at 100 to
+    350 Hz); the pebbles shifting under it, a spatter of small stone
+    knocks over the first 120 ms, each a ping of 1.2 to 3.5 kHz dying in
+    about 2.5 ms, damped and dulled by the water; a short wet squelch, noise
+    at 250 Hz to 1.1 kHz swelling and fading over about a tenth of a
+    second; and a small bubble, a tone rising from about 350 to 900 Hz."""
+    duration = 0.4
+    n = int(duration * SR)
+    white = _noise_r(r, n)
+
+    def band(low_hz: float, high_hz: float) -> list[float]:
+        top = 1.0 - math.exp(-2.0 * math.pi * high_hz / SR)
+        bottom = 1.0 - math.exp(-2.0 * math.pi * low_hz / SR)
+        upper = _lowpass(_lowpass(white, top), top)
+        under = _lowpass(_lowpass(upper, bottom), bottom)
+        return [upper[i] - under[i] for i in range(n)]
+
+    thud = band(100.0, 350.0)
+    wet = band(250.0, 1100.0)
+    grains = [0.0] * n
+    for _ in range(26):
+        t0 = 0.004 + r.random() ** 1.5 * 0.12
+        f = 1200.0 + r.random() * 2300.0
+        amp = (0.3 + 0.7 * r.random()) * math.exp(-t0 * 12.0)
+        start = int(t0 * SR)
+        for k in range(int(0.012 * SR)):
+            if start + k < n:
+                tk = k / SR
+                grains[start + k] += amp * math.sin(2.0 * math.pi * f * tk) * math.exp(-tk * 400.0)
+    soft = 1.0 - math.exp(-2.0 * math.pi * 3500.0 / SR)
+    grains = _lowpass(_lowpass(grains, soft), soft)
+    squelch_at = 0.035 + r.random() * 0.02
+    bubble_at = 0.05 + r.random() * 0.03
+    phase = 0.0
+    buf = [0.0] * n
+    for i in range(n):
+        t = i / SR
+        rise = min(1.0, t / 0.003)
+        foot = thud[i] * 2.2 * math.exp(-t * 24.0) * rise
+        x = t / squelch_at
+        swell = x * math.exp(1.0 - x)
+        squelch = wet[i] * 1.2 * swell * swell
+        bub = 0.0
+        tb = t - bubble_at
+        if tb > 0.0:
+            phase += 2.0 * math.pi * (350.0 + 550.0 * min(1.0, tb / 0.04)) / SR
+            bub = math.sin(phase) * 0.18 * math.exp(-tb * 45.0)
+        buf[i] = foot + grains[i] * 0.55 + squelch + bub
+    write_wav(path, [buf], normalize_to=0.32)
+
+
+def make_pebble_steps() -> None:
+    r = random.Random(20261005)
+    for idx in range(1, 5):
+        make_pebble_step(OUT_DIR / f"step_pebbles_{idx}.wav", r)
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -1005,6 +1064,7 @@ def main() -> None:
     make_birds()
     make_knocks()
     make_swoosh()
+    make_pebble_steps()
     print("done")
 
 

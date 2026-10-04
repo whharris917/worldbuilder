@@ -1106,6 +1106,15 @@ func _knock_wall(w: Pendulum) -> float:
 	return 0.0
 
 
+## The footsteps follow the surface underfoot: the floor's inside the
+## wall, the ground's outside it; wet pebbles have their own.
+func _underfoot() -> void:
+	var at := Vector2(player.global_position.x, player.global_position.z)
+	var surface := "Floor" if at.length() <= _room_r else "Ground"
+	var material := str(_surf[surface]["material"])
+	player.use_steps("pebbles" if material == "Wet pebbles" else "")
+
+
 ## The ball striking the wall, heard where it struck: a knock whose
 ## amplitude goes as the speed of impact (6 dB louder for twice as
 ## fast), 0 dB at 2 m/s and at most +6, its pitch varied a little from
@@ -1813,6 +1822,7 @@ func _hear(delta: float) -> void:
 	_radio.alpha_wall = float(LIBRARY[_library_index(str(_surf["Walls"]["material"]))].get("alpha", 0.02))
 	_radio.listen(cam.global_position)
 	_swoosh(delta)
+	_underfoot()
 	_sound_clock -= delta
 	if _sound_clock <= 0.0:
 		_sound_clock = 0.25
