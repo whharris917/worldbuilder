@@ -24,6 +24,17 @@ uniform float smoothing = 0.06;
 uniform vec4 push_a = vec4(0.0);
 uniform vec4 push_b = vec4(0.0);
 
+// A texel as a number: a new render target holds whatever was in that
+// memory before, which may not be a number at all, and one such texel
+// would spread to its neighbours step by step over the whole pool.
+vec2 read(vec2 uv) {
+	vec2 h = texture(prev, uv).rg;
+	if (isnan(h.x) || isinf(h.x) || isnan(h.y) || isinf(h.y)) {
+		return vec2(0.0);
+	}
+	return clamp(h, vec2(-0.05), vec2(0.05));
+}
+
 float pushed(vec2 uv, vec4 p) {
 	if (p.z <= 0.0) {
 		return 0.0;
@@ -35,15 +46,15 @@ float pushed(vec2 uv, vec4 p) {
 
 void fragment() {
 	vec2 px = 1.0 / vec2(textureSize(prev, 0));
-	vec2 now = texture(prev, UV).rg;
-	float n = texture(prev, UV + vec2(0.0, px.y)).r;
-	float s = texture(prev, UV - vec2(0.0, px.y)).r;
-	float e = texture(prev, UV + vec2(px.x, 0.0)).r;
-	float w = texture(prev, UV - vec2(px.x, 0.0)).r;
-	float next = 2.0 * now.r - now.g + courant * (n + s + e + w - 4.0 * now.r);
+	vec2 now = read(UV);
+	vec2 n = read(UV + vec2(0.0, px.y));
+	vec2 s = read(UV - vec2(0.0, px.y));
+	vec2 e = read(UV + vec2(px.x, 0.0));
+	vec2 w = read(UV - vec2(px.x, 0.0));
+	float next = 2.0 * now.r - now.g + courant * (n.r + s.r + e.r + w.r - 4.0 * now.r);
 	// Damp the motion, not the height: the step's change shrinks.
 	next = now.r + (next - now.r) * keep;
-	next += smoothing * ((n + s + e + w) * 0.25 - now.r);
+	next += smoothing * ((n.r + s.r + e.r + w.r) * 0.25 - now.r);
 	next += pushed(UV, push_a) + pushed(UV, push_b);
 	COLOR = vec4(next, now.r, 0.0, 1.0);
 }

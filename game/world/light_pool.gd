@@ -95,7 +95,7 @@ func _build_ripples() -> void:
 		vp.use_hdr_2d = true
 		vp.disable_3d = true
 		vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
-		vp.render_target_clear_mode = SubViewport.CLEAR_MODE_NEVER
+		vp.transparent_bg = true
 		var rect := ColorRect.new()
 		rect.size = Vector2(SIM_SIZE, SIM_SIZE)
 		var mat := ShaderMaterial.new()

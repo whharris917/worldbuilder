@@ -108,5 +108,5 @@ void fragment() {
 	if (in_tile.x < 0.0 || in_tile.x > 1.0 || in_tile.y < 0.0 || in_tile.y > 1.0) {
 		discard;
 	}
-	ALBEDO = vec3(bright);
+	ALBEDO = vec3(isnan(bright) || isinf(bright) ? 0.0 : bright);
 }
