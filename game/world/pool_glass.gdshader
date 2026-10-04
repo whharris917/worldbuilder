@@ -2,10 +2,11 @@ shader_type spatial;
 // The pool's glass, opaque, showing what lies behind it. A second camera
 // at the eye renders the scene without the pane (LightPool, `_portal`),
 // so each point of the pane looks up the pixel of that picture at its
-// own place on the screen and gives it off as light, dimmed by the
-// glass's opacity; the glass's own colour shows by the opacity and is lit
-// like any surface. The picture is untonemapped, so the screen's tone
-// curve applies once.
+// own place on the screen and gives it off as light, filtered by the
+// tint, as tinted glass colours what is seen through it, and dimmed by
+// the glass's opacity; the tint also shows as the glass's own colour by
+// the opacity, lit like any surface. The picture is untonemapped, so
+// the screen's tone curve applies once.
 render_mode cull_back;
 
 uniform sampler2D behind : filter_linear, repeat_disable;
@@ -18,5 +19,5 @@ void fragment() {
 	ALBEDO = tint * opacity;
 	ROUGHNESS = roughness;
 	SPECULAR = specular;
-	EMISSION = texture(behind, SCREEN_UV).rgb * (1.0 - opacity);
+	EMISSION = texture(behind, SCREEN_UV).rgb * tint * (1.0 - opacity);
 }

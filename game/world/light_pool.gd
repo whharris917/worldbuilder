@@ -36,12 +36,13 @@ extends Node3D
 ## frame) that renders the scene without the pane (the pane is on render
 ## layer PANE, which that camera does not see); the pane's shader
 ## (pool_glass.gdshader, custom) gives off that picture's light at each
-## pixel, times 1 minus the opacity. The picture is untonemapped (the
+## pixel, filtered by the tint, times 1 minus the opacity. The picture is untonemapped (the
 ## second camera's environment is the room's with the Linear curve), so
 ## the screen's tone curve applies once. The light the glass would let
 ## through is a rectangle area light over the pane facing up (`_through`),
-## lighting everything but the pane, its energy the lamp's energy times 1
-## minus the opacity times THROUGH_SCALE, measured so that the ceiling's
+## lighting everything but the pane, its colour the lamp's filtered by
+## the tint, its energy the lamp's energy times 1 minus the opacity
+## times THROUGH_SCALE, measured so that the ceiling's
 ## middle gets what the lamp gave it through clear glass. It is soft
 ## and casts no shadows: a glowing rectangle, not the bulb's sharp
 ## shadows. The pane is always in the bounce (GI mode Static), so the
@@ -106,6 +107,8 @@ var _portal_cam: Camera3D
 var _portal_env: Environment
 var _through: AreaLight3D
 var _opacity := GLASS_ALPHA
+var _tint := GLASS_TINT
+var _lamp_colour := LAMP_COLOUR
 var _thickness := GLASS_THICK
 var _glass_box: BoxMesh
 var _glass_shape: BoxShape3D
@@ -172,7 +175,8 @@ func _build_panels() -> void:
 	_panel.colour(lamp, "Colour", LAMP_COLOUR, func(c: Color) -> void:
 		_light.light_color = c
 		_glass.emission = c
-		_through.light_color = c)
+		_lamp_colour = c
+		_set_through_colour())
 	_panel.slider(lamp, "Energy", 0.0, 200.0, 1.0, LAMP_ENERGY, func(v: float) -> void:
 		_light.light_energy = v
 		_glass.emission_energy_multiplier = BULB_GLOW * v / LAMP_ENERGY
@@ -227,9 +231,11 @@ func _build_panels() -> void:
 		_opacity = v
 		_glass_mat.set_shader_parameter("opacity", v)
 		_set_through())
-	_panel.note(glass, "The pane is opaque. It gives off the second camera's picture of what lies behind it times 1 minus this, and shows its own colour times this. The light through it is an area light over the pane, at the lamp's light times 1 minus this.")
+	_panel.note(glass, "The pane is opaque. It gives off the second camera's picture of what lies behind it times 1 minus this, filtered by the tint, and shows its own colour times this. The light through it is an area light over the pane, at the lamp's light filtered by the tint, times 1 minus this.")
 	_panel.colour(glass, "Tint", GLASS_TINT, func(c: Color) -> void:
-		_glass_mat.set_shader_parameter("tint", c))
+		_glass_mat.set_shader_parameter("tint", c)
+		_tint = c
+		_set_through_colour())
 	_panel.slider(glass, "Roughness", 0.0, 1.0, 0.01, 0.05, func(v: float) -> void:
 		_glass_mat.set_shader_parameter("roughness", v))
 	_panel.note(glass, "How widely its reflections spread; polished glass is near 0.")
@@ -567,7 +573,6 @@ func _build_glass() -> void:
 	_through.area_size = Vector2(2.0 * OPENING_HALF, 2.0 * OPENING_HALF)
 	_through.area_range = 40.0
 	_through.area_attenuation = 2.0
-	_through.light_color = LAMP_COLOUR
 	_through.light_cull_mask = 0xFFFFF & ~PANE
 	# No shadows: Godot's area-light shadows drew wing-shaped dark patches
 	# in the room's corners. Without them the foot of the walls gets a
@@ -577,6 +582,17 @@ func _build_glass() -> void:
 	_through.global_transform = Transform3D(Basis.looking_at(Vector3.UP, Vector3.BACK),
 		Vector3(OPENING_CENTRE.x, GLASS_TOP + 0.01, OPENING_CENTRE.y))
 	_set_through()
+	_set_through_colour()
+
+
+## The colour of the light through the glass: the lamp's filtered by the
+## tint, multiplied in linear light.
+func _set_through_colour() -> void:
+	if _through == null:
+		return
+	var lamp := _lamp_colour.srgb_to_linear()
+	var tint := _tint.srgb_to_linear()
+	_through.light_color = Color(lamp.r * tint.r, lamp.g * tint.g, lamp.b * tint.b).linear_to_srgb()
 
 
 ## The pane's thickness, its top fixed: drawn, solid and, coming to rest,
