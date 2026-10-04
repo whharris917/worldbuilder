@@ -24,6 +24,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/grass_hills.tscn", "last_look": "hills"},
 	{"title": "ONE BULB", "note": "A gray floor in the dark under a single bare bulb.",
 		"scene": "res://world/bulb_void.tscn"},
+	{"title": "LIGHT POOL", "note": "A closed white room with a shallow pool, lit only by a lamp under its glass floor.",
+		"scene": "res://world/light_pool.tscn"},
 ]
 
 
@@ -39,7 +41,7 @@ func _ready() -> void:
 	column.set_anchors_and_offsets_preset(PRESET_CENTER)
 	column.grow_horizontal = GROW_DIRECTION_BOTH
 	column.grow_vertical = GROW_DIRECTION_BOTH
-	column.add_theme_constant_override("separation", 4)
+	column.add_theme_constant_override("separation", 2)
 	add_child(column)
 
 	var title := Label.new()

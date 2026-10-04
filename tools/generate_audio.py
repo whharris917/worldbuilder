@@ -33,6 +33,8 @@ Writes to game/audio/:
   swoosh_loop.wav 6 s seamless broadband rush, for air past a moving body
   step_pebbles_1..4.wav  footsteps on wet pebbles: a soft thud, the stones
                   shifting, a wet squelch, a bubble
+  step_wade_1..4.wav  wading steps in shin-deep water: the leg's push
+                  through it, a spatter of drops, bubbles, a muffled sole
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -1040,6 +1042,69 @@ def make_pebble_steps() -> None:
         make_pebble_step(OUT_DIR / f"step_pebbles_{idx}.wav", r)
 
 
+def make_wade_step(path: Path, r: random.Random) -> None:
+    """A step through water a little over the ankle: the leg pushing
+    through it, a rush of noise at 300 Hz to 2.5 kHz swelling over about
+    a tenth of a second and dying over a quarter; the water thrown up
+    falling back as a spatter of drops over the next 300 ms, each a
+    short ping of 1.5 to 4 kHz; a few bubbles, tones rising from about
+    500 Hz to 1.4 kHz; and the sole on the glass under the water, a
+    soft thud at 90 to 300 Hz."""
+    duration = 0.6
+    n = int(duration * SR)
+    white = _noise_r(r, n)
+
+    def band(low_hz: float, high_hz: float) -> list[float]:
+        top = 1.0 - math.exp(-2.0 * math.pi * high_hz / SR)
+        bottom = 1.0 - math.exp(-2.0 * math.pi * low_hz / SR)
+        upper = _lowpass(_lowpass(white, top), top)
+        under = _lowpass(_lowpass(upper, bottom), bottom)
+        return [upper[i] - under[i] for i in range(n)]
+
+    rush = band(300.0, 2500.0)
+    thud = band(90.0, 300.0)
+    drops = [0.0] * n
+    for _ in range(34):
+        t0 = 0.06 + r.random() ** 1.3 * 0.3
+        f = 1500.0 + r.random() * 2500.0
+        amp = (0.2 + 0.8 * r.random()) * math.exp(-(t0 - 0.06) * 6.0)
+        start = int(t0 * SR)
+        for k in range(int(0.02 * SR)):
+            if start + k < n:
+                tk = k / SR
+                chirp = f * (1.0 + 0.6 * tk / 0.02)
+                drops[start + k] += amp * math.sin(2.0 * math.pi * chirp * tk) * math.exp(-tk * 260.0)
+    bubbles = [0.0] * n
+    for _ in range(4):
+        t0 = 0.04 + r.random() * 0.2
+        f_lo = 450.0 + r.random() * 200.0
+        f_hi = f_lo * (2.0 + r.random())
+        amp = 0.4 + 0.6 * r.random()
+        start = int(t0 * SR)
+        phase = 0.0
+        for k in range(int(0.06 * SR)):
+            if start + k < n:
+                tk = k / SR
+                phase += 2.0 * math.pi * (f_lo + (f_hi - f_lo) * min(1.0, tk / 0.03)) / SR
+                bubbles[start + k] += amp * math.sin(phase) * math.exp(-tk * 60.0)
+    push_at = 0.08 + r.random() * 0.04
+    buf = [0.0] * n
+    for i in range(n):
+        t = i / SR
+        x = t / push_at
+        swell = x * math.exp(1.0 - x) if x < 1.0 else math.exp(-(t - push_at) * 9.0)
+        sole_t = t - 0.03
+        sole = thud[i] * 1.4 * math.exp(-sole_t * 30.0) * min(1.0, sole_t / 0.004) if sole_t > 0.0 else 0.0
+        buf[i] = rush[i] * 1.6 * swell + drops[i] * 0.35 + bubbles[i] * 0.12 + sole
+    write_wav(path, [buf], normalize_to=0.32)
+
+
+def make_wade_steps() -> None:
+    r = random.Random(20261004)
+    for idx in range(1, 5):
+        make_wade_step(OUT_DIR / f"step_wade_{idx}.wav", r)
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -1065,6 +1130,7 @@ def main() -> None:
     make_knocks()
     make_swoosh()
     make_pebble_steps()
+    make_wade_steps()
     print("done")
 
 
