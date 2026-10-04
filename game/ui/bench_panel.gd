@@ -120,6 +120,9 @@ func colour(column: VBoxContainer, title: String, value: Color, on_change: Calla
 	var picker := ColorPickerButton.new()
 	picker.focus_mode = Control.FOCUS_NONE
 	picker.edit_alpha = false
+	# No intensity slider: it multiplies the colour by 2 to its power, a
+	# brightness that belongs to the energy beside it.
+	picker.get_picker().edit_intensity = false
 	picker.custom_minimum_size = Vector2(48, 22)
 	picker.color = value
 	picker.color_changed.connect(func(c: Color) -> void:

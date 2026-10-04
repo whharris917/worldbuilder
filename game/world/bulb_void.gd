@@ -687,6 +687,10 @@ func _colour_row(column: VBoxContainer, titles: Array, colours: Array) -> Array:
 		var picker := ColorPickerButton.new()
 		picker.focus_mode = Control.FOCUS_NONE
 		picker.edit_alpha = false
+		# No intensity slider: it multiplies the colour by 2 to its power,
+		# a brightness that belongs to an energy (for the ball's colour, a
+		# reflectance over 1, which no material has).
+		picker.get_picker().edit_intensity = false
 		picker.custom_minimum_size = Vector2(48, 22)
 		picker.color = colours[i] as Color
 		row.add_child(picker)
