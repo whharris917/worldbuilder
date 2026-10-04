@@ -12,15 +12,16 @@ extends Node3D
 ## shadows and standard materials, in an environment with a black
 ## background, no ambient light, no sky reflections and no glow.
 ##
-## Controls in two panels (BenchPanel), with the mouse freed by Esc, as in
-## the one-bulb scene. Lamp: the viewport's dithering (1 key), the shadow
-## atlas (2 key: 4096, 8192, 16384 texels square), the lamp's colour and
-## energy (the glass's glow follows both). Light: the bounce method (None,
-## SDFGI, or a VoxelGI box around the room and the chamber, baked each
-## time it is chosen; VoxelGI to begin), the light's share in the bounce,
-## the bounce traced at half the screen's resolution (on to begin) and
-## VoxelGI's quality (Low to begin, the engine's default), SSIL and SSAO,
-## and the tone curve (AgX to begin). Dithering, the atlas, half
+## Controls in three panels (BenchPanel), with the mouse freed by Esc, as
+## in the one-bulb scene. Lamp: its colour and energy (the glass's glow
+## follows both) and its indirect energy, a multiplier on its light as it
+## enters the bounce only. Light: the bounce method (None, SDFGI, or a
+## VoxelGI box around the room and the chamber, baked each time it is
+## chosen; VoxelGI to begin), the bounce traced at half the screen's
+## resolution (on to begin) and VoxelGI's quality (Low to begin, the
+## engine's default), SSIL and SSAO, and the tone curve (AgX to begin).
+## Viewport: dithering (1 key) and the shadow atlas (2 key: 4096, 8192,
+## 16384 texels square). Dithering, the atlas, half
 ## resolution and VoxelGI quality are engine-wide and put back as found
 ## when the scene closes. Settings are kept in user://light_pool.json.
 
@@ -59,6 +60,7 @@ var _voxel_gi: VoxelGI = null
 var _bounce := "None"                   # None, SDFGI or VoxelGI
 var _status: Label
 var _bounce_box: VBoxContainer
+var _indirect_box: VBoxContainer
 var _voxel_box: VBoxContainer
 var _atlas_button: Button
 var _was: Dictionary = {}               # the engine-wide settings as found
@@ -118,18 +120,17 @@ func _build_panels() -> void:
 	var vp := get_viewport()
 
 	var lamp := _panel.panel("Lamp")
-	_panel.switch(lamp, "Dithering (1)", vp.use_debanding, func(on: bool) -> void: vp.use_debanding = on)
-	_panel.note(lamp, "Adds a faint noise to each pixel before it is stored at 8 bits a channel, which breaks the rings in smooth gradients into grain too fine to see.")
-	_atlas_button = _panel.button(lamp, "", _next_atlas)
-	_panel.note(lamp, "The texture all point and spot lights' shadow maps share. Larger gives the lamp's shadows finer edges and costs video memory.")
-	_panel.heading(lamp, "Lamp")
 	_panel.colour(lamp, "Colour", LAMP_COLOUR, func(c: Color) -> void:
 		_light.light_color = c
 		_glass.emission = c)
 	_panel.slider(lamp, "Energy", 0.0, 200.0, 1.0, LAMP_ENERGY, func(v: float) -> void:
 		_light.light_energy = v
 		_glass.emission_energy_multiplier = BULB_GLOW * v / LAMP_ENERGY)
-	_panel.note(lamp, "The light's strength. The glowing glass follows the colour and the energy; it is drawn and lights nothing.")
+	_panel.note(lamp, "The light's strength, in its direct light and in the bounce alike. The glowing glass follows the colour and the energy; it is drawn and lights nothing.")
+	_indirect_box = _panel.box(lamp)
+	_panel.slider(_indirect_box, "Indirect energy", 0.0, 4.0, 0.01, 1.0, func(v: float) -> void:
+		_light.light_indirect_energy = v)
+	_panel.note(_indirect_box, "A second multiplier on the lamp's light as it enters the bounce only: the bounce starts from Energy times this. 1 is the physical value; 0 shows the direct light alone.")
 	_panel.button(lamp, "Reset all", _reset)
 
 	var light := _panel.panel("Light")
@@ -137,9 +138,6 @@ func _build_panels() -> void:
 	_status.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
 	_panel.choice(light, "Bounce", ["None", "SDFGI", "VoxelGI"], "VoxelGI", _set_bounce)
 	_bounce_box = _panel.box(light)
-	_panel.slider(_bounce_box, "Indirect energy", 0.0, 4.0, 0.01, 1.0, func(v: float) -> void:
-		_light.light_indirect_energy = v)
-	_panel.note(_bounce_box, "How much of the lamp's light enters the bounce.")
 	_panel.switch(_bounce_box, "Half resolution", true, func(on: bool) -> void:
 		RenderingServer.gi_set_use_half_resolution(on))
 	_panel.note(_bounce_box, "Traces the bounce for every other pixel each way and fills in between: about a quarter of the cost, softer at edges.")
@@ -162,6 +160,13 @@ func _build_panels() -> void:
 		_env.tonemap_mode = TONEMAPS[option])
 	_panel.note(light, "How light, which has no upper limit, is mapped to the screen's 0 to 1. Linear clips everything brighter than white; the others roll it off, each with its own shape.")
 	_env.tonemap_mode = Environment.TONE_MAPPER_AGX
+
+	var view := _panel.panel("Viewport")
+	_panel.note(view, "Settings of the viewport, the image the camera renders into, not of the scene.")
+	_panel.switch(view, "Dithering (1)", vp.use_debanding, func(on: bool) -> void: vp.use_debanding = on)
+	_panel.note(view, "Adds a faint noise to each pixel before it is stored at 8 bits a channel, which breaks the rings in smooth gradients into grain too fine to see.")
+	_atlas_button = _panel.button(view, "", _next_atlas)
+	_panel.note(view, "The texture all point and spot lights' shadow maps share. Larger gives the lamp's shadows finer edges and costs video memory.")
 
 
 ## Two estimates of the same bounce light, so one at a time.
@@ -186,6 +191,7 @@ func _refresh() -> void:
 	if _status == null:
 		return
 	_panel.enable(_bounce_box, _bounce != "None")
+	_panel.enable(_indirect_box, _bounce != "None")
 	_panel.enable(_voxel_box, _bounce == "VoxelGI")
 	var text := ""
 	match _bounce:
