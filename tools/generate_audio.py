@@ -8,8 +8,8 @@ Writes to game/audio/:
   music_loop.wav  40 s seamless clockwork sequencer piece in D minor:
                   a tick on every beat, a sixteenth-note pluck arpeggio,
                   a pulsing sub bass, detuned pads, a sparse lead
-  step_1..4.wav   footsteps on a hard floor: heel crack, sole tick, a light
-                  floor knock, the roll on to the toe with a scuff
+  step_1..4.wav   footsteps: a soft mid-range tock of the sole, a softened
+                  strike, a light floor knock, the roll on to the toe
   land.wav        heavier landing thump
   surf_loop.wav   16 s seamless surf on a ledge, swells breaking as hiss
   wind_loop.wav   12 s seamless wind off the water, gusting
@@ -305,13 +305,14 @@ def make_music() -> None:
 
 def make_step(path: Path, f0: float, decay: float, noise_amp: float,
               duration: float = 0.28, level: float = 0.30) -> None:
-    """A shoe on a hard floor, as the ear hears one: mostly the strike, not
-    the thud. The heel's crack, band-limited noise (about 900 Hz to 6 kHz)
-    over a few milliseconds, with a small tick of the sole; a light knock
-    of the floor near 100 to 150 Hz; and 50 to 90 ms later the roll on to
-    the ball of the foot, softer, with a little gritty scuff. A low thump
-    with no strike, as these were before, sounds like a heartbeat or a step
-    heard under water.
+    """A shoe on a floor: a soft mid-range tock, not a click. The sole
+    meeting the floor is noise from about 150 to 500 Hz over some 40 ms;
+    the strike on top is softened noise from about 300 Hz to 2.5 kHz that
+    rises over 1.5 ms and fades over about 8 ms; a light knock of the floor
+    near 140 Hz under it; and 50 to 90 ms later the roll on to the ball of
+    the foot, softer and duller. A crack up at 1 to 6 kHz dying in a
+    millisecond, with a little tone of the sole, sounded like clicks; a low
+    thump with no strike at all, before that, like a heartbeat.
 
     The shared generator gives the same draws as before (one stretch of
     noise as long as the sound), so every sound made after the steps
@@ -321,30 +322,31 @@ def make_step(path: Path, f0: float, decay: float, noise_amp: float,
     floor_noise = brown_noise(n, leak=0.97, gain=0.3)   # the shared draws, kept
     r = random.Random(int(f0 * 1000 + decay * 10 + noise_amp * 100))
     white = _noise_r(r, n)
-    top = 1.0 - math.exp(-2.0 * math.pi * 6000.0 / SR)
-    bottom = 1.0 - math.exp(-2.0 * math.pi * 900.0 / SR)
-    bright = _lowpass(white, top)
-    under = _lowpass(bright, bottom)
-    crack = [bright[i] - under[i] for i in range(n)]
-    grit_low = _lowpass(white, 1.0 - math.exp(-2.0 * math.pi * 1200.0 / SR))
-    scuff = [white[i] - grit_low[i] for i in range(n)]
+
+    def band(low_hz: float, high_hz: float) -> list[float]:
+        top = 1.0 - math.exp(-2.0 * math.pi * high_hz / SR)
+        bottom = 1.0 - math.exp(-2.0 * math.pi * low_hz / SR)
+        upper = _lowpass(_lowpass(white, top), top)
+        under = _lowpass(_lowpass(upper, bottom), bottom)
+        return [upper[i] - under[i] for i in range(n)]
+
+    sole = band(150.0, 500.0)
+    strike = band(300.0, 2500.0)
     floor_low = _lowpass(floor_noise, 1.0 - math.exp(-2.0 * math.pi * 400.0 / SR))
     roll = 0.05 + r.random() * 0.04                      # heel to ball of the foot, s
-    knock_hz = 95.0 + f0 * 0.6                           # 135 to 145 Hz from the old tunings
-    tick_hz = 2200.0 + r.random() * 800.0
+    knock_hz = 95.0 + f0 * 0.6
     buf = [0.0] * n
     for i in range(n):
         t = i / SR
-        heel = crack[i] * 1.0 * math.exp(-t * 900.0)
-        tick = math.sin(2.0 * math.pi * tick_hz * t) * 0.25 * math.exp(-t * 700.0)
-        knock = math.sin(2.0 * math.pi * knock_hz * t) * 0.16 * math.exp(-t * 55.0) * min(1.0, t / 0.002)
-        body = floor_low[i] * noise_amp * 0.3 * math.exp(-t * 35.0)
+        rise = min(1.0, t / 0.0015)
+        hit = sole[i] * 2.2 * math.exp(-t * 28.0) + strike[i] * 1.1 * math.exp(-t * 120.0)
+        knock = math.sin(2.0 * math.pi * knock_hz * t) * 0.12 * math.exp(-t * 55.0)
+        body = floor_low[i] * noise_amp * 0.25 * math.exp(-t * 35.0)
         tr = t - roll
         toe = 0.0
         if tr > 0.0:
-            toe = crack[i] * 0.35 * math.exp(-tr * 500.0) + scuff[i] * 0.12 * math.exp(-tr * 60.0)
-            toe += math.sin(2.0 * math.pi * knock_hz * 1.1 * tr) * 0.06 * math.exp(-tr * 60.0)
-        buf[i] = heel + tick + knock + body + toe
+            toe = (sole[i] * 1.0 * math.exp(-tr * 40.0) + strike[i] * 0.3 * math.exp(-tr * 150.0)) * min(1.0, tr / 0.003)
+        buf[i] = (hit + knock + body) * rise + toe
     write_wav(path, [buf], normalize_to=level)
 
 
