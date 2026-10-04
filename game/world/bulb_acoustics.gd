@@ -28,8 +28,14 @@ extends Node
 ## counting as a perfect absorber, floor and wall by their materials'
 ## coefficients; mapped onto Godot's reverb (a Freeverb: comb feedback
 ## 0.7 + 0.28 room size over about 30 ms combs), heard while the ear is
-## inside the room, louder against the direct sound beyond the critical
-## distance. Reverb is linear, so one per source sums to the room's.
+## inside the room. In a diffuse field the reverberant energy against the
+## direct is (d / r_c)^2, r_c = 0.057 sqrt(V / RT60) the critical
+## distance, so the reverb's wet level is (d / r_c) / sqrt(K), K the
+## energy Godot's reverb puts out per unit put in at wet 1 (measured:
+## REVERB_GAIN). Reverb is linear, so one per source sums to the room's.
+## The footsteps are heard as by the walker, from the head 1.6 m over the
+## feet, wherever the camera is: zoomed out, the camera is a view, and the
+## steps, not placed in space, would otherwise drown in their own reverb.
 ## Echoes: the wall's first reflections, for the short sounds (footsteps
 ## and knocks), where they are heard as echoes; under a long sound they
 ## blend into the reverb, and a delay moved while it plays crackles.
@@ -54,6 +60,11 @@ extends Node
 
 const C_SOUND := 343.0
 const FOCUS_CAP := 4.0                  # 12 dB over a flat wall's echo
+const HEAD := 1.6                       # the walker's ears over the feet
+## Energy out of Godot's reverb per unit in (wet 1, dry 0, damping 0.5),
+## measured at room sizes 0, 0.25, 0.5, 0.75, 0.9 and 1.
+const REVERB_GAIN: Array[float] = [0.85, 1.21, 1.67, 2.38, 6.14, 9.11]
+const REVERB_AT: Array[float] = [0.0, 0.25, 0.5, 0.75, 0.9, 1.0]
 
 var room_r := 15.0
 var wall_h := 3.6
@@ -198,7 +209,7 @@ func play(id: String, stream: AudioStream, at: Vector3, db: float, pitch: float)
 func step() -> void:
 	if _room_echo == null:
 		return
-	_step_note = _set_echoes(_room_echo, _feet, _ear.origin)
+	_step_note = _set_echoes(_room_echo, _feet, _feet + Vector3.UP * HEAD)
 
 
 ## Each frame: the room's reverberation for its present shape, then
@@ -219,7 +230,7 @@ func listen(ear: Transform3D, feet: Vector3) -> void:
 	for src: Dictionary in _sources.values():
 		_route(src)
 	if _room_verb != null:
-		_set_reverb(_room_verb, feet.distance_to(ear.origin))
+		_set_reverb(_room_verb, HEAD, feet + Vector3.UP * HEAD)
 	status = "Reverb %.2f s (Sabine; the open top absorbs most)." % _rt60
 	if echoes and _step_note != "":
 		status += " Your steps' echo: " + _step_note + "."
@@ -229,12 +240,20 @@ func _inside(p: Vector3) -> bool:
 	return Vector2(p.x, p.z).length() < room_r + wall_t * 0.5
 
 
-func _set_reverb(rv: AudioEffectReverb, d: float) -> void:
+## The reverb for a sound `d` from an ear at `ear`.
+func _set_reverb(rv: AudioEffectReverb, d: float, ear: Vector3) -> void:
 	rv.room_size = clampf((_feedback - 0.7) / 0.28, 0.0, 1.0)
 	rv.damping = 0.5
 	rv.dry = 1.0
-	rv.wet = clampf(0.12 * d / _critical, 0.04, 0.6) if reverb and _inside(_ear.origin) and wall_h > 0.05 else 0.0
-	rv.predelay_msec = clampf((room_r - Vector2(_ear.origin.x, _ear.origin.z).length()) / C_SOUND * 1000.0, 5.0, 100.0)
+	var k := REVERB_GAIN[0]
+	for i in range(1, REVERB_AT.size()):
+		if rv.room_size <= REVERB_AT[i]:
+			var f := (rv.room_size - REVERB_AT[i - 1]) / (REVERB_AT[i] - REVERB_AT[i - 1])
+			k = lerpf(REVERB_GAIN[i - 1], REVERB_GAIN[i], f)
+			break
+	var heard := reverb and _inside(ear) and wall_h > 0.05
+	rv.wet = clampf(d / _critical / sqrt(k), 0.0, 1.0) if heard else 0.0
+	rv.predelay_msec = clampf((room_r - Vector2(ear.x, ear.z).length()) / C_SOUND * 1000.0, 5.0, 100.0)
 
 
 ## Both paths for one source, set on its players and buses.
@@ -298,7 +317,7 @@ func _route(src: Dictionary) -> void:
 	else:
 		door.volume_db = -80.0
 
-	_set_reverb(src["verb"] as AudioEffectReverb, d)
+	_set_reverb(src["verb"] as AudioEffectReverb, d, ear)
 	if air and d > 30.0:
 		notes.append("air takes the treble above %d Hz" % int(43900.0 / sqrt(d)))
 	var note := "%.0f m away" % d
