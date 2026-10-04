@@ -26,8 +26,7 @@ extends Node3D
 ## to begin, the engine's default), SSIL and SSAO, and the tone curve (AgX to begin).
 ## Viewport: dithering (1 key) and the shadow atlas (2 key: 4096, 8192,
 ## 16384 texels square). Glass: its opacity, tint, roughness and
-## specular, its thickness (top fixed, growing downward), and whether the
-## bounce methods see it. Light: also VoxelGI's cells along its box's
+## specular, and its thickness (top fixed, growing downward). Light: also VoxelGI's cells along its box's
 ## longest side (64 to begin; light leaks through anything thinner than
 ## a cell).
 ##
@@ -45,9 +44,9 @@ extends Node3D
 ## minus the opacity times THROUGH_SCALE, measured so that the ceiling's
 ## middle gets what the lamp gave it through clear glass. It is soft
 ## and casts no shadows: a glowing rectangle, not the bulb's sharp
-## shadows. The pane is in the
-## bounce (GI mode Static) to begin, so the bounce methods too find the
-## lamp's light blocked. Dithering, the atlas, half
+## shadows. The pane is always in the bounce (GI mode Static), so the
+## bounce methods find the lamp's light blocked, as the shadow does; the
+## picture it shows lights nothing. Dithering, the atlas, half
 ## resolution and VoxelGI quality are engine-wide and put back as found
 ## when the scene closes. Settings are kept in user://light_pool.json.
 
@@ -102,7 +101,6 @@ var _atlas_button: Button
 var _was: Dictionary = {}               # the engine-wide settings as found
 var _glass_pane: MeshInstance3D
 var _glass_mat: ShaderMaterial
-var _glass_gi_box: VBoxContainer
 var _portal: SubViewport
 var _portal_cam: Camera3D
 var _portal_env: Environment
@@ -241,12 +239,6 @@ func _build_panels() -> void:
 	_panel.slider(glass, "Thickness (m)", 0.01, 0.5, 0.01, GLASS_THICK, func(v: float) -> void:
 		_set_thickness(v))
 	_panel.note(glass, "Its top stays where it is; it grows downward, past the deck's underside beyond 0.20 m. Real glass floors are about 4 cm. The bounce methods leak light through anything thinner than their cells; VoxelGI is baked again when this comes to rest.")
-	_glass_gi_box = _panel.box(glass)
-	_panel.switch(_glass_gi_box, "In the bounce", true, func(on: bool) -> void:
-		_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_STATIC if on else GeometryInstance3D.GI_MODE_DYNAMIC
-		if _bounce == "VoxelGI":
-			_set_bounce("VoxelGI"))
-	_panel.note(_glass_gi_box, "Whether VoxelGI and SDFGI see the pane. On, they find it solid and the lamp's light blocked, as the shadows do; off, the lamp's light still bounces in the room as if there were no glass. VoxelGI is baked again when this changes.")
 
 	var view := _panel.panel("Viewport")
 	_panel.note(view, "Settings of the viewport, the image the camera renders into, not of the scene.")
@@ -281,7 +273,6 @@ func _refresh() -> void:
 	_panel.enable(_indirect_box, _bounce != "None")
 	_panel.enable(_sdfgi_box, _bounce == "SDFGI")
 	_panel.enable(_voxel_box, _bounce == "VoxelGI")
-	_panel.enable(_glass_gi_box, _bounce != "None")
 	var text := ""
 	match _bounce:
 		"None":
@@ -337,7 +328,6 @@ func _reset() -> void:
 	tint.color_changed.emit(GLASS_TINT)
 	(_panel.sliders["Roughness"] as HSlider).value = 0.05
 	(_panel.sliders["Specular"] as HSlider).value = 0.5
-	(_panel.switches["In the bounce"] as CheckButton).button_pressed = true
 	_refresh()
 
 
