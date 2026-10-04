@@ -7,7 +7,11 @@ extends Node3D
 ## downward, the deck around the opening in the room's own reflected
 ## light. A stair along the south wall goes down into the chamber.
 ## Across the opening, 35 cm below the deck, lies one pane of glass 4 cm
-## thick, set into the deck's sides all round, solid to walk on.
+## thick, set into the deck's sides all round, solid to walk on. Two
+## large panels, 8 m by 4.5 m, hang on the north and west walls, their
+## bottom edges 3 m above the deck: a moving relief of gold ridges on
+## matte metal (relief_panel.gdshader, custom), shown by shading alone on
+## the north wall and by real moving geometry on the west.
 ##
 ## Drawn by the engine's own lighting (an omni light with shadows and
 ## standard materials, in an environment with a black background, no
@@ -88,6 +92,11 @@ const RIPPLE_SPEED := 0.15             # m/s, the first map; the second at 0.8 o
 const RIPPLE_STRENGTH := 0.3
 const RIPPLE_BEND := 0.02
 const RIPPLE_DIRS: Array[Vector2] = [Vector2(0.8, 0.6), Vector2(-0.5, 0.87)]
+# The relief panels.
+const RELIEF_SIZE := Vector2(8.0, 4.5)
+const RELIEF_BOTTOM := 3.0             # m above the deck
+const RELIEF_GRID := Vector2i(400, 225) # vertices across and up the moving one
+const RELIEF_SPEED := 0.15             # noise cells a second through time
 const PANE := 2                        # render layer of the glass, unseen by the second camera
 const CHAMBER := 4                     # render layer of what lies in the chamber, unlit by the light through the glass
 const THROUGH_ANGLE := 72.0            # degrees: the spot's half-angle, past the opening's corners (69) seen from the lamp
@@ -130,6 +139,9 @@ var _glass_box: BoxMesh
 var _glass_shape: BoxShape3D
 var _glass_body: StaticBody3D
 var _voxel_subdiv := VoxelGI.SUBDIV_64
+var _relief_mats: Array[ShaderMaterial] = []
+var _relief_phase := 0.0
+var _relief_speed := RELIEF_SPEED
 var _rebake_in := -1.0                  # seconds to a VoxelGI re-bake; below 0, none due
 
 
@@ -148,6 +160,7 @@ func _ready() -> void:
 	_build_deck()
 	_build_lamp()
 	_build_glass()
+	_build_reliefs()
 	_build_panels()
 	RenderingServer.gi_set_use_half_resolution(true)
 	RenderingServer.voxel_gi_set_quality(RenderingServer.VOXEL_GI_QUALITY_LOW)
@@ -276,6 +289,25 @@ func _build_panels() -> void:
 		_set_thickness(v))
 	_panel.note(glass, "Its top stays where it is; it grows downward, past the deck's underside beyond 0.20 m. Real glass floors are about 4 cm. The bounce methods leak light through anything thinner than their cells; VoxelGI is baked again when this comes to rest.")
 
+	var relief := _panel.panel("Relief")
+	_panel.note(relief, "Two panels with the same moving relief. North wall: the panel is flat and only its shading follows the hills, so it looks raised in the light but has a flat outline and casts no shadows. West wall: the panel is a fine mesh moved out by the hills, so the outline and shadows are real.")
+	_panel.slider(relief, "Speed", 0.0, 1.0, 0.01, RELIEF_SPEED, func(v: float) -> void:
+		_relief_speed = v)
+	_panel.note(relief, "How fast the hills change: noise cells a second, moving through time.")
+	_panel.slider(relief, "Feature size (m)", 0.1, 2.0, 0.01, 0.6, func(v: float) -> void:
+		_set_relief("feature_size", v))
+	_panel.slider(relief, "Height (cm)", 0.0, 20.0, 0.1, 5.0, func(v: float) -> void:
+		_set_relief("height", v / 100.0))
+	_panel.note(relief, "From the lowest point to the highest. On the west panel it moves the surface; on both it sets how steep the shading's slopes are.")
+	_panel.slider(relief, "Gold above", 0.0, 1.0, 0.01, 0.6, func(v: float) -> void:
+		_set_relief("threshold", v))
+	_panel.note(relief, "The height, 0 lowest to 1 highest, above which the surface is gold.")
+	_panel.slider(relief, "Gold roughness", 0.0, 1.0, 0.01, 0.15, func(v: float) -> void:
+		_set_relief("gold_roughness", v))
+	_panel.slider(relief, "Base roughness", 0.0, 1.0, 0.01, 0.6, func(v: float) -> void:
+		_set_relief("base_roughness", v))
+	_panel.note(relief, "Both are metal: they show almost no colour of their own, only what they reflect, tinted. With nothing bright to reflect, they look dark.")
+
 	var view := _panel.panel("Viewport")
 	_panel.note(view, "Settings of the viewport, the image the camera renders into, not of the scene.")
 	_panel.switch(view, "Dithering (1)", vp.use_debanding, func(on: bool) -> void: vp.use_debanding = on)
@@ -360,6 +392,12 @@ func _reset() -> void:
 	(_panel.sliders["Ripple size (m)"] as HSlider).value = RIPPLE_SIZE
 	(_panel.sliders["Ripple speed (m/s)"] as HSlider).value = RIPPLE_SPEED
 	(_panel.sliders["Picture bend"] as HSlider).value = RIPPLE_BEND
+	(_panel.sliders["Speed"] as HSlider).value = RELIEF_SPEED
+	(_panel.sliders["Feature size (m)"] as HSlider).value = 0.6
+	(_panel.sliders["Height (cm)"] as HSlider).value = 5.0
+	(_panel.sliders["Gold above"] as HSlider).value = 0.6
+	(_panel.sliders["Gold roughness"] as HSlider).value = 0.15
+	(_panel.sliders["Base roughness"] as HSlider).value = 0.6
 	_panel.pick("Curve", "AgX")
 	_panel.pick("Bounce", "VoxelGI")
 	(_panel.sliders["Opacity"] as HSlider).value = GLASS_ALPHA
@@ -709,10 +747,51 @@ func _follow_eye() -> void:
 func _process(delta: float) -> void:
 	_follow_eye()
 	_slide_ripples(delta)
+	_relief_phase += _relief_speed * delta
+	_set_relief("phase", _relief_phase)
 	if _rebake_in >= 0.0:
 		_rebake_in -= delta
 		if _rebake_in < 0.0 and _bounce == "VoxelGI":
 			_set_bounce("VoxelGI")
+
+
+## ---- the relief panels ---------------------------------------------------
+
+## The north wall's panel, flat with its shading following the relief,
+## and the west wall's, a fine mesh the shader moves out by it; both 3 cm
+## off their walls and lit by the bounce at their own places but not
+## baked into it.
+func _build_reliefs() -> void:
+	var h := ROOM * 0.5
+	var y := RELIEF_BOTTOM + RELIEF_SIZE.y * 0.5
+	for moving in [false, true]:
+		var mesh := PlaneMesh.new()
+		mesh.orientation = PlaneMesh.FACE_Z
+		mesh.size = RELIEF_SIZE
+		if moving:
+			mesh.subdivide_width = RELIEF_GRID.x - 2
+			mesh.subdivide_depth = RELIEF_GRID.y - 2
+		var mat := ShaderMaterial.new()
+		mat.shader = load("res://world/relief_panel.gdshader")
+		mat.set_shader_parameter("displace", moving)
+		_relief_mats.append(mat)
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.material_override = mat
+		mi.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
+		# The moving one's outline reaches past the flat mesh's bounds.
+		mi.extra_cull_margin = 0.25
+		add_child(mi)
+		if moving:
+			mi.position = Vector3(-h + 0.03, y, 0.0)
+			mi.rotation_degrees.y = 90.0
+		else:
+			mi.position = Vector3(0.0, y, -h + 0.03)
+
+
+func _set_relief(param: String, value: Variant) -> void:
+	for mat in _relief_mats:
+		mat.set_shader_parameter(param, value)
 
 
 ## ---- the lamp --------------------------------------------------------------
