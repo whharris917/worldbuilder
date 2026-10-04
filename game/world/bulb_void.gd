@@ -1764,7 +1764,7 @@ func _build_sound(root: Control) -> Control:
 	_switch(column, "Swooshes", func(_on: bool) -> void: pass)
 	_slider(column, "Swoosh level (dB)", -24.0, 12.0, 0.5, 0.0, func(_v: float) -> void: pass)
 	_defaults["Swoosh level (dB)"] = 0.0
-	_note(column, "Air rushing past the ball and the bulb. Its power grows as speed to the sixth times the frontal area, so twice as fast is 18 dB louder and the ball some 28 dB louder than the bulb at one speed. Its pitch goes as speed over size: the bulb hisses, the ball rushes.")
+	_note(column, "Air rushing past the ball and the bulb, quiet: its power grows as speed to the sixth times the frontal area, so twice as fast is 18 dB louder, and the bulb, being small, is a whisper some 28 dB under the ball. Its pitch goes as speed over size: the ball rushes low, the bulb a little higher.")
 	_switch(column, "Knocks", func(_on: bool) -> void: pass)
 	_note(column, "The ball striking the wall, loud as the speed it struck at: twice as fast, 6 dB louder. Raise the ball's hook speed under Motion to make it swing into the wall.")
 	_choice(column, "Spreading", ["1/d", "1/d²", "Log", "None"], func(option: String) -> void: _radio.spreading = option)
@@ -1815,12 +1815,14 @@ func _hear(delta: float) -> void:
 ## The rush of air past the ball and the bulb as they move. The noise is
 ## the turbulent wake's (dipole flow noise, after Curle): its power
 ## grows as speed^6 times frontal area, so its amplitude goes as U^3 D:
-## level = 60 log10(U / 2 m/s) + 20 log10(D / 1 m) dB, plus the slider.
-## Its pitch goes as U / D, the Strouhal relation; the true shedding
-## tone for bodies this size lies under 1 Hz, so what is heard is the
-## turbulence's broadband noise above it, band-passed at
-## 220 (U / D)^0.6 Hz: about 300 Hz for the ball at full swing, 2 kHz for
-## the bulb. Speed is the body's own through the air, the hook's motion
+## level = 60 log10(U / 2 m/s) + 20 log10(D / 1 m) - 30 dB, plus the
+## slider, never above -6 dB: the ball's rush about -24 dB at 2 m/s, the
+## bulb's a whisper some 28 dB under it. Its pitch goes as U / D, the
+## Strouhal relation; the true shedding tone for bodies this size lies
+## under 1 Hz, so what is heard is the turbulence's broadband noise above
+## it, in a broad band at 150 (U / D)^0.45 Hz: about 180 Hz for the ball,
+## 750 Hz for the bulb (a narrow band up at 2 to 4 kHz sounded like
+## compressed air). Speed is the body's own through the air, the hook's motion
 ## included, eased over a tenth of a second. Each plays from its body
 ## through the radio's path to the ear, so the room's reverb and the
 ## wall's muffling apply (for the bulb, as if it stood where the ball does).
@@ -1871,9 +1873,11 @@ func _swoosh(delta: float) -> void:
 		if not on or speed < 0.05:
 			player.volume_db = -80.0
 			continue
-		var db := 60.0 * log(speed / 2.0) / log(10.0) + 20.0 * log(size) / log(10.0) + level
-		player.volume_db = clampf(db, -80.0, 6.0)
-		(sw["band"] as AudioEffectBandPassFilter).cutoff_hz = clampf(220.0 * pow(speed / size, 0.6), 60.0, 9000.0)
+		var db := 60.0 * log(speed / 2.0) / log(10.0) + 20.0 * log(size) / log(10.0) - 30.0 + level
+		player.volume_db = clampf(db, -80.0, -6.0 + level)
+		var band := sw["band"] as AudioEffectBandPassFilter
+		band.cutoff_hz = clampf(150.0 * pow(speed / size, 0.45), 60.0, 4000.0)
+		band.resonance = 0.2
 
 
 ## ---- the terrain panel -----------------------------------------------------
