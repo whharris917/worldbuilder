@@ -11,7 +11,10 @@ extends Node3D
 ## large panels, 8 m by 4.5 m, hang on the north and west walls, their
 ## bottom edges 3 m above the deck: a moving relief of gold ridges on
 ## matte metal (relief_panel.gdshader, custom), shown by shading alone on
-## the north wall and by real moving geometry on the west.
+## the north wall and by real moving geometry on the west. A bare bulb
+## hangs from the room's ceiling on a cord, switched by a wall switch
+## (WallSwitch, E to use) on the east wall by the stair. A reflection
+## probe photographs the room for its shiny surfaces to reflect.
 ##
 ## Drawn by the engine's own lighting (an omni light with shadows and
 ## standard materials, in an environment with a black background, no
@@ -97,6 +100,10 @@ const RELIEF_SIZE := Vector2(8.0, 4.5)
 const RELIEF_BOTTOM := 3.0             # m above the deck
 const RELIEF_GRID := Vector2i(400, 225) # vertices across and up the moving one
 const RELIEF_SPEED := 0.15             # noise cells a second through time
+# The ceiling bulb, its cord, and its switch.
+const CEILING_BULB := Vector3(0.0, 8.0, -0.5)  # 2 m below the ceiling, over the opening's middle
+const CEILING_BULB_ENERGY := 20.0
+const SWITCH_AT := Vector3(4.97, 1.2, 2.6)    # on the east wall, beside the stair's top
 const PANE := 2                        # render layer of the glass, unseen by the second camera
 const CHAMBER := 4                     # render layer of what lies in the chamber, unlit by the light through the glass
 const THROUGH_ANGLE := 72.0            # degrees: the spot's half-angle, past the opening's corners (69) seen from the lamp
@@ -139,6 +146,11 @@ var _glass_box: BoxMesh
 var _glass_shape: BoxShape3D
 var _glass_body: StaticBody3D
 var _voxel_subdiv := VoxelGI.SUBDIV_64
+var _bulb_light: OmniLight3D
+var _bulb_glass: StandardMaterial3D
+var _switch: WallSwitch
+var _probe: ReflectionProbe
+var _probe_frames := 0                  # frames left of a re-photograph; 0, none
 var _relief_mats: Array[ShaderMaterial] = []
 var _relief_phase := 0.0
 var _relief_speed := RELIEF_SPEED
@@ -161,11 +173,14 @@ func _ready() -> void:
 	_build_lamp()
 	_build_glass()
 	_build_reliefs()
+	_build_ceiling_bulb()
+	_build_probe()
 	_build_panels()
 	RenderingServer.gi_set_use_half_resolution(true)
 	RenderingServer.voxel_gi_set_quality(RenderingServer.VOXEL_GI_QUALITY_LOW)
 	_set_bounce("VoxelGI")
 	var extra := _panel.restore()
+	_rephotograph()
 	var atlas := int(extra.get("atlas", vp.positional_shadow_atlas_size))
 	if ATLAS_SIZES.has(atlas):
 		vp.positional_shadow_atlas_size = atlas
@@ -205,16 +220,31 @@ func _build_panels() -> void:
 		_light.light_color = c
 		_glass.emission = c
 		_lamp_colour = c
-		_set_through_colour())
+		_set_through_colour()
+		_rephotograph())
 	_panel.slider(lamp, "Energy", 0.0, 200.0, 1.0, LAMP_ENERGY, func(v: float) -> void:
 		_light.light_energy = v
 		_glass.emission_energy_multiplier = BULB_GLOW * v / LAMP_ENERGY
-		_set_through())
+		_set_through()
+		_rephotograph())
 	_panel.note(lamp, "The light's strength, in its direct light and in the bounce alike. The glowing glass follows the colour and the energy; it is drawn and lights nothing.")
 	_indirect_box = _panel.box(lamp)
 	_panel.slider(_indirect_box, "Indirect energy", 0.0, 4.0, 0.01, 1.0, func(v: float) -> void:
 		_light.light_indirect_energy = v)
 	_panel.note(_indirect_box, "A second multiplier on the lamp's light as it enters the bounce only: the bounce starts from Energy times this. 1 is the physical value; 0 shows the direct light alone.")
+	_panel.heading(lamp, "Ceiling bulb")
+	_panel.switch(lamp, "Ceiling bulb on", false, func(on: bool) -> void:
+		if _switch.on != on:
+			_switch.set_on(on))
+	_panel.note(lamp, "Also the switch on the east wall by the stair: look at it and press E.")
+	_panel.colour(lamp, "Bulb colour", LAMP_COLOUR, func(c: Color) -> void:
+		_bulb_light.light_color = c
+		_bulb_glass.emission = c
+		_rephotograph())
+	_panel.slider(lamp, "Bulb energy", 0.0, 100.0, 1.0, CEILING_BULB_ENERGY, func(v: float) -> void:
+		_bulb_light.light_energy = v
+		_bulb_glass.emission_energy_multiplier = BULB_GLOW * v / LAMP_ENERGY
+		_rephotograph())
 	_panel.button(lamp, "Reset all", _reset)
 
 	var light := _panel.panel("Light")
@@ -240,6 +270,13 @@ func _build_panels() -> void:
 		RenderingServer.voxel_gi_set_quality(RenderingServer.VOXEL_GI_QUALITY_HIGH if option == "High"
 			else RenderingServer.VOXEL_GI_QUALITY_LOW))
 	_panel.note(_voxel_box, "How many cones each pixel traces through the voxels: High traces more, smoother and dearer.")
+	_panel.heading(light, "Reflections")
+	_panel.switch(light, "Reflection probe", true, func(on: bool) -> void:
+		_probe.visible = on)
+	_panel.note(light, "A reflection probe photographs the room in every direction from its middle; shiny surfaces reflect that photograph, corrected for the room's box shape. Metal, which shows only what it reflects, needs it most.")
+	_panel.choice(light, "Probe photographs", ["Once", "Always"], "Once", func(option: String) -> void:
+		_probe.update_mode = ReflectionProbe.UPDATE_ALWAYS if option == "Always" else ReflectionProbe.UPDATE_ONCE)
+	_panel.note(light, "Once: taken when the lighting changes (a switch, a slider), so moving things, like the relief, reflect as they were then. Always: taken every frame, costly.")
 	_panel.heading(light, "On screen, added to any of the above")
 	_panel.switch(light, "SSIL", false, func(on: bool) -> void:
 		_env.ssil_enabled = on
@@ -259,7 +296,8 @@ func _build_panels() -> void:
 	_panel.slider(glass, "Opacity", 0.0, 1.0, 0.01, GLASS_ALPHA, func(v: float) -> void:
 		_opacity = v
 		_glass_mat.set_shader_parameter("opacity", v)
-		_set_through())
+		_set_through()
+		_rephotograph())
 	_panel.note(glass, "The pane is opaque. It gives off the second camera's picture of what lies behind it times 1 minus this, filtered by the tint, and shows its own colour times this. The light through it is a second light at the lamp that lights only the room, at the lamp's light filtered by the tint, times 1 minus this.")
 	_panel.heading(glass, "Water on the glass")
 	_panel.slider(glass, "Ripple strength", 0.0, 1.0, 0.01, RIPPLE_STRENGTH, func(v: float) -> void:
@@ -278,7 +316,8 @@ func _build_panels() -> void:
 	_panel.colour(glass, "Tint", GLASS_TINT, func(c: Color) -> void:
 		_glass_mat.set_shader_parameter("tint", c)
 		_tint = c
-		_set_through_colour())
+		_set_through_colour()
+		_rephotograph())
 	_panel.slider(glass, "Roughness", 0.0, 1.0, 0.01, 0.05, func(v: float) -> void:
 		_glass_mat.set_shader_parameter("roughness", v))
 	_panel.note(glass, "How widely its reflections spread; polished glass is near 0.")
@@ -393,6 +432,13 @@ func _reset() -> void:
 	(_panel.sliders["Ripple speed (m/s)"] as HSlider).value = RIPPLE_SPEED
 	(_panel.sliders["Picture bend"] as HSlider).value = RIPPLE_BEND
 	(_panel.sliders["Speed"] as HSlider).value = RELIEF_SPEED
+	(_panel.switches["Ceiling bulb on"] as CheckButton).button_pressed = false
+	var bulb_picker := _panel.pickers["Bulb colour"] as ColorPickerButton
+	bulb_picker.color = LAMP_COLOUR
+	bulb_picker.color_changed.emit(LAMP_COLOUR)
+	(_panel.sliders["Bulb energy"] as HSlider).value = CEILING_BULB_ENERGY
+	(_panel.switches["Reflection probe"] as CheckButton).button_pressed = true
+	_panel.pick("Probe photographs", "Once")
 	(_panel.sliders["Feature size (m)"] as HSlider).value = 0.6
 	(_panel.sliders["Height (cm)"] as HSlider).value = 5.0
 	(_panel.sliders["Gold above"] as HSlider).value = 0.6
@@ -749,6 +795,10 @@ func _process(delta: float) -> void:
 	_slide_ripples(delta)
 	_relief_phase += _relief_speed * delta
 	_set_relief("phase", _relief_phase)
+	if _probe_frames > 0:
+		_probe_frames -= 1
+		if _probe_frames == 0 and (_panel.choices["Probe photographs"]["Once"] as CheckBox).button_pressed:
+			_probe.update_mode = ReflectionProbe.UPDATE_ONCE
 	if _rebake_in >= 0.0:
 		_rebake_in -= delta
 		if _rebake_in < 0.0 and _bounce == "VoxelGI":
@@ -792,6 +842,94 @@ func _build_reliefs() -> void:
 func _set_relief(param: String, value: Variant) -> void:
 	for mat in _relief_mats:
 		mat.set_shader_parameter(param, value)
+
+
+## ---- the ceiling bulb and its switch ----------------------------------------
+
+## A bare bulb on a cord from the ceiling's middle, off to begin; its
+## switch on the east wall.
+func _build_ceiling_bulb() -> void:
+	_bulb_light = OmniLight3D.new()
+	_bulb_light.position = CEILING_BULB
+	_bulb_light.light_color = LAMP_COLOUR
+	_bulb_light.light_energy = CEILING_BULB_ENERGY
+	_bulb_light.omni_range = 40.0
+	_bulb_light.omni_attenuation = 2.0
+	_bulb_light.shadow_enabled = true
+	_bulb_light.light_cull_mask = 0xFFFFF & ~CHAMBER
+	_bulb_light.visible = false
+	add_child(_bulb_light)
+	_bulb_glass = StandardMaterial3D.new()
+	_bulb_glass.albedo_color = Color(1, 1, 1)
+	_bulb_glass.emission_enabled = true
+	_bulb_glass.emission = LAMP_COLOUR
+	_bulb_glass.emission_energy_multiplier = BULB_GLOW * CEILING_BULB_ENERGY / LAMP_ENERGY
+	var glass := SphereMesh.new()
+	glass.radius = 0.06
+	glass.height = 0.12
+	glass.material = _bulb_glass
+	var bulb := MeshInstance3D.new()
+	bulb.mesh = glass
+	bulb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	bulb.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	bulb.position = CEILING_BULB
+	add_child(bulb)
+	var cord_len := ROOM - CEILING_BULB.y - 0.06
+	var cord := MeshInstance3D.new()
+	var cord_mesh := CylinderMesh.new()
+	cord_mesh.top_radius = 0.004
+	cord_mesh.bottom_radius = 0.004
+	cord_mesh.height = cord_len
+	cord_mesh.material = _steel()
+	cord.mesh = cord_mesh
+	cord.position = CEILING_BULB + Vector3(0.0, 0.06 + cord_len * 0.5, 0.0)
+	cord.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(cord)
+	_switch = WallSwitch.new()
+	_switch.position = SWITCH_AT
+	_switch.rotation_degrees.y = -90.0
+	add_child(_switch)
+	_switch.toggled.connect(func(on: bool) -> void:
+		_bulb_light.visible = on
+		_bulb_glass.emission_energy_multiplier = (BULB_GLOW * _bulb_light.light_energy / LAMP_ENERGY) if on else 0.0
+		(_panel.switches["Ceiling bulb on"] as CheckButton).set_pressed_no_signal(on)
+		_panel.changed()
+		_rephotograph())
+	_bulb_glass.emission_energy_multiplier = 0.0
+
+
+## ---- the reflection probe ----------------------------------------------------
+
+## A probe the size of the room, taking its photograph from the middle
+## at eye height and correcting reflections for the room's box (box
+## projection); the room is closed, so nothing outside it is used
+## (interior). It does not see the pane, whose picture is made for the
+## eye's camera, so through the opening it photographs the chamber.
+func _build_probe() -> void:
+	_probe = ReflectionProbe.new()
+	_probe.size = Vector3(ROOM, ROOM, ROOM)
+	_probe.position = Vector3(0.0, ROOM * 0.5, 0.0)
+	_probe.origin_offset = Vector3(0.0, 1.6 - ROOM * 0.5, 0.0)
+	_probe.box_projection = true
+	_probe.interior = true
+	# No fading toward the box's faces: the box is the room, and the panels
+	# sit 3 cm from its walls, where the default 1 m fade leaves almost
+	# no reflection.
+	_probe.blend_distance = 0.0
+	_probe.cull_mask = 0xFFFFF & ~PANE
+	_probe.update_mode = ReflectionProbe.UPDATE_ONCE
+	add_child(_probe)
+
+
+## Take the probe's photograph again after a lighting change, a few
+## frames on so the change has reached the lighting: Godot has no call
+## to retake a probe set to Once, so it is set to Always for those frames
+## and back.
+func _rephotograph() -> void:
+	if _probe == null or _panel == null:
+		return
+	_probe.update_mode = ReflectionProbe.UPDATE_ALWAYS
+	_probe_frames = 4
 
 
 ## ---- the lamp --------------------------------------------------------------
