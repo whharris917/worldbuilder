@@ -541,8 +541,8 @@ func _set_voxel_gi(on: bool) -> void:
 	if not on:
 		return
 	_voxel_gi = VoxelGI.new()
-	_voxel_gi.size = Vector3(2.0 * _room_r + 2.0, 6, 2.0 * _room_r + 2.0)
-	_voxel_gi.position = Vector3(0, 2.8, 0)
+	_voxel_gi.size = Vector3(2.0 * _room_r + 2.0, maxf(6.0, _wall_h + 2.4), 2.0 * _room_r + 2.0)
+	_voxel_gi.position.y = _voxel_gi.size.y * 0.5 - 0.2
 	add_child(_voxel_gi)
 	_voxel_gi.bake()
 
@@ -809,7 +809,7 @@ func _reset() -> void:
 	for title: String in ["Turbidity", "Rayleigh", "Mie", "Mie forward", "Sun disc size", "Air brightness",
 			"Air density", "Haze", "Ozone", "Haze forward"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
-	for title: String in ["Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)",
+	for title: String in ["Room radius (m)", "Wall height (m)", "Ball rope length (m)", "Bulb cord length (m)",
 			"Hill height (m)", "Hill size (m)", "Ruggedness", "Seed"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	_surf = _surface_defaults()
@@ -1083,7 +1083,7 @@ func _knock_wall(w: Pendulum) -> float:
 	var c := w.centre()
 	var flat := Vector3(c.x, 0, c.z)
 	var limit := _room_r - w.radius
-	if flat.length() <= limit or c.y - w.radius >= WALL_H:
+	if flat.length() <= limit or c.y - w.radius >= _wall_h:
 		return 0.0
 	var out := flat.normalized()
 	w.place(c - out * (flat.length() - limit))
@@ -1224,7 +1224,7 @@ const FILTERS := {"Nearest": BaseMaterial3D.TEXTURE_FILTER_NEAREST, "Bilinear": 
 	"Mipmaps": BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS,
 	"Anisotropic": BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC}
 const WALL_T := 0.2                     # the wall's thickness
-const WALL_H := 3.6
+var _wall_h := 3.6                      # the wall's height, 0 to 36 m (Wall height slider)
 const DOOR_W := 0.9
 const PLAIN := Color(0.5, 0.5, 0.5)
 
@@ -1302,25 +1302,28 @@ func _shape_wall() -> void:
 		var a1 := half + (TAU - 2.0 * half) * (i + 1) / n
 		var in0 := Vector3(-sin(a0), 0, cos(a0))
 		var in1 := Vector3(-sin(a1), 0, cos(a1))
-		_quad(st, [_round(wall_in, a0, 0), _round(wall_in, a1, 0), _round(wall_in, a1, WALL_H), _round(wall_in, a0, WALL_H)],
+		_quad(st, [_round(wall_in, a0, 0), _round(wall_in, a1, 0), _round(wall_in, a1, _wall_h), _round(wall_in, a0, _wall_h)],
 			[in0, in1, in1, in0],
-			[Vector2(wall_in * a0, WALL_H), Vector2(wall_in * a1, WALL_H), Vector2(wall_in * a1, 0), Vector2(wall_in * a0, 0)])
-		_quad(st, [_round(wall_out, a0, 0), _round(wall_out, a1, 0), _round(wall_out, a1, WALL_H), _round(wall_out, a0, WALL_H)],
+			[Vector2(wall_in * a0, _wall_h), Vector2(wall_in * a1, _wall_h), Vector2(wall_in * a1, 0), Vector2(wall_in * a0, 0)])
+		_quad(st, [_round(wall_out, a0, 0), _round(wall_out, a1, 0), _round(wall_out, a1, _wall_h), _round(wall_out, a0, _wall_h)],
 			[-in0, -in1, -in1, -in0],
-			[Vector2(-wall_out * a0, WALL_H), Vector2(-wall_out * a1, WALL_H), Vector2(-wall_out * a1, 0), Vector2(-wall_out * a0, 0)])
-		var top: Array = [_round(wall_in, a0, WALL_H), _round(wall_in, a1, WALL_H), _round(wall_out, a1, WALL_H), _round(wall_out, a0, WALL_H)]
+			[Vector2(-wall_out * a0, _wall_h), Vector2(-wall_out * a1, _wall_h), Vector2(-wall_out * a1, 0), Vector2(-wall_out * a0, 0)])
+		var top: Array = [_round(wall_in, a0, _wall_h), _round(wall_in, a1, _wall_h), _round(wall_out, a1, _wall_h), _round(wall_out, a0, _wall_h)]
 		_quad(st, top, [Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP],
 			[Vector2(top[0].x, top[0].z), Vector2(top[1].x, top[1].z), Vector2(top[2].x, top[2].z), Vector2(top[3].x, top[3].z)])
 	for side: float in [-1.0, 1.0]:
 		var a := half if side < 0.0 else TAU - half
 		var out := Vector3(cos(a), 0, sin(a)) * side
-		_quad(st, [_round(wall_in, a, 0), _round(wall_out, a, 0), _round(wall_out, a, WALL_H), _round(wall_in, a, WALL_H)],
+		_quad(st, [_round(wall_in, a, 0), _round(wall_out, a, 0), _round(wall_out, a, _wall_h), _round(wall_in, a, _wall_h)],
 			[out, out, out, out],
-			[Vector2(0, WALL_H), Vector2(wall_out - wall_in, WALL_H), Vector2(wall_out - wall_in, 0), Vector2(0, 0)])
+			[Vector2(0, _wall_h), Vector2(wall_out - wall_in, _wall_h), Vector2(wall_out - wall_in, 0), Vector2(0, 0)])
 	st.generate_tangents()
 	var mesh := st.commit()
 	_wall_view.mesh = mesh
 	_wall_shape.shape = mesh.create_trimesh_shape()
+	# At no height there is no wall: nothing drawn, nothing to bump.
+	_wall_view.visible = _wall_h > 0.01
+	_wall_shape.disabled = _wall_h <= 0.01
 
 
 ## The ground outside the room: procedural terrain (BulbTerrain), level
@@ -1780,7 +1783,7 @@ func _hear(delta: float) -> void:
 	if _radio == null or cam == null:
 		return
 	_radio.room_r = _room_r
-	_radio.wall_h = WALL_H
+	_radio.wall_h = _wall_h
 	_radio.wall_t = WALL_T
 	_radio.door_w = DOOR_W
 	_radio.alpha_floor = float(LIBRARY[_library_index(str(_surf["Floor"]["material"]))].get("alpha", 0.02))
@@ -1829,6 +1832,13 @@ func _build_motion(root: Control) -> Control:
 		if _bounce == "VoxelGI":
 			_set_voxel_gi(true))
 	_note(column, "Floor and wall rebuilt as you drag; the hooks' paths scale with it. A VoxelGI box is baked again when you let go.")
+	_slider(column, "Wall height (m)", 0.0, 36.0, 0.1, _wall_h, func(v: float) -> void:
+		_wall_h = v
+		_shape_wall())
+	(_sliders["Wall height (m)"] as HSlider).drag_ended.connect(func(_changed: bool) -> void:
+		if _bounce == "VoxelGI":
+			_set_voxel_gi(true))
+	_note(column, "0 is no wall at all; 3.6 m as built, up to ten times that. Above the hooks (12 m) the ropes rise inside it. Light, the knocks and the radio's sound all follow the wall's height.")
 	_heading(column, "Ball's hook")
 	_slider(column, "Ball rope length (m)", 1.0, HOOK_Y - 1.3, 0.1, _ball_swing.length, func(v: float) -> void: _ball_swing.set_length(v))
 	_slider(column, "Ball speed", 0.2, 3.0, 0.05, _ball_swing.speed, func(v: float) -> void: _ball_swing.speed = v)
@@ -1842,7 +1852,7 @@ func _build_motion(root: Control) -> Control:
 	_slider(column, "Restitution", 0.0, 1.0, 0.01, _restitution, func(v: float) -> void: _restitution = v)
 	_note(column, "The share of the closing speed kept after a knock, against the wall or between ball and bulb: 1 bounces back as fast as it came, 0 stops dead.")
 	for title: String in ["Ball speed", "Ball wait", "Bulb speed", "Bulb wait", "Restitution",
-			"Room radius (m)", "Ball rope length (m)", "Bulb cord length (m)"]:
+			"Room radius (m)", "Wall height (m)", "Ball rope length (m)", "Bulb cord length (m)"]:
 		_defaults[title] = (_sliders[title] as HSlider).value
 	return column.get_parent() as Control
 
