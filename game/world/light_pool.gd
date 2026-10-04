@@ -26,7 +26,10 @@ extends Node3D
 ## to begin, the engine's default), SSIL and SSAO, and the tone curve (AgX to begin).
 ## Viewport: dithering (1 key) and the shadow atlas (2 key: 4096, 8192,
 ## 16384 texels square). Glass: its opacity, tint, roughness and
-## specular, and whether the bounce methods see it.
+## specular, its thickness (top fixed, growing downward), and whether the
+## bounce methods see it. Light: also VoxelGI's cells along its box's
+## longest side (64 to begin; light leaks through anything thinner than
+## a cell).
 ##
 ## The glass is opaque: it casts a full shadow and blocks the lamp from
 ## the room. It is seen through by a second camera at the eye (`_portal`,
@@ -105,6 +108,12 @@ var _portal_cam: Camera3D
 var _portal_env: Environment
 var _through: AreaLight3D
 var _opacity := GLASS_ALPHA
+var _thickness := GLASS_THICK
+var _glass_box: BoxMesh
+var _glass_shape: BoxShape3D
+var _glass_body: StaticBody3D
+var _voxel_subdiv := VoxelGI.SUBDIV_64
+var _rebake_in := -1.0                  # seconds to a VoxelGI re-bake; below 0, none due
 
 
 func _ready() -> void:
@@ -190,6 +199,12 @@ func _build_panels() -> void:
 		_env.sdfgi_min_cell_size = v)
 	_panel.note(_sdfgi_box, "SDFGI divides the space round the camera into cells, each further ring of them twice the size of the last. This is the size nearest the camera: smaller is finer and reaches less far. In this room the engine's default, 0.2 m, gives no bounce at all; every wall, the deck and the ceiling lie on 0.2 m multiples. Any other size works.")
 	_voxel_box = _panel.box(light)
+	_panel.choice(_voxel_box, "VoxelGI cells", ["64", "128", "256", "512"], "64", func(option: String) -> void:
+		_voxel_subdiv = {"64": VoxelGI.SUBDIV_64, "128": VoxelGI.SUBDIV_128,
+			"256": VoxelGI.SUBDIV_256, "512": VoxelGI.SUBDIV_512}[option]
+		if _bounce == "VoxelGI":
+			_set_bounce("VoxelGI"))
+	_panel.note(_voxel_box, "Cells along the box's longest side, 14.2 m: about 22, 11, 5.5 or 2.8 cm each. Light leaks through anything thinner than a cell, as through the glass. Finer takes longer to bake and more memory; the box is baked again on a change.")
 	_panel.choice(_voxel_box, "VoxelGI quality", ["Low", "High"], "Low", func(option: String) -> void:
 		RenderingServer.voxel_gi_set_quality(RenderingServer.VOXEL_GI_QUALITY_HIGH if option == "High"
 			else RenderingServer.VOXEL_GI_QUALITY_LOW))
@@ -223,6 +238,9 @@ func _build_panels() -> void:
 	_panel.slider(glass, "Specular", 0.0, 1.0, 0.01, 0.5, func(v: float) -> void:
 		_glass_mat.set_shader_parameter("specular", v))
 	_panel.note(glass, "Reflection strength face on; 0.5 is about 4%, as for glass. Stronger toward grazing angles by the engine's Fresnel term.")
+	_panel.slider(glass, "Thickness (m)", 0.01, 0.5, 0.01, GLASS_THICK, func(v: float) -> void:
+		_set_thickness(v))
+	_panel.note(glass, "Its top stays where it is; it grows downward, past the deck's underside beyond 0.20 m. Real glass floors are about 4 cm. The bounce methods leak light through anything thinner than their cells; VoxelGI is baked again when this comes to rest.")
 	_glass_gi_box = _panel.box(glass)
 	_panel.switch(_glass_gi_box, "In the bounce", true, func(on: bool) -> void:
 		_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_STATIC if on else GeometryInstance3D.GI_MODE_DYNAMIC
@@ -247,7 +265,7 @@ func _set_bounce(option: String) -> void:
 		_voxel_gi = null
 	if option == "VoxelGI":
 		_voxel_gi = VoxelGI.new()
-		_voxel_gi.subdiv = VoxelGI.SUBDIV_64
+		_voxel_gi.subdiv = _voxel_subdiv
 		_voxel_gi.size = Vector3(ROOM + 1.0, ROOM - CHAMBER_FLOOR + 1.0, ROOM + 1.0)
 		_voxel_gi.position.y = (ROOM + CHAMBER_FLOOR) * 0.5
 		add_child(_voxel_gi)
@@ -309,6 +327,8 @@ func _reset() -> void:
 	(_panel.switches["SSIL"] as CheckButton).button_pressed = false
 	(_panel.switches["SSAO"] as CheckButton).button_pressed = false
 	_panel.pick("VoxelGI quality", "Low")
+	_panel.pick("VoxelGI cells", "64")
+	(_panel.sliders["Thickness (m)"] as HSlider).value = GLASS_THICK
 	_panel.pick("Curve", "AgX")
 	_panel.pick("Bounce", "VoxelGI")
 	(_panel.sliders["Opacity"] as HSlider).value = GLASS_ALPHA
@@ -509,7 +529,16 @@ func _build_glass() -> void:
 	_glass_mat.set_shader_parameter("opacity", GLASS_ALPHA)
 	var size := Vector3(2.0 * OPENING_HALF, GLASS_THICK, 2.0 * OPENING_HALF)
 	var centre := Vector3(OPENING_CENTRE.x, GLASS_TOP - GLASS_THICK * 0.5, OPENING_CENTRE.y)
-	_glass_pane = _slab(centre, size, _glass_mat)
+	_glass_pane = _shape(centre, size, _glass_mat)
+	_glass_box = _glass_pane.mesh as BoxMesh
+	_glass_body = StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	_glass_shape = BoxShape3D.new()
+	_glass_shape.size = size
+	shape.shape = _glass_shape
+	_glass_body.add_child(shape)
+	_glass_body.position = centre
+	add_child(_glass_body)
 	_glass_pane.layers = PANE
 	_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_STATIC
 
@@ -543,6 +572,19 @@ func _build_glass() -> void:
 	_set_through()
 
 
+## The pane's thickness, its top fixed: drawn, solid and, coming to rest,
+## baked again into VoxelGI.
+func _set_thickness(t: float) -> void:
+	_thickness = t
+	_glass_box.size.y = t
+	_glass_shape.size.y = t
+	var y := GLASS_TOP - t * 0.5
+	_glass_pane.position.y = y
+	_glass_body.position.y = y
+	if _bounce == "VoxelGI":
+		_rebake_in = 0.5
+
+
 ## The light through the glass: the lamp's energy times what the glass
 ## lets through.
 func _set_through() -> void:
@@ -572,8 +614,12 @@ func _follow_eye() -> void:
 	_portal_env.ssao_enabled = _env.ssao_enabled
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_follow_eye()
+	if _rebake_in >= 0.0:
+		_rebake_in -= delta
+		if _rebake_in < 0.0 and _bounce == "VoxelGI":
+			_set_bounce("VoxelGI")
 
 
 ## ---- the lamp --------------------------------------------------------------
