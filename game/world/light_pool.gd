@@ -1,7 +1,7 @@
 class_name LightPool
 extends Node3D
 ## A closed room ten metres every way. Most of its floor is an opening
-## 7.5 m square onto a dark chamber under the whole room, lit by one bare
+## 7.5 m square onto a chamber under the whole room, lit by one bare
 ## lamp on a stand. The lamp is the only light, so the room is lit from
 ## below through the opening: the ceiling brightest, the walls fading
 ## downward, the deck around the opening in the room's own reflected
@@ -60,7 +60,7 @@ const LAMP := Vector3(0.0, -2.4, -0.5) # under the opening's middle, 0.8 m over 
 const LAMP_COLOUR := Color(1.0, 0.96, 0.9)
 const LAMP_ENERGY := 60.0
 const BULB_GLOW := 40.0                # the glass's emission
-const CHAMBER_ALBEDO := 0.12           # the chamber's paint, as its colour's channels (sRGB)
+const BRICK := Vector2(1.8, 0.9)       # m of wall to one repeat of the old stone bricks, across and up
 const WALL := 0.3
 const START := Vector3(-2.5, 0.0, 4.3)
 # The stair: 18 risers down the south wall, westward from x = STAIR_TOP.
@@ -333,40 +333,41 @@ func _reset() -> void:
 
 ## ---- the room --------------------------------------------------------------
 
-## The ceiling and four walls in matte plaster, and the chamber under the
-## whole room, its walls continuing the room's down to its floor, painted
-## dark.
+## The room's ceiling and four walls and the chamber's walls in old
+## stone bricks, the chamber's floor in wet pebbles. The bricks are laid
+## in world space (triplanar), 1.8 m of the texture across and 0.9 m up
+## the walls; a ceiling's material turns that the other way, since a
+## horizontal face reads the texture's second axis along z.
 func _build_room() -> void:
 	var h := ROOM * 0.5
-	var plaster := StandardMaterial3D.new()
-	plaster.albedo_color = Color(0.80, 0.78, 0.74)
-	plaster.roughness = 0.9
-	_slab_between(Vector3(-h - WALL, ROOM, -h - WALL), Vector3(h + WALL, ROOM + WALL, h + WALL), plaster)
-	_slab_between(Vector3(h, 0.0, -h), Vector3(h + WALL, ROOM, h), plaster)
-	_slab_between(Vector3(-h - WALL, 0.0, -h), Vector3(-h, ROOM, h), plaster)
-	_slab_between(Vector3(-h - WALL, 0.0, h), Vector3(h + WALL, ROOM, h + WALL), plaster)
-	_slab_between(Vector3(-h - WALL, 0.0, -h - WALL), Vector3(h + WALL, ROOM, -h), plaster)
+	var bricks := _textured("old_stone_bricks", BRICK, false, false)
+	var overhead := _textured("old_stone_bricks", BRICK, false, true)
+	_slab_between(Vector3(-h - WALL, ROOM, -h - WALL), Vector3(h + WALL, ROOM + WALL, h + WALL), overhead)
+	_slab_between(Vector3(h, 0.0, -h), Vector3(h + WALL, ROOM, h), bricks)
+	_slab_between(Vector3(-h - WALL, 0.0, -h), Vector3(-h, ROOM, h), bricks)
+	_slab_between(Vector3(-h - WALL, 0.0, h), Vector3(h + WALL, ROOM, h + WALL), bricks)
+	_slab_between(Vector3(-h - WALL, 0.0, -h - WALL), Vector3(h + WALL, ROOM, -h), bricks)
 
-	var dark := StandardMaterial3D.new()
-	dark.albedo_color = Color(CHAMBER_ALBEDO, CHAMBER_ALBEDO, CHAMBER_ALBEDO)
-	dark.roughness = 0.9
-	_slab_between(Vector3(-h - WALL, CHAMBER_FLOOR - WALL, -h - WALL), Vector3(h + WALL, CHAMBER_FLOOR, h + WALL), dark)
-	_slab_between(Vector3(h, CHAMBER_FLOOR, -h - WALL), Vector3(h + WALL, 0.0, h + WALL), dark)
-	_slab_between(Vector3(-h - WALL, CHAMBER_FLOOR, -h - WALL), Vector3(-h, 0.0, h + WALL), dark)
-	_slab_between(Vector3(-h, CHAMBER_FLOOR, h), Vector3(h, 0.0, h + WALL), dark)
-	_slab_between(Vector3(-h, CHAMBER_FLOOR, -h - WALL), Vector3(h, 0.0, -h), dark)
+	var pebbles := _textured("pebbles", Vector2(1.0, 1.0), true, false)
+	_slab_between(Vector3(-h - WALL, CHAMBER_FLOOR - WALL, -h - WALL), Vector3(h + WALL, CHAMBER_FLOOR, h + WALL), pebbles)
+	_slab_between(Vector3(h, CHAMBER_FLOOR, -h - WALL), Vector3(h + WALL, 0.0, h + WALL), bricks)
+	_slab_between(Vector3(-h - WALL, CHAMBER_FLOOR, -h - WALL), Vector3(-h, 0.0, h + WALL), bricks)
+	_slab_between(Vector3(-h, CHAMBER_FLOOR, h), Vector3(h, 0.0, h + WALL), bricks)
+	_slab_between(Vector3(-h, CHAMBER_FLOOR, -h - WALL), Vector3(h, 0.0, -h), bricks)
 
 
 ## ---- the deck --------------------------------------------------------------
 
-## The deck is a concrete slab faced with stone tiles, round the opening
-## and open also over the stair along the south wall.
+## The deck is a slab faced with the generated tiles, round the opening
+## and open also over the stair along the south wall. Below the facing
+## it is old stone bricks, so the chamber's ceiling and the opening's
+## sides are brick, laid as for a ceiling; the stair stays concrete.
 func _build_deck() -> void:
 	var concrete := StandardMaterial3D.new()
 	concrete.albedo_color = Color(0.30, 0.30, 0.29)
 	concrete.roughness = 0.9
-	_deck_layer(-TILE, 0.0, _stone())
-	_deck_layer(SLAB_BOTTOM, -TILE, concrete)
+	_deck_layer(-TILE, 0.0, _textured("generated_tiles", Vector2(2.0, 2.0), false, false))
+	_deck_layer(SLAB_BOTTOM, -TILE, _textured("old_stone_bricks", BRICK, false, true))
 	_build_stair(concrete)
 
 
@@ -456,16 +457,32 @@ func _steel() -> StandardMaterial3D:
 	return m
 
 
-## Limestone tiles, laid in world space so the slabs' tiles line up.
-func _stone() -> StandardMaterial3D:
+## A texture set from textures/<dir> (albedo, normal, roughness and AO,
+## as the one-bulb scene's library has them), laid in world space so
+## neighbouring slabs line up, `size` metres of world to one repeat:
+## across and up a wall, or, `overhead`, across x and along z on a
+## horizontal face. Wet, as the one-bulb scene's wet pebbles: the colour
+## darkened to 0.65 and the roughness times 0.3.
+func _textured(dir: String, size: Vector2, wet: bool, overhead: bool) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.albedo_texture = load("res://textures/ambientcg_tiles142/albedo.png")
+	var base := "res://textures/%s/" % dir
+	var ext := "png" if ResourceLoader.exists(base + "albedo.png") else "jpg"
+	m.albedo_texture = load(base + "albedo." + ext)
 	m.normal_enabled = true
-	m.normal_texture = load("res://textures/ambientcg_tiles142/normal.png")
-	m.roughness_texture = load("res://textures/ambientcg_tiles142/roughness.png")
+	m.normal_texture = load(base + "normal." + ext)
+	m.roughness_texture = load(base + "roughness." + ext)
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	if ResourceLoader.exists(base + "ao." + ext):
+		m.ao_enabled = true
+		m.ao_texture = load(base + "ao." + ext)
+		m.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
 	m.uv1_triplanar = true
 	m.uv1_world_triplanar = true
-	m.uv1_scale = Vector3.ONE / 2.0
+	m.uv1_scale = Vector3(1.0 / size.x, 1.0 / size.y, 1.0 / size.y) if overhead \
+		else Vector3(1.0 / size.x, 1.0 / size.y, 1.0 / size.x)
+	if wet:
+		m.albedo_color = Color(0.65, 0.65, 0.65)
+		m.roughness = 0.3
 	return m
 
 
