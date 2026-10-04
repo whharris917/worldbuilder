@@ -190,15 +190,19 @@ func listen(ear: Vector3) -> void:
 	var area := PI * room_r * room_r
 	var volume := area * wall_h
 	var absorb := area * (1.0 + alpha_floor) + TAU * room_r * wall_h * alpha_wall
-	var rt60 := 0.161 * volume / absorb
-	var feedback := pow(10.0, -0.09 / rt60)
-	var critical := 0.057 * sqrt(volume / rt60)
+	# With no wall there is no room and no reverberation; the formulas
+	# below would divide nothing by nothing, and a reverb fed that falls
+	# silent, taking the music with it.
+	var walled := wall_h > 0.05
+	var rt60 := 0.161 * volume / absorb if walled else 0.0
+	var feedback := pow(10.0, -0.09 / rt60) if walled else 0.0
+	var critical := 0.057 * sqrt(volume / rt60) if walled else 1.0
 	for i in 2:
 		var rv: AudioEffectReverb = _rv[i]
 		rv.room_size = clampf((feedback - 0.7) / 0.28, 0.0, 1.0)
 		rv.damping = 0.5
 		rv.dry = 1.0
-		rv.wet = clampf(0.12 * d / critical, 0.04, 0.6) if reverb and ear_in else 0.0
+		rv.wet = clampf(0.12 * d / critical, 0.04, 0.6) if reverb and ear_in and walled else 0.0
 		rv.predelay_msec = clampf((room_r - Vector2(ear.x, ear.z).length()) / C_SOUND * 1000.0, 5.0, 100.0)
 	if air and d > 30.0:
 		notes.append("air takes the treble above %d Hz" % int(43900.0 / sqrt(d)))
