@@ -13,7 +13,7 @@ extends Node3D
 ## shadows and standard materials, in an environment with a black
 ## background, no ambient light, no sky reflections and no glow.
 ##
-## Controls in three panels (BenchPanel), with the mouse freed by Esc, as
+## Controls in four panels (BenchPanel), with the mouse freed by Esc, as
 ## in the one-bulb scene. Lamp: its colour and energy (the glass's glow
 ## follows both) and its indirect energy, a multiplier on its light as it
 ## enters the bounce only. Light: the bounce method (None, SDFGI, or a
@@ -24,16 +24,25 @@ extends Node3D
 ## to begin, the engine's default), SSIL and SSAO, and the tone curve (AgX to begin).
 ## Viewport: dithering (1 key) and the shadow atlas (2 key: 4096, 8192,
 ## 16384 texels square). Glass: its opacity, tint, roughness and
-## specular, and whether VoxelGI sees it.
+## specular, and whether the bounce methods see it.
 ##
-## The glass is the standard material with alpha blending: drawn after
-## everything opaque, its shaded colour mixed over what lies behind it by
-## its opacity. It casts no shadow (the engine's rule for alpha-blended
-## materials), is left out of the buffers SSAO and screen-space effects
-## read, and to begin with is left out of VoxelGI's bake (GI mode
-## Dynamic: lit by the bounce, not part of it), which would otherwise
-## treat it as solid and block the lamp's light through it. SDFGI never sees it: Godot builds SDFGI's
-## picture of the scene from opaque surfaces only. Dithering, the atlas, half
+## The glass is opaque: it casts a full shadow and blocks the lamp from
+## the room. It is seen through by a second camera at the eye (`_portal`,
+## a SubViewport sharing the world, matched to the eye's camera each
+## frame) that renders the scene without the pane (the pane is on render
+## layer PANE, which that camera does not see); the pane's shader
+## (pool_glass.gdshader, custom) gives off that picture's light at each
+## pixel, times 1 minus the opacity. The picture is untonemapped (the
+## second camera's environment is the room's with the Linear curve), so
+## the screen's tone curve applies once. The light the glass would let
+## through is a rectangle area light over the pane facing up (`_through`),
+## lighting everything but the pane, its energy the lamp's energy times 1
+## minus the opacity times THROUGH_SCALE, measured so that the ceiling's
+## middle gets what the lamp gave it through clear glass. It is soft
+## and casts no shadows: a glowing rectangle, not the bulb's sharp
+## shadows. The pane is in the
+## bounce (GI mode Static) to begin, so the bounce methods too find the
+## lamp's light blocked. Dithering, the atlas, half
 ## resolution and VoxelGI quality are engine-wide and put back as found
 ## when the scene closes. Settings are kept in user://light_pool.json.
 
@@ -60,6 +69,11 @@ const GLASS_TOP := -0.35               # the pane's upper face, below the deck
 const GLASS_THICK := 0.04
 const GLASS_TINT := Color(0.88, 0.95, 0.92) # the faint green of float glass
 const GLASS_ALPHA := 0.1
+const PANE := 2                        # render layer of the glass, unseen by the second camera
+# The area light's energy for the lamp's light through clear glass, per
+# unit of the lamp's energy: measured so the ceiling's middle gets the
+# same direct light from either.
+const THROUGH_SCALE := 0.80            # measured: lamp 0.0500, area light at the lamp's energy 0.0628
 
 const ATLAS_SIZES: Array[int] = [4096, 8192, 16384]
 const TONEMAPS := {"Linear": Environment.TONE_MAPPER_LINEAR, "Reinhard": Environment.TONE_MAPPER_REINHARDT,
@@ -82,8 +96,13 @@ var _voxel_box: VBoxContainer
 var _atlas_button: Button
 var _was: Dictionary = {}               # the engine-wide settings as found
 var _glass_pane: MeshInstance3D
-var _glass_mat: StandardMaterial3D
+var _glass_mat: ShaderMaterial
 var _glass_gi_box: VBoxContainer
+var _portal: SubViewport
+var _portal_cam: Camera3D
+var _portal_env: Environment
+var _through: AreaLight3D
+var _opacity := GLASS_ALPHA
 
 
 func _ready() -> void:
@@ -143,10 +162,12 @@ func _build_panels() -> void:
 	var lamp := _panel.panel("Lamp")
 	_panel.colour(lamp, "Colour", LAMP_COLOUR, func(c: Color) -> void:
 		_light.light_color = c
-		_glass.emission = c)
+		_glass.emission = c
+		_through.light_color = c)
 	_panel.slider(lamp, "Energy", 0.0, 200.0, 1.0, LAMP_ENERGY, func(v: float) -> void:
 		_light.light_energy = v
-		_glass.emission_energy_multiplier = BULB_GLOW * v / LAMP_ENERGY)
+		_glass.emission_energy_multiplier = BULB_GLOW * v / LAMP_ENERGY
+		_set_through())
 	_panel.note(lamp, "The light's strength, in its direct light and in the bounce alike. The glowing glass follows the colour and the energy; it is drawn and lights nothing.")
 	_indirect_box = _panel.box(lamp)
 	_panel.slider(_indirect_box, "Indirect energy", 0.0, 4.0, 0.01, 1.0, func(v: float) -> void:
@@ -188,22 +209,24 @@ func _build_panels() -> void:
 
 	var glass := _panel.panel("Glass")
 	_panel.slider(glass, "Opacity", 0.0, 1.0, 0.01, GLASS_ALPHA, func(v: float) -> void:
-		_glass_mat.albedo_color.a = v)
-	_panel.note(glass, "Alpha: how much of the glass's own shaded colour covers what lies behind it, which shows through at 1 minus this. A model of partial coverage, not of light passing through a material.")
+		_opacity = v
+		_glass_mat.set_shader_parameter("opacity", v)
+		_set_through())
+	_panel.note(glass, "The pane is opaque. It gives off the second camera's picture of what lies behind it times 1 minus this, and shows its own colour times this. The light through it is an area light over the pane, at the lamp's light times 1 minus this.")
 	_panel.colour(glass, "Tint", GLASS_TINT, func(c: Color) -> void:
-		_glass_mat.albedo_color = Color(c.r, c.g, c.b, _glass_mat.albedo_color.a))
+		_glass_mat.set_shader_parameter("tint", c))
 	_panel.slider(glass, "Roughness", 0.0, 1.0, 0.01, 0.05, func(v: float) -> void:
-		_glass_mat.roughness = v)
+		_glass_mat.set_shader_parameter("roughness", v))
 	_panel.note(glass, "How widely its reflections spread; polished glass is near 0.")
 	_panel.slider(glass, "Specular", 0.0, 1.0, 0.01, 0.5, func(v: float) -> void:
-		_glass_mat.metallic_specular = v)
+		_glass_mat.set_shader_parameter("specular", v))
 	_panel.note(glass, "Reflection strength face on; 0.5 is about 4%, as for glass. Stronger toward grazing angles by the engine's Fresnel term.")
 	_glass_gi_box = _panel.box(glass)
-	_panel.switch(_glass_gi_box, "In the bounce", false, func(on: bool) -> void:
+	_panel.switch(_glass_gi_box, "In the bounce", true, func(on: bool) -> void:
 		_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_STATIC if on else GeometryInstance3D.GI_MODE_DYNAMIC
 		if _bounce == "VoxelGI":
 			_set_bounce("VoxelGI"))
-	_panel.note(_glass_gi_box, "Whether VoxelGI sees the pane. It takes it as solid, so on it blocks the lamp's light through it; VoxelGI is baked again when this changes. SDFGI never sees an alpha-blended surface, whatever this says: it builds its picture of the scene only from what is drawn opaque.")
+	_panel.note(_glass_gi_box, "Whether VoxelGI and SDFGI see the pane. On, they find it solid and the lamp's light blocked, as the shadows do; off, the lamp's light still bounces in the room as if there were no glass. VoxelGI is baked again when this changes.")
 
 	var view := _panel.panel("Viewport")
 	_panel.note(view, "Settings of the viewport, the image the camera renders into, not of the scene.")
@@ -238,7 +261,7 @@ func _refresh() -> void:
 	_panel.enable(_indirect_box, _bounce != "None")
 	_panel.enable(_sdfgi_box, _bounce == "SDFGI")
 	_panel.enable(_voxel_box, _bounce == "VoxelGI")
-	_panel.enable(_glass_gi_box, _bounce == "VoxelGI")
+	_panel.enable(_glass_gi_box, _bounce != "None")
 	var text := ""
 	match _bounce:
 		"None":
@@ -292,7 +315,7 @@ func _reset() -> void:
 	tint.color_changed.emit(GLASS_TINT)
 	(_panel.sliders["Roughness"] as HSlider).value = 0.05
 	(_panel.sliders["Specular"] as HSlider).value = 0.5
-	(_panel.switches["In the bounce"] as CheckButton).button_pressed = false
+	(_panel.switches["In the bounce"] as CheckButton).button_pressed = true
 	_refresh()
 
 
@@ -474,20 +497,81 @@ func _solid(centre: Vector3, size: Vector3, basis: Basis) -> void:
 
 ## ---- the glass -------------------------------------------------------------
 
-## One pane across the opening, its edges in the deck's sides, solid.
+## One opaque pane across the opening, its edges in the deck's sides,
+## solid; the second camera that sees past it; the area light that stands
+## for the lamp's light through it.
 func _build_glass() -> void:
-	_glass_mat = StandardMaterial3D.new()
-	_glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_glass_mat.albedo_color = Color(GLASS_TINT.r, GLASS_TINT.g, GLASS_TINT.b, GLASS_ALPHA)
-	_glass_mat.roughness = 0.05
-	_glass_mat.metallic_specular = 0.5
+	_glass_mat = ShaderMaterial.new()
+	_glass_mat.shader = load("res://world/pool_glass.gdshader")
+	_glass_mat.set_shader_parameter("tint", GLASS_TINT)
+	_glass_mat.set_shader_parameter("opacity", GLASS_ALPHA)
 	var size := Vector3(2.0 * OPENING_HALF, GLASS_THICK, 2.0 * OPENING_HALF)
 	var centre := Vector3(OPENING_CENTRE.x, GLASS_TOP - GLASS_THICK * 0.5, OPENING_CENTRE.y)
 	_glass_pane = _slab(centre, size, _glass_mat)
-	# Dynamic: lit by the bounce at its own place, but not baked into it.
-	# Disabled would leave it unlit by the bounce, and under SDFGI such a
-	# surface takes the bounce of whatever opaque surface lies behind it.
-	_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
+	_glass_pane.layers = PANE
+	_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_STATIC
+
+	_portal = SubViewport.new()
+	_portal.use_hdr_2d = true
+	_portal.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_portal_cam = Camera3D.new()
+	_portal_cam.cull_mask = 0xFFFFF & ~PANE
+	_portal_env = _env.duplicate() as Environment
+	_portal_env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	_portal_env.tonemap_exposure = 1.0
+	_portal_cam.environment = _portal_env
+	_portal.add_child(_portal_cam)
+	add_child(_portal)
+	_portal_cam.current = true
+	_glass_mat.set_shader_parameter("behind", _portal.get_texture())
+
+	_through = AreaLight3D.new()
+	_through.area_size = Vector2(2.0 * OPENING_HALF, 2.0 * OPENING_HALF)
+	_through.area_range = 40.0
+	_through.area_attenuation = 2.0
+	_through.light_color = LAMP_COLOUR
+	_through.light_cull_mask = 0xFFFFF & ~PANE
+	# No shadows: Godot's area-light shadows drew wing-shaped dark patches
+	# in the room's corners. Without them the foot of the walls gets a
+	# little light the deck's rim would block.
+	_through.shadow_enabled = false
+	add_child(_through)
+	_through.global_transform = Transform3D(Basis.looking_at(Vector3.UP, Vector3.BACK),
+		Vector3(OPENING_CENTRE.x, GLASS_TOP + 0.01, OPENING_CENTRE.y))
+	_set_through()
+
+
+## The light through the glass: the lamp's energy times what the glass
+## lets through.
+func _set_through() -> void:
+	if _through == null or _light == null:
+		return
+	_through.light_energy = _light.light_energy * (1.0 - _opacity) * THROUGH_SCALE
+
+
+## Each frame: the second camera where the eye is, with the same lens, at
+## the screen's size, its environment following the room's lighting
+## choices (the tone curve stays Linear).
+func _follow_eye() -> void:
+	var eye := get_viewport().get_camera_3d()
+	if eye == null:
+		return
+	var screen := Vector2i(get_viewport().get_visible_rect().size)
+	if _portal.size != screen:
+		_portal.size = screen
+	_portal.positional_shadow_atlas_size = get_viewport().positional_shadow_atlas_size
+	_portal_cam.global_transform = eye.global_transform
+	_portal_cam.fov = eye.fov
+	_portal_cam.near = eye.near
+	_portal_cam.far = eye.far
+	_portal_env.sdfgi_enabled = _env.sdfgi_enabled
+	_portal_env.sdfgi_min_cell_size = _env.sdfgi_min_cell_size
+	_portal_env.ssil_enabled = _env.ssil_enabled
+	_portal_env.ssao_enabled = _env.ssao_enabled
+
+
+func _process(_delta: float) -> void:
+	_follow_eye()
 
 
 ## ---- the lamp --------------------------------------------------------------
