@@ -52,12 +52,7 @@ extends Node3D
 ## (`shadow_caster_mask`), so it lights the room as the bulb would through
 ## clear glass, with the bulb's falloff and its sharp shadows; its colour
 ## is the lamp's times the tint, its energy the lamp's times 1 minus the
-## opacity. It carries a projector texture, a web of bright lines made by
-## the engine's cellular noise, standing for caustics; the light turns
-## slowly about its axis and sways a little so the web moves, at a rate
-## set by the ripples' speed. The pattern is not worked out from the
-## ripples. Its energy is divided by the pattern's average brightness, so
-## the pattern moves light about without adding or taking any.
+## opacity.
 ## shadows. The pane is always in the bounce (GI mode Static), so the
 ## bounce methods find the lamp's light blocked, as the shadow does; the
 ## picture it shows lights nothing. Dithering, the atlas, half
@@ -93,9 +88,6 @@ const RIPPLE_SPEED := 0.15             # m/s, the first map; the second at 0.8 o
 const RIPPLE_STRENGTH := 0.3
 const RIPPLE_BEND := 0.02
 const RIPPLE_DIRS: Array[Vector2] = [Vector2(0.8, 0.6), Vector2(-0.5, 0.87)]
-const CAUSTIC_CELLS := 70.0           # cells of the caustic web across its texture
-const CAUSTIC_PX := 2048               # the caustic texture's size; smaller shows its pixels on the ceiling
-const CAUSTIC_TURN := 0.6              # radians the light through turns per metre the ripples travel
 const PANE := 2                        # render layer of the glass, unseen by the second camera
 const CHAMBER := 4                     # render layer of what lies in the chamber, unlit by the light through the glass
 const THROUGH_ANGLE := 72.0            # degrees: the spot's half-angle, past the opening's corners (69) seen from the lamp
@@ -127,11 +119,6 @@ var _portal_cam: Camera3D
 var _portal_env: Environment
 var _through: SpotLight3D
 var _layer := 1                         # the render layer _shape gives what it makes
-var _caustics: NoiseTexture2D
-var _caustic_mean := 1.0                # the pattern's average brightness, once made
-var _caustics_on := true
-var _spin := 0.0                        # radians the light through has turned
-var _sway_t := 0.0
 var _opacity := GLASS_ALPHA
 var _tint := GLASS_TINT
 var _ripple_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO]
@@ -274,14 +261,6 @@ func _build_panels() -> void:
 	_panel.slider(glass, "Picture bend", 0.0, 0.1, 0.001, RIPPLE_BEND, func(v: float) -> void:
 		_glass_mat.set_shader_parameter("bend", v))
 	_panel.note(glass, "How far the picture behind shifts per unit of slope, as a share of the screen. Real water bends far things further than near ones; the picture holds no depth, so here all shift alike.")
-	_panel.switch(glass, "Caustic pattern", true, func(on: bool) -> void:
-		_caustics_on = on
-		_through.light_projector = _caustics if on else null
-		_set_through())
-	_panel.note(glass, "Shines a web of bright lines into the light through the glass, as a projector does, standing for the light that ripples gather into lines. It is engine noise, not worked out from the ripples; it turns and sways at the ripples' speed. The light's energy is divided by the pattern's average brightness, so the pattern moves light about without adding or taking any.")
-	_panel.slider(glass, "Caustic cells", 10.0, 200.0, 1.0, CAUSTIC_CELLS, func(v: float) -> void:
-		_make_caustics(v))
-	_panel.note(glass, "Cells of the web across the whole picture the light projects; the ceiling sees about a tenth of it across, the walls more, stretched.")
 	_panel.heading(glass, "Glass")
 	_panel.colour(glass, "Tint", GLASS_TINT, func(c: Color) -> void:
 		_glass_mat.set_shader_parameter("tint", c)
@@ -381,8 +360,6 @@ func _reset() -> void:
 	(_panel.sliders["Ripple size (m)"] as HSlider).value = RIPPLE_SIZE
 	(_panel.sliders["Ripple speed (m/s)"] as HSlider).value = RIPPLE_SPEED
 	(_panel.sliders["Picture bend"] as HSlider).value = RIPPLE_BEND
-	(_panel.switches["Caustic pattern"] as CheckButton).button_pressed = true
-	(_panel.sliders["Caustic cells"] as HSlider).value = CAUSTIC_CELLS
 	_panel.pick("Curve", "AgX")
 	_panel.pick("Bounce", "VoxelGI")
 	(_panel.sliders["Opacity"] as HSlider).value = GLASS_ALPHA
@@ -662,60 +639,9 @@ func _build_glass() -> void:
 	_through.shadow_enabled = true
 	_through.shadow_caster_mask = 0xFFFFF & ~PANE
 	add_child(_through)
-	_aim_through()
-	_make_caustics(CAUSTIC_CELLS)
+	_through.global_transform = Transform3D(Basis.looking_at(Vector3.UP, Vector3.BACK), LAMP)
 	_set_through()
 	_set_through_colour()
-
-
-## The caustic web: the engine's cellular noise as the difference of the
-## distances to a point's two nearest cell centres, small along the
-## borders between cells, mapped so the borders are bright lines on a dim
-## ground. Made on a worker thread; its average brightness is measured
-## once it is ready.
-func _make_caustics(cells: float) -> void:
-	var noise := FastNoiseLite.new()
-	noise.noise_type = FastNoiseLite.TYPE_CELLULAR
-	noise.cellular_return_type = FastNoiseLite.RETURN_DISTANCE2_SUB
-	noise.cellular_distance_function = FastNoiseLite.DISTANCE_EUCLIDEAN
-	noise.frequency = cells / float(CAUSTIC_PX)
-	noise.seed = 11
-	var ramp := Gradient.new()
-	ramp.set_offset(0, 0.0)
-	ramp.set_color(0, Color(1, 1, 1))
-	ramp.set_offset(1, 0.25)
-	ramp.set_color(1, Color(0.08, 0.08, 0.08))
-	ramp.add_point(0.06, Color(0.45, 0.45, 0.45))
-	_caustics = NoiseTexture2D.new()
-	_caustics.width = CAUSTIC_PX
-	_caustics.height = CAUSTIC_PX
-	_caustics.seamless = true
-	_caustics.noise = noise
-	_caustics.color_ramp = ramp
-	_caustics.changed.connect(_measure_caustics, CONNECT_ONE_SHOT)
-	if _caustics_on:
-		_through.light_projector = _caustics
-
-
-func _measure_caustics() -> void:
-	var img := _caustics.get_image()
-	if img == null:
-		return
-	var sum := 0.0
-	for y in range(0, img.get_height(), 4):
-		for x in range(0, img.get_width(), 4):
-			sum += img.get_pixel(x, y).srgb_to_linear().r
-	_caustic_mean = maxf(sum / float((img.get_height() / 4) * (img.get_width() / 4)), 0.01)
-	_set_through()
-
-
-## The light through points straight up from the lamp, turned about that
-## axis by `_spin` and tilted a little by the sway.
-func _aim_through() -> void:
-	var tilt := Vector3(sin(_sway_t * 0.37), 0.0, cos(_sway_t * 0.29)) * deg_to_rad(1.5)
-	var basis := Basis.looking_at(Vector3.UP, Vector3.BACK).rotated(Vector3.UP, _spin)
-	basis = Basis.from_euler(tilt) * basis
-	_through.global_transform = Transform3D(basis, LAMP)
 
 
 ## The colour of the light through the glass: the lamp's filtered by the
@@ -752,13 +678,11 @@ func _set_thickness(t: float) -> void:
 
 
 ## The light through the glass: the lamp's energy times what the glass
-## lets through, divided by the pattern's average so it moves light
-## about without adding or taking any.
+## lets through.
 func _set_through() -> void:
 	if _through == null or _light == null:
 		return
-	var pattern := _caustic_mean if _caustics_on else 1.0
-	_through.light_energy = _light.light_energy * (1.0 - _opacity) / pattern
+	_through.light_energy = _light.light_energy * (1.0 - _opacity)
 
 
 ## Each frame: the second camera where the eye is, with the same lens, at
@@ -785,9 +709,6 @@ func _follow_eye() -> void:
 func _process(delta: float) -> void:
 	_follow_eye()
 	_slide_ripples(delta)
-	_spin += _ripple_speed * CAUSTIC_TURN * delta
-	_sway_t += _ripple_speed * delta * 4.0
-	_aim_through()
 	if _rebake_in >= 0.0:
 		_rebake_in -= delta
 		if _rebake_in < 0.0 and _bounce == "VoxelGI":
