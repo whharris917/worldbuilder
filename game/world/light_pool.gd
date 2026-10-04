@@ -26,7 +26,9 @@ extends Node3D
 ## to begin, the engine's default), SSIL and SSAO, and the tone curve (AgX to begin).
 ## Viewport: dithering (1 key) and the shadow atlas (2 key: 4096, 8192,
 ## 16384 texels square). Glass: its opacity, tint, roughness and
-## specular, and its thickness (top fixed, growing downward). Light: also VoxelGI's cells along its box's
+## specular, and its thickness (top fixed, growing downward); and the
+## water on it: ripple strength, size and speed, and how far the picture
+## behind bends. Light: also VoxelGI's cells along its box's
 ## longest side (64 to begin; light leaks through anything thinner than
 ## a cell).
 ##
@@ -38,7 +40,10 @@ extends Node3D
 ## (pool_glass.gdshader, custom) gives off that picture's light at each
 ## pixel, filtered by the tint, times 1 minus the opacity. The picture is untonemapped (the
 ## second camera's environment is the room's with the Linear curve), so
-## the screen's tone curve applies once. The light the glass would let
+## the screen's tone curve applies once. Ripples, as of a thin film of
+## water, tilt the pane's surface and shift the picture behind it (see the
+## shader); two engine-made noise normal maps slide across it, moved here.
+## The light the glass would let
 ## through is a rectangle area light over the pane facing up (`_through`),
 ## lighting everything but the pane, its colour the lamp's filtered by
 ## the tint, its energy the lamp's energy times 1 minus the opacity
@@ -74,6 +79,12 @@ const GLASS_TOP := -0.35               # the pane's upper face, below the deck
 const GLASS_THICK := 0.04
 const GLASS_TINT := Color(0.88, 0.95, 0.92) # the faint green of float glass
 const GLASS_ALPHA := 0.1
+# Ripples on the glass: two noise normal maps sliding across it.
+const RIPPLE_SIZE := 1.5               # m of pane to one repeat of a map
+const RIPPLE_SPEED := 0.15             # m/s, the first map; the second at 0.8 of it
+const RIPPLE_STRENGTH := 0.3
+const RIPPLE_BEND := 0.02
+const RIPPLE_DIRS: Array[Vector2] = [Vector2(0.8, 0.6), Vector2(-0.5, 0.87)]
 const PANE := 2                        # render layer of the glass, unseen by the second camera
 # The area light's energy for the lamp's light through clear glass, per
 # unit of the lamp's energy: measured so the ceiling's middle gets the
@@ -108,6 +119,9 @@ var _portal_env: Environment
 var _through: AreaLight3D
 var _opacity := GLASS_ALPHA
 var _tint := GLASS_TINT
+var _ripple_offsets: Array[Vector2] = [Vector2.ZERO, Vector2.ZERO]
+var _ripple_speed := RIPPLE_SPEED
+var _ripple_size := RIPPLE_SIZE
 var _lamp_colour := LAMP_COLOUR
 var _thickness := GLASS_THICK
 var _glass_box: BoxMesh
@@ -232,6 +246,20 @@ func _build_panels() -> void:
 		_glass_mat.set_shader_parameter("opacity", v)
 		_set_through())
 	_panel.note(glass, "The pane is opaque. It gives off the second camera's picture of what lies behind it times 1 minus this, filtered by the tint, and shows its own colour times this. The light through it is an area light over the pane, at the lamp's light filtered by the tint, times 1 minus this.")
+	_panel.heading(glass, "Water on the glass")
+	_panel.slider(glass, "Ripple strength", 0.0, 1.0, 0.01, RIPPLE_STRENGTH, func(v: float) -> void:
+		_glass_mat.set_shader_parameter("ripple_strength", v))
+	_panel.note(glass, "How steep the ripples are. 0 is still water. Their slope tilts the surface, so its highlights ripple, and shifts the picture behind it, as water bends what is seen through it.")
+	_panel.slider(glass, "Ripple size (m)", 0.2, 5.0, 0.05, RIPPLE_SIZE, func(v: float) -> void:
+		_ripple_size = v
+		_glass_mat.set_shader_parameter("ripple_size", v))
+	_panel.slider(glass, "Ripple speed (m/s)", 0.0, 1.0, 0.01, RIPPLE_SPEED, func(v: float) -> void:
+		_ripple_speed = v)
+	_panel.note(glass, "Two patterns of engine-made noise slide across the pane in different directions; size is metres to one repeat of a pattern.")
+	_panel.slider(glass, "Picture bend", 0.0, 0.1, 0.001, RIPPLE_BEND, func(v: float) -> void:
+		_glass_mat.set_shader_parameter("bend", v))
+	_panel.note(glass, "How far the picture behind shifts per unit of slope, as a share of the screen. Real water bends far things further than near ones; the picture holds no depth, so here all shift alike.")
+	_panel.heading(glass, "Glass")
 	_panel.colour(glass, "Tint", GLASS_TINT, func(c: Color) -> void:
 		_glass_mat.set_shader_parameter("tint", c)
 		_tint = c
@@ -326,6 +354,10 @@ func _reset() -> void:
 	_panel.pick("VoxelGI quality", "Low")
 	_panel.pick("VoxelGI cells", "64")
 	(_panel.sliders["Thickness (m)"] as HSlider).value = GLASS_THICK
+	(_panel.sliders["Ripple strength"] as HSlider).value = RIPPLE_STRENGTH
+	(_panel.sliders["Ripple size (m)"] as HSlider).value = RIPPLE_SIZE
+	(_panel.sliders["Ripple speed (m/s)"] as HSlider).value = RIPPLE_SPEED
+	(_panel.sliders["Picture bend"] as HSlider).value = RIPPLE_BEND
 	_panel.pick("Curve", "AgX")
 	_panel.pick("Bounce", "VoxelGI")
 	(_panel.sliders["Opacity"] as HSlider).value = GLASS_ALPHA
@@ -540,6 +572,24 @@ func _build_glass() -> void:
 	_glass_mat.shader = load("res://world/pool_glass.gdshader")
 	_glass_mat.set_shader_parameter("tint", GLASS_TINT)
 	_glass_mat.set_shader_parameter("opacity", GLASS_ALPHA)
+	_glass_mat.set_shader_parameter("ripple_size", RIPPLE_SIZE)
+	_glass_mat.set_shader_parameter("ripple_strength", RIPPLE_STRENGTH)
+	_glass_mat.set_shader_parameter("bend", RIPPLE_BEND)
+	for i in 2:
+		var noise := FastNoiseLite.new()
+		noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		noise.seed = 7 + i
+		noise.frequency = 0.01
+		noise.fractal_octaves = 3
+		var tex := NoiseTexture2D.new()
+		tex.width = 512
+		tex.height = 512
+		tex.seamless = true
+		tex.as_normal_map = true
+		tex.bump_strength = 4.0
+		tex.generate_mipmaps = true
+		tex.noise = noise
+		_glass_mat.set_shader_parameter("ripple_a" if i == 0 else "ripple_b", tex)
 	var size := Vector3(2.0 * OPENING_HALF, GLASS_THICK, 2.0 * OPENING_HALF)
 	var centre := Vector3(OPENING_CENTRE.x, GLASS_TOP - GLASS_THICK * 0.5, OPENING_CENTRE.y)
 	_glass_pane = _shape(centre, size, _glass_mat)
@@ -595,6 +645,16 @@ func _set_through_colour() -> void:
 	_through.light_color = Color(lamp.r * tint.r, lamp.g * tint.g, lamp.b * tint.b).linear_to_srgb()
 
 
+## The ripple maps slide on, each by its speed this frame, the distance
+## summed here so a change of speed never sends them back.
+func _slide_ripples(delta: float) -> void:
+	for i in 2:
+		var speed := _ripple_speed * (1.0 if i == 0 else 0.8)
+		_ripple_offsets[i] = (_ripple_offsets[i] + RIPPLE_DIRS[i] * speed * delta / _ripple_size).posmod(1.0)
+	_glass_mat.set_shader_parameter("offset_a", _ripple_offsets[0])
+	_glass_mat.set_shader_parameter("offset_b", _ripple_offsets[1])
+
+
 ## The pane's thickness, its top fixed: drawn, solid and, coming to rest,
 ## baked again into VoxelGI.
 func _set_thickness(t: float) -> void:
@@ -639,6 +699,7 @@ func _follow_eye() -> void:
 
 func _process(delta: float) -> void:
 	_follow_eye()
+	_slide_ripples(delta)
 	if _rebake_in >= 0.0:
 		_rebake_in -= delta
 		if _rebake_in < 0.0 and _bounce == "VoxelGI":
