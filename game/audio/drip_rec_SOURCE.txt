@@ -1,0 +1,8 @@
+drip_rec_1..8.wav: single drops cut by tools/cut_drips.py from BigSoundBank's
+"Drops of water" #1, #2 and #4 (sounds 1384, 1385, 1387; #3, 1386, is the
+same audio as #2), recorded by Joseph Sardin indoors with a Sound Devices
+MixPre-3 and a Rode NT5, 48 kHz 24-bit mono.
+Licence: CC0 (public domain), no attribution required.
+https://bigsoundbank.com/drops-of-water-1-s1384.html
+https://bigsoundbank.com/drops-of-water-2-s1385.html
+https://bigsoundbank.com/drops-of-water-4-s1387.html
