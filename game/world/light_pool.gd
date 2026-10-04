@@ -31,8 +31,8 @@ extends Node3D
 ## its opacity. It casts no shadow (the engine's rule for alpha-blended
 ## materials), is left out of the buffers SSAO and screen-space effects
 ## read, and to begin with is left out of VoxelGI's bake (GI mode
-## Disabled), which would otherwise treat it as solid and block the
-## lamp's light through it. SDFGI never sees it: Godot builds SDFGI's
+## Dynamic: lit by the bounce, not part of it), which would otherwise
+## treat it as solid and block the lamp's light through it. SDFGI never sees it: Godot builds SDFGI's
 ## picture of the scene from opaque surfaces only. Dithering, the atlas, half
 ## resolution and VoxelGI quality are engine-wide and put back as found
 ## when the scene closes. Settings are kept in user://light_pool.json.
@@ -200,7 +200,7 @@ func _build_panels() -> void:
 	_panel.note(glass, "Reflection strength face on; 0.5 is about 4%, as for glass. Stronger toward grazing angles by the engine's Fresnel term.")
 	_glass_gi_box = _panel.box(glass)
 	_panel.switch(_glass_gi_box, "In the bounce", false, func(on: bool) -> void:
-		_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_STATIC if on else GeometryInstance3D.GI_MODE_DISABLED
+		_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_STATIC if on else GeometryInstance3D.GI_MODE_DYNAMIC
 		if _bounce == "VoxelGI":
 			_set_bounce("VoxelGI"))
 	_panel.note(_glass_gi_box, "Whether VoxelGI sees the pane. It takes it as solid, so on it blocks the lamp's light through it; VoxelGI is baked again when this changes. SDFGI never sees an alpha-blended surface, whatever this says: it builds its picture of the scene only from what is drawn opaque.")
@@ -484,7 +484,10 @@ func _build_glass() -> void:
 	var size := Vector3(2.0 * OPENING_HALF, GLASS_THICK, 2.0 * OPENING_HALF)
 	var centre := Vector3(OPENING_CENTRE.x, GLASS_TOP - GLASS_THICK * 0.5, OPENING_CENTRE.y)
 	_glass_pane = _slab(centre, size, _glass_mat)
-	_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	# Dynamic: lit by the bounce at its own place, but not baked into it.
+	# Disabled would leave it unlit by the bounce, and under SDFGI such a
+	# surface takes the bounce of whatever opaque surface lies behind it.
+	_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
 
 
 ## ---- the lamp --------------------------------------------------------------
