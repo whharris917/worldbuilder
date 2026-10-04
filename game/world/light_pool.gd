@@ -9,9 +9,11 @@ extends Node3D
 ## Across the opening, 35 cm below the deck, lies one pane of glass 4 cm
 ## thick, set into the deck's sides all round, solid to walk on.
 ##
-## Everything is drawn by the engine's own lighting: an omni light with
-## shadows and standard materials, in an environment with a black
-## background, no ambient light, no sky reflections and no glow.
+## Drawn by the engine's own lighting (an omni light with shadows and
+## standard materials, in an environment with a black background, no
+## ambient light, no sky reflections and no glow), with two stand-ins
+## for the glass, described below: a custom shader that shows what lies
+## behind the opaque pane, and an area light for the light through it.
 ##
 ## Controls in four panels (BenchPanel), with the mouse freed by Esc, as
 ## in the one-bulb scene. Lamp: its colour and energy (the glass's glow
