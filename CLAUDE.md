@@ -55,6 +55,7 @@ The director is the creative director: does not code, reviews builds by walking 
 - A pattern that moves at a speed that varies is moved by a distance summed on the CPU and passed in, never `TIME * speed`: when the speed drops the product falls and the pattern runs backwards.
 - Clamp the base of every `pow()` in a shader: a negative base gives NaN, which the glow turns into flickering blobs.
 - `SurfaceTool.append_from` of a non-indexed source after an indexed one draws nothing of it.
+- SDFGI at its default smallest cell (0.2 m) gave no bounce at all in a room whose every surface lay on 0.2 m multiples; another cell size, or the room moved 5 cm, fixed it (`docs/history.md`, 2026-10-04).
 
 ## Layout
 
