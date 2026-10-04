@@ -8,10 +8,6 @@ background_mode = 1
 background_color = Color(0, 0, 0, 1)
 ambient_light_source = 1
 reflected_light_source = 1
-tonemap_mode = 4
-glow_enabled = true
-glow_intensity = 0.4
-glow_bloom = 0.02
 
 [node name="LightPool" type="Node3D"]
 script = ExtResource("1")

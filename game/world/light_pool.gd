@@ -9,10 +9,20 @@ extends Node3D
 ## stepping off the deck into the opening drops the player into it.
 ##
 ## Everything is drawn by the engine's own lighting: an omni light with
-## shadows, standard materials, and a VoxelGI box around the room and the
-## chamber for the bounce light, baked on arrival and traced at half the
-## screen's resolution and low quality (both engine-wide, put back when
-## the scene closes).
+## shadows and standard materials, in an environment with a black
+## background, no ambient light, no sky reflections and no glow.
+##
+## Controls in two panels (BenchPanel), with the mouse freed by Esc, as in
+## the one-bulb scene. Lamp: the viewport's dithering (1 key), the shadow
+## atlas (2 key: 4096, 8192, 16384 texels square), the lamp's colour and
+## energy (the glass's glow follows both). Light: the bounce method (None,
+## SDFGI, or a VoxelGI box around the room and the chamber, baked each
+## time it is chosen; VoxelGI to begin), the light's share in the bounce,
+## the bounce traced at half the screen's resolution (on to begin) and
+## VoxelGI's quality (Low to begin, the engine's default), SSIL and SSAO,
+## and the tone curve (AgX to begin). Dithering, the atlas, half
+## resolution and VoxelGI quality are engine-wide and put back as found
+## when the scene closes. Settings are kept in user://light_pool.json.
 
 const ROOM := 10.0                     # inside, every way
 const OPENING_HALF := 3.75             # the opening is 7.5 m square
@@ -34,41 +44,196 @@ const RISERS := 18
 const GOING := 0.28                    # m, each tread front to back
 const HOLE_WEST := -0.3                # the deck's stair opening ends here: 2 m headroom past it
 
-@onready var player: Player = $Player
+const ATLAS_SIZES: Array[int] = [4096, 8192, 16384]
+const TONEMAPS := {"Linear": Environment.TONE_MAPPER_LINEAR, "Reinhard": Environment.TONE_MAPPER_REINHARDT,
+	"Filmic": Environment.TONE_MAPPER_FILMIC, "ACES": Environment.TONE_MAPPER_ACES, "AgX": Environment.TONE_MAPPER_AGX}
+const STATE_PATH := "user://light_pool.json"
 
-var _atlas_was: Array = []              # the shadow atlas's size and first quadrant, as found
+@onready var player: Player = $Player
+@onready var _env: Environment = ($WorldEnvironment as WorldEnvironment).environment
+
+var _panel: BenchPanel
+var _light: OmniLight3D
+var _glass: StandardMaterial3D
+var _voxel_gi: VoxelGI = null
+var _bounce := "None"                   # None, SDFGI or VoxelGI
+var _status: Label
+var _bounce_box: VBoxContainer
+var _voxel_box: VBoxContainer
+var _atlas_button: Button
+var _was: Dictionary = {}               # the engine-wide settings as found
 
 
 func _ready() -> void:
 	player.global_position = START
 	for node in player.find_children("*", "GeometryInstance3D", true, false):
 		(node as GeometryInstance3D).gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
-	# The lamp's shadow map gets a quarter of an 8192 atlas to itself: its
-	# shadows are thrown 10 m and would show their texels as steps.
 	var vp := get_viewport()
-	_atlas_was = [vp.positional_shadow_atlas_size, vp.get_positional_shadow_atlas_quadrant_subdiv(0)]
-	vp.positional_shadow_atlas_size = 8192
-	vp.set_positional_shadow_atlas_quadrant_subdiv(0, Viewport.SHADOW_ATLAS_QUADRANT_SUBDIV_1)
+	_was = {
+		"debanding": vp.use_debanding,
+		"atlas": vp.positional_shadow_atlas_size,
+		"half": ProjectSettings.get_setting("rendering/global_illumination/gi/use_half_resolution", false),
+		"quality": ProjectSettings.get_setting("rendering/global_illumination/voxel_gi/quality", 0),
+	}
 	_build_room()
 	_build_deck()
 	_build_lamp()
+	_build_panels()
 	RenderingServer.gi_set_use_half_resolution(true)
 	RenderingServer.voxel_gi_set_quality(RenderingServer.VOXEL_GI_QUALITY_LOW)
-	var gi := VoxelGI.new()
-	gi.subdiv = VoxelGI.SUBDIV_64
-	gi.size = Vector3(ROOM + 1.0, ROOM - CHAMBER_FLOOR + 1.0, ROOM + 1.0)
-	gi.position.y = (ROOM + CHAMBER_FLOOR) * 0.5
-	add_child(gi)
-	gi.bake()
+	_set_bounce("VoxelGI")
+	var extra := _panel.restore()
+	var atlas := int(extra.get("atlas", vp.positional_shadow_atlas_size))
+	if ATLAS_SIZES.has(atlas):
+		vp.positional_shadow_atlas_size = atlas
+	_show_atlas()
+	_refresh()
 	MouseMode.capture()
 
 
 func _exit_tree() -> void:
 	var vp := get_viewport()
-	vp.positional_shadow_atlas_size = _atlas_was[0]
-	vp.set_positional_shadow_atlas_quadrant_subdiv(0, _atlas_was[1])
-	RenderingServer.gi_set_use_half_resolution(ProjectSettings.get_setting("rendering/global_illumination/gi/use_half_resolution", false))
-	RenderingServer.voxel_gi_set_quality(ProjectSettings.get_setting("rendering/global_illumination/voxel_gi/quality", 0))
+	vp.use_debanding = _was["debanding"]
+	vp.positional_shadow_atlas_size = _was["atlas"]
+	RenderingServer.gi_set_use_half_resolution(_was["half"])
+	RenderingServer.voxel_gi_set_quality(_was["quality"])
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and (event as InputEventKey).pressed \
+			and not (event as InputEventKey).echo:
+		match (event as InputEventKey).keycode:
+			KEY_1:
+				var dither := _panel.switches["Dithering (1)"] as CheckButton
+				dither.button_pressed = not dither.button_pressed
+			KEY_2:
+				_next_atlas()
+
+
+## ---- the controls ----------------------------------------------------------
+
+func _build_panels() -> void:
+	_panel = BenchPanel.new(STATE_PATH)
+	add_child(_panel)
+	var vp := get_viewport()
+
+	var lamp := _panel.panel("Lamp")
+	_panel.switch(lamp, "Dithering (1)", vp.use_debanding, func(on: bool) -> void: vp.use_debanding = on)
+	_panel.note(lamp, "Adds a faint noise to each pixel before it is stored at 8 bits a channel, which breaks the rings in smooth gradients into grain too fine to see.")
+	_atlas_button = _panel.button(lamp, "", _next_atlas)
+	_panel.note(lamp, "The texture all point and spot lights' shadow maps share. Larger gives the lamp's shadows finer edges and costs video memory.")
+	_panel.heading(lamp, "Lamp")
+	_panel.colour(lamp, "Colour", LAMP_COLOUR, func(c: Color) -> void:
+		_light.light_color = c
+		_glass.emission = c)
+	_panel.slider(lamp, "Energy", 0.0, 200.0, 1.0, LAMP_ENERGY, func(v: float) -> void:
+		_light.light_energy = v
+		_glass.emission_energy_multiplier = BULB_GLOW * v / LAMP_ENERGY)
+	_panel.note(lamp, "The light's strength. The glowing glass follows the colour and the energy; it is drawn and lights nothing.")
+	_panel.button(lamp, "Reset all", _reset)
+
+	var light := _panel.panel("Light")
+	_status = _panel.note(light, "")
+	_status.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
+	_panel.choice(light, "Bounce", ["None", "SDFGI", "VoxelGI"], "VoxelGI", _set_bounce)
+	_bounce_box = _panel.box(light)
+	_panel.slider(_bounce_box, "Indirect energy", 0.0, 4.0, 0.01, 1.0, func(v: float) -> void:
+		_light.light_indirect_energy = v)
+	_panel.note(_bounce_box, "How much of the lamp's light enters the bounce.")
+	_panel.switch(_bounce_box, "Half resolution", true, func(on: bool) -> void:
+		RenderingServer.gi_set_use_half_resolution(on))
+	_panel.note(_bounce_box, "Traces the bounce for every other pixel each way and fills in between: about a quarter of the cost, softer at edges.")
+	_voxel_box = _panel.box(light)
+	_panel.choice(_voxel_box, "VoxelGI quality", ["Low", "High"], "Low", func(option: String) -> void:
+		RenderingServer.voxel_gi_set_quality(RenderingServer.VOXEL_GI_QUALITY_HIGH if option == "High"
+			else RenderingServer.VOXEL_GI_QUALITY_LOW))
+	_panel.note(_voxel_box, "How many cones each pixel traces through the voxels: High traces more, smoother and dearer.")
+	_panel.heading(light, "On screen, added to any of the above")
+	_panel.switch(light, "SSIL", false, func(on: bool) -> void:
+		_env.ssil_enabled = on
+		_refresh())
+	_panel.note(light, "One bounce, from surfaces in view only.")
+	_panel.switch(light, "SSAO", false, func(on: bool) -> void:
+		_env.ssao_enabled = on
+		_refresh())
+	_panel.note(light, "Darkens ambient and bounce light in corners; leaves the lamp's direct light alone.")
+	_panel.heading(light, "Tone curve")
+	_panel.choice(light, "Curve", ["Linear", "Reinhard", "Filmic", "ACES", "AgX"], "AgX", func(option: String) -> void:
+		_env.tonemap_mode = TONEMAPS[option])
+	_panel.note(light, "How light, which has no upper limit, is mapped to the screen's 0 to 1. Linear clips everything brighter than white; the others roll it off, each with its own shape.")
+	_env.tonemap_mode = Environment.TONE_MAPPER_AGX
+
+
+## Two estimates of the same bounce light, so one at a time.
+func _set_bounce(option: String) -> void:
+	_bounce = option
+	_env.sdfgi_enabled = option == "SDFGI"
+	if _voxel_gi != null:
+		_voxel_gi.queue_free()
+		_voxel_gi = null
+	if option == "VoxelGI":
+		_voxel_gi = VoxelGI.new()
+		_voxel_gi.subdiv = VoxelGI.SUBDIV_64
+		_voxel_gi.size = Vector3(ROOM + 1.0, ROOM - CHAMBER_FLOOR + 1.0, ROOM + 1.0)
+		_voxel_gi.position.y = (ROOM + CHAMBER_FLOOR) * 0.5
+		add_child(_voxel_gi)
+		_voxel_gi.bake()
+	_refresh()
+
+
+## Dim what has no effect now, and say where the light comes from.
+func _refresh() -> void:
+	if _status == null:
+		return
+	_panel.enable(_bounce_box, _bounce != "None")
+	_panel.enable(_voxel_box, _bounce == "VoxelGI")
+	var text := ""
+	match _bounce:
+		"None":
+			text = "Only the lamp lights the room; what it cannot reach is black."
+		"SDFGI":
+			text = "SDFGI: the lamp's light bounces off every surface."
+		"VoxelGI":
+			text = "VoxelGI: the lamp's light bounces inside the box around the room and the chamber."
+	if _env.ssil_enabled:
+		text += " SSIL adds a bounce from what is in view."
+	if _env.ssao_enabled:
+		text += " SSAO has nothing to darken." if _bounce == "None" else " SSAO darkens it in corners."
+	_status.text = text
+
+
+func _next_atlas() -> void:
+	var vp := get_viewport()
+	var i := ATLAS_SIZES.find(vp.positional_shadow_atlas_size)
+	vp.positional_shadow_atlas_size = ATLAS_SIZES[(i + 1) % ATLAS_SIZES.size()]
+	_show_atlas()
+	_panel.extra["atlas"] = vp.positional_shadow_atlas_size
+	_panel.changed()
+
+
+func _show_atlas() -> void:
+	_atlas_button.text = "Shadow atlas: %d (2)" % get_viewport().positional_shadow_atlas_size
+
+
+## Every control back as the scene opened.
+func _reset() -> void:
+	var vp := get_viewport()
+	(_panel.switches["Dithering (1)"] as CheckButton).button_pressed = _was["debanding"]
+	vp.positional_shadow_atlas_size = _was["atlas"]
+	_panel.extra["atlas"] = _was["atlas"]
+	_show_atlas()
+	var picker := _panel.pickers["Colour"] as ColorPickerButton
+	picker.color = LAMP_COLOUR
+	picker.color_changed.emit(LAMP_COLOUR)
+	(_panel.sliders["Energy"] as HSlider).value = LAMP_ENERGY
+	(_panel.sliders["Indirect energy"] as HSlider).value = 1.0
+	(_panel.switches["Half resolution"] as CheckButton).button_pressed = true
+	(_panel.switches["SSIL"] as CheckButton).button_pressed = false
+	(_panel.switches["SSAO"] as CheckButton).button_pressed = false
+	_panel.pick("VoxelGI quality", "Low")
+	_panel.pick("Curve", "AgX")
+	_panel.pick("Bounce", "VoxelGI")
+	_refresh()
 
 
 ## ---- the room --------------------------------------------------------------
@@ -271,6 +436,7 @@ func _build_lamp() -> void:
 		add_child(mi)
 	_solid(Vector3(LAMP.x, CHAMBER_FLOOR + 0.5, LAMP.z), Vector3(0.3, 1.0, 0.3), Basis.IDENTITY)
 	var light := OmniLight3D.new()
+	_light = light
 	light.position = LAMP
 	light.light_color = LAMP_COLOUR
 	light.light_energy = LAMP_ENERGY
@@ -283,6 +449,7 @@ func _build_lamp() -> void:
 	glow.emission_enabled = true
 	glow.emission = LAMP_COLOUR
 	glow.emission_energy_multiplier = BULB_GLOW
+	_glass = glow
 	var bulb := SphereMesh.new()
 	bulb.radius = 0.06
 	bulb.height = 0.12
