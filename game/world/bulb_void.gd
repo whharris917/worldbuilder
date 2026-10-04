@@ -315,11 +315,11 @@ func _build_right(root: Control) -> Control:
 	_switch(column, "SSIL", func(on: bool) -> void:
 		_env.ssil_enabled = on
 		_refresh())
-	_note(column, "One bounce, from surfaces in view only.")
+	_note(column, "Light from the surfaces around each pixel on screen, taken from the last frame's image, so bounces build up over a few frames. Only surfaces in view contribute. It also dims the bounce where it finds it blocked.")
 	_switch(column, "SSAO", func(on: bool) -> void:
 		_env.ssao_enabled = on
 		_refresh())
-	_note(column, "Darkens ambient and bounce light in corners; leaves the bulb's direct light alone.")
+	_note(column, "Darkens ambient and bounce light in corners, SSIL's light included; leaves the bulb's direct light alone.")
 	return _panel_of(column)
 
 
@@ -593,7 +593,7 @@ func _describe() -> String:
 				"Sky":
 					text += " Where its rays leave the box they pick up the sky."
 	if _env.ssil_enabled:
-		text += " SSIL adds a bounce from what is in view."
+		text += " SSIL adds light from what is in view."
 	if _env.ssao_enabled:
 		if _outside == "Void" and _bounce == "None":
 			text += " SSAO has nothing to darken."

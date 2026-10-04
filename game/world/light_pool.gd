@@ -152,11 +152,11 @@ func _build_panels() -> void:
 	_panel.switch(light, "SSIL", false, func(on: bool) -> void:
 		_env.ssil_enabled = on
 		_refresh())
-	_panel.note(light, "One bounce, from surfaces in view only.")
+	_panel.note(light, "Light from the surfaces around each pixel on screen, taken from the last frame's image, so bounces build up over a few frames. Only surfaces in view contribute. It also dims the bounce where it finds it blocked.")
 	_panel.switch(light, "SSAO", false, func(on: bool) -> void:
 		_env.ssao_enabled = on
 		_refresh())
-	_panel.note(light, "Darkens ambient and bounce light in corners; leaves the lamp's direct light alone.")
+	_panel.note(light, "Darkens bounce light in corners, SSIL's light included; leaves the lamp's direct light alone.")
 	_panel.heading(light, "Tone curve")
 	_panel.choice(light, "Curve", ["Linear", "Reinhard", "Filmic", "ACES", "AgX"], "AgX", func(option: String) -> void:
 		_env.tonemap_mode = TONEMAPS[option])
@@ -196,7 +196,7 @@ func _refresh() -> void:
 		"VoxelGI":
 			text = "VoxelGI: the lamp's light bounces inside the box around the room and the chamber."
 	if _env.ssil_enabled:
-		text += " SSIL adds a bounce from what is in view."
+		text += " SSIL adds light from what is in view."
 	if _env.ssao_enabled:
 		text += " SSAO has nothing to darken." if _bounce == "None" else " SSAO darkens it in corners."
 	_status.text = text
