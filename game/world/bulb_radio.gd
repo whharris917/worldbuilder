@@ -116,6 +116,8 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	_lp.clear()
+	_rv.clear()
 	for bus_name in BUSES:
 		var idx := AudioServer.get_bus_index(bus_name)
 		if idx != -1:

@@ -149,6 +149,7 @@ func _ready() -> void:
 	root.theme = theme
 	layer.add_child(root)
 	_build_swing()
+	_build_swooshes()
 	_build_floor()
 	_build_wall()
 	_build_ground()
@@ -329,6 +330,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				_dither.button_pressed = not _dither.button_pressed
 			KEY_2:
 				_next_atlas()
+			KEY_3:
+				var radio := _switches["Radio playing (3)"] as CheckButton
+				radio.button_pressed = not radio.button_pressed
 
 
 ## ---- the sun --------------------------------------------------------------
@@ -799,6 +803,7 @@ func _reset() -> void:
 	(_choices["Units"]["Arbitrary"] as CheckBox).button_pressed = true
 	(_choices["Spreading"]["1/d"] as CheckBox).button_pressed = true
 	(_sliders["Volume (dB)"] as HSlider).value = -6.0
+	(_sliders["Swoosh level (dB)"] as HSlider).value = 0.0
 	for title in SOUND_ON:
 		(_switches[title] as CheckButton).button_pressed = true
 	(_choices["Exposure"]["Meter"] as CheckBox).button_pressed = true
@@ -836,6 +841,11 @@ func _show_atlas() -> void:
 func _exit_tree() -> void:
 	if _save_in >= 0.0:
 		_save_state()
+	_swooshes.clear()
+	for bus_name in SWOOSH_BUSES:
+		var idx := AudioServer.get_bus_index(bus_name)
+		if idx != -1:
+			AudioServer.remove_bus(idx)
 	var vp := get_viewport()
 	vp.use_debanding = _debanding_was
 	vp.positional_shadow_atlas_size = _atlas_was
@@ -1740,17 +1750,21 @@ func _adapt(delta: float) -> void:
 
 ## ---- the sound panel --------------------------------------------------------
 
-const SOUND_ON: Array[String] = ["Radio playing", "Knocks", "Air absorption", "Over the wall", "Through the doorway", "Room reverb", "Doppler"]
+const SOUND_ON: Array[String] = ["Radio playing (3)", "Knocks", "Swooshes", "Air absorption", "Over the wall", "Through the doorway", "Room reverb", "Doppler"]
 
 
 func _build_sound(root: Control) -> Control:
 	var column := _column(root)
 	_sound_status = _note(column, "")
 	_sound_status.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
-	_switch(column, "Radio playing", func(on: bool) -> void: _radio.playing = on)
+	_switch(column, "Radio playing (3)", func(on: bool) -> void: _radio.playing = on)
 	_slider(column, "Volume (dB)", -30.0, 6.0, 0.5, -6.0, func(v: float) -> void: _radio.volume_db = v)
 	_defaults["Volume (dB)"] = -6.0
 	_note(column, "The director's recording, Levittown Levity, on a radio sitting on the ball.")
+	_switch(column, "Swooshes", func(_on: bool) -> void: pass)
+	_slider(column, "Swoosh level (dB)", -24.0, 12.0, 0.5, 0.0, func(_v: float) -> void: pass)
+	_defaults["Swoosh level (dB)"] = 0.0
+	_note(column, "Air rushing past the ball and the bulb. Its power grows as speed to the sixth times the frontal area, so twice as fast is 18 dB louder and the ball some 28 dB louder than the bulb at one speed. Its pitch goes as speed over size: the bulb hisses, the ball rushes.")
 	_switch(column, "Knocks", func(_on: bool) -> void: pass)
 	_note(column, "The ball striking the wall, loud as the speed it struck at: twice as fast, 6 dB louder. Raise the ball's hook speed under Motion to make it swing into the wall.")
 	_choice(column, "Spreading", ["1/d", "1/d²", "Log", "None"], func(option: String) -> void: _radio.spreading = option)
@@ -1789,10 +1803,77 @@ func _hear(delta: float) -> void:
 	_radio.alpha_floor = float(LIBRARY[_library_index(str(_surf["Floor"]["material"]))].get("alpha", 0.02))
 	_radio.alpha_wall = float(LIBRARY[_library_index(str(_surf["Walls"]["material"]))].get("alpha", 0.02))
 	_radio.listen(cam.global_position)
+	_swoosh(delta)
 	_sound_clock -= delta
 	if _sound_clock <= 0.0:
 		_sound_clock = 0.25
 		_sound_status.text = _radio.status
+
+
+## ---- swooshes ---------------------------------------------------------------
+
+## The rush of air past the ball and the bulb as they move. The noise is
+## the turbulent wake's (dipole flow noise, after Curle): its power
+## grows as speed^6 times frontal area, so its amplitude goes as U^3 D:
+## level = 60 log10(U / 2 m/s) + 20 log10(D / 1 m) dB, plus the slider.
+## Its pitch goes as U / D, the Strouhal relation; the true shedding
+## tone for bodies this size lies under 1 Hz, so what is heard is the
+## turbulence's broadband noise above it, band-passed at
+## 220 (U / D)^0.6 Hz: about 300 Hz for the ball at full swing, 2 kHz for
+## the bulb. Speed is the body's own through the air, the hook's motion
+## included, eased over a tenth of a second. Each plays from its body
+## through the radio's path to the ear, so the room's reverb and the
+## wall's muffling apply (for the bulb, as if it stood where the ball does).
+const SWOOSH_BUSES: Array[String] = ["BulbSwooshBall", "BulbSwooshBulb"]
+var _swooshes: Array[Dictionary] = []
+
+
+func _build_swooshes() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var stream := load("res://audio/swoosh_loop.wav") as AudioStreamWAV
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = int(stream.get_length() * stream.mix_rate)
+	var specs := [[SWOOSH_BUSES[0], _ball_swing, 2.0, _ball], [SWOOSH_BUSES[1], _bulb_swing, 0.08, _bulb]]
+	for spec: Array in specs:
+		var bus_name := str(spec[0])
+		if AudioServer.get_bus_index(bus_name) == -1:
+			var i := AudioServer.bus_count
+			AudioServer.add_bus(i)
+			AudioServer.set_bus_name(i, bus_name)
+			AudioServer.set_bus_send(i, "BulbRadio")
+			AudioServer.add_bus_effect(i, AudioEffectBandPassFilter.new())
+		var idx := AudioServer.get_bus_index(bus_name)
+		var player := AudioStreamPlayer3D.new()
+		player.stream = stream
+		player.bus = bus_name
+		player.unit_size = 2.0
+		player.max_distance = 0.0
+		player.attenuation_filter_db = 0.0
+		player.volume_db = -80.0
+		player.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_PHYSICS_STEP
+		(spec[3] as Node3D).add_child(player)
+		player.play()
+		_swooshes.append({"player": player, "band": AudioServer.get_bus_effect(idx, 0), "swing": spec[1],
+			"size": float(spec[2]), "speed": 0.0})
+
+
+func _swoosh(delta: float) -> void:
+	var on := (_switches["Swooshes"] as CheckButton).button_pressed
+	var level := float((_sliders["Swoosh level (dB)"] as HSlider).value)
+	for sw: Dictionary in _swooshes:
+		var u := (sw["swing"] as Pendulum).velocity().length() if not _still else 0.0
+		var speed := lerpf(float(sw["speed"]), u, 1.0 - exp(-delta / 0.1))
+		sw["speed"] = speed
+		var size := float(sw["size"])
+		var player := sw["player"] as AudioStreamPlayer3D
+		if not on or speed < 0.05:
+			player.volume_db = -80.0
+			continue
+		var db := 60.0 * log(speed / 2.0) / log(10.0) + 20.0 * log(size) / log(10.0) + level
+		player.volume_db = clampf(db, -80.0, 6.0)
+		(sw["band"] as AudioEffectBandPassFilter).cutoff_hz = clampf(220.0 * pow(speed / size, 0.6), 60.0, 9000.0)
 
 
 ## ---- the terrain panel -----------------------------------------------------

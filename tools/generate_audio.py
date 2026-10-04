@@ -29,6 +29,7 @@ Writes to game/audio/:
                   (two), barred owl
   knock_1..3.wav  a heavy stone ball striking a stone wall: a deep
                   falling thump, a heavy low rumble, dense grit, saturated
+  swoosh_loop.wav 6 s seamless broadband rush, for air past a moving body
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -944,6 +945,21 @@ def make_knocks() -> None:
         make_knock(OUT_DIR / f"knock_{idx}.wav", r, f0, decay, rumble_hz)
 
 
+def make_swoosh() -> None:
+    """Seamless broadband noise, gently tilted toward the bass (each octave
+    about 1.5 dB quieter than the one below), for the rush of air past a
+    moving object: the game band-passes it at a pitch set by the object's
+    speed over its size and sets its loudness by speed and size. Its own
+    generator, so the other files stay as they are."""
+    r = random.Random(20261004)
+    n = int(6.0 * SR)
+    white = _noise_r(r, n + int(0.5 * SR))
+    tilted = _lowpass(white, 0.35)
+    buf = [0.6 * w + 0.4 * t * 2.2 for w, t in zip(white, tilted)]
+    out = loop_crossfade(buf, 0.5)
+    write_wav(OUT_DIR / "swoosh_loop.wav", [out], normalize_to=0.5)
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -967,6 +983,7 @@ def main() -> None:
     make_crickets()
     make_birds()
     make_knocks()
+    make_swoosh()
     print("done")
 
 
