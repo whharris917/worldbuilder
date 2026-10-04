@@ -24,15 +24,16 @@ extends Node3D
 ## to begin, the engine's default), SSIL and SSAO, and the tone curve (AgX to begin).
 ## Viewport: dithering (1 key) and the shadow atlas (2 key: 4096, 8192,
 ## 16384 texels square). Glass: its opacity, tint, roughness and
-## specular, and whether the bounce methods see it.
+## specular, and whether VoxelGI sees it.
 ##
 ## The glass is the standard material with alpha blending: drawn after
 ## everything opaque, its shaded colour mixed over what lies behind it by
 ## its opacity. It casts no shadow (the engine's rule for alpha-blended
 ## materials), is left out of the buffers SSAO and screen-space effects
-## read, and to begin with is left out of the bounce (GI mode Disabled):
-## VoxelGI and SDFGI would otherwise treat it as solid and block the
-## lamp's light through it. Dithering, the atlas, half
+## read, and to begin with is left out of VoxelGI's bake (GI mode
+## Disabled), which would otherwise treat it as solid and block the
+## lamp's light through it. SDFGI never sees it: Godot builds SDFGI's
+## picture of the scene from opaque surfaces only. Dithering, the atlas, half
 ## resolution and VoxelGI quality are engine-wide and put back as found
 ## when the scene closes. Settings are kept in user://light_pool.json.
 
@@ -82,6 +83,7 @@ var _atlas_button: Button
 var _was: Dictionary = {}               # the engine-wide settings as found
 var _glass_pane: MeshInstance3D
 var _glass_mat: StandardMaterial3D
+var _glass_gi_box: VBoxContainer
 
 
 func _ready() -> void:
@@ -196,11 +198,12 @@ func _build_panels() -> void:
 	_panel.slider(glass, "Specular", 0.0, 1.0, 0.01, 0.5, func(v: float) -> void:
 		_glass_mat.metallic_specular = v)
 	_panel.note(glass, "Reflection strength face on; 0.5 is about 4%, as for glass. Stronger toward grazing angles by the engine's Fresnel term.")
-	_panel.switch(glass, "In the bounce", false, func(on: bool) -> void:
+	_glass_gi_box = _panel.box(glass)
+	_panel.switch(_glass_gi_box, "In the bounce", false, func(on: bool) -> void:
 		_glass_pane.gi_mode = GeometryInstance3D.GI_MODE_STATIC if on else GeometryInstance3D.GI_MODE_DISABLED
 		if _bounce == "VoxelGI":
 			_set_bounce("VoxelGI"))
-	_panel.note(glass, "Whether VoxelGI and SDFGI see the pane. They take it as solid, so on it blocks the lamp's light through it; VoxelGI is baked again when this changes.")
+	_panel.note(_glass_gi_box, "Whether VoxelGI sees the pane. It takes it as solid, so on it blocks the lamp's light through it; VoxelGI is baked again when this changes. SDFGI never sees an alpha-blended surface, whatever this says: it builds its picture of the scene only from what is drawn opaque.")
 
 	var view := _panel.panel("Viewport")
 	_panel.note(view, "Settings of the viewport, the image the camera renders into, not of the scene.")
@@ -235,6 +238,7 @@ func _refresh() -> void:
 	_panel.enable(_indirect_box, _bounce != "None")
 	_panel.enable(_sdfgi_box, _bounce == "SDFGI")
 	_panel.enable(_voxel_box, _bounce == "VoxelGI")
+	_panel.enable(_glass_gi_box, _bounce == "VoxelGI")
 	var text := ""
 	match _bounce:
 		"None":
