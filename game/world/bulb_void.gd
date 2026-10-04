@@ -803,6 +803,8 @@ func _reset() -> void:
 	(_choices["Units"]["Arbitrary"] as CheckBox).button_pressed = true
 	(_choices["Spreading"]["1/d"] as CheckBox).button_pressed = true
 	(_sliders["Volume (dB)"] as HSlider).value = -6.0
+	(_choices["Output"]["Speakers"] as CheckBox).button_pressed = true
+	(_sliders["Master volume (dB)"] as HSlider).value = 0.0
 	(_sliders["Swoosh level (dB)"] as HSlider).value = 0.0
 	for title in SOUND_ON:
 		(_switches[title] as CheckButton).button_pressed = true
@@ -1757,6 +1759,13 @@ func _build_sound(root: Control) -> Control:
 	var column := _column(root)
 	_sound_status = _note(column, "")
 	_sound_status.add_theme_color_override("font_color", Color(1.0, 0.92, 0.7))
+	_choice(column, "Output", ["Speakers", "Headphones"], func(option: String) -> void: AudioOutput.set_mode(option))
+	(_choices["Output"][AudioOutput.mode] as CheckBox).set_pressed_no_signal(true)
+	if AudioOutput.mode != "Speakers":
+		(_choices["Output"]["Speakers"] as CheckBox).set_pressed_no_signal(false)
+	_slider(column, "Master volume (dB)", -24.0, 12.0, 0.5, AudioOutput.master_db, func(v: float) -> void: AudioOutput.set_master_db(v))
+	_defaults["Master volume (dB)"] = 0.0
+	_note(column, "For every world. Speakers: a gentle compressor and a limiter lift the level small speakers need, evening loudness far less than a laptop's own loudness equaliser does. Headphones: the full range of loudness, the stereo narrowed a little so sounds sit less inside your head.")
 	_switch(column, "Radio playing (3)", func(on: bool) -> void: _radio.playing = on)
 	_slider(column, "Volume (dB)", -30.0, 6.0, 0.5, -6.0, func(v: float) -> void: _radio.volume_db = v)
 	_defaults["Volume (dB)"] = -6.0

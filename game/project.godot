@@ -18,6 +18,10 @@ config/name="worldbuilder"
 run/main_scene="res://world/menu.tscn"
 config/features=PackedStringArray("4.7")
 
+[autoload]
+
+AudioOutput="*res://ui/audio_output.gd"
+
 [display]
 
 window/size/viewport_width=1280
