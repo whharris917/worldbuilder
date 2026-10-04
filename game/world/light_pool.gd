@@ -911,24 +911,25 @@ func _build_ceiling_bulb() -> void:
 
 ## ---- the reflection probe ----------------------------------------------------
 
-## A probe the size of the room, taking its photograph from the middle
+## A probe the size of the room and a little more, taking its photograph from the middle
 ## at eye height and correcting reflections for the room's box (box
 ## projection); the room is closed, so nothing outside it is used
 ## (interior). It sees neither the pane, whose picture is made for the
-## eye's camera, nor the chamber: through the opening it photographed
-## the lamp's bright patch on the pebbles, which the partly glossy bricks
-## reflected as a hot spot sliding over them as the eye turned, a
-## flicker. So the opening is dark in its photograph.
+## eye's camera, nor the chamber, whose lamp-lit floor the glossy bricks
+## would reflect as a bright patch; the opening is dark in its photograph.
 func _build_probe() -> void:
 	_probe = ReflectionProbe.new()
-	_probe.size = Vector3(ROOM, ROOM, ROOM)
+	# 20 cm beyond each wall, floor and ceiling: a surface lying exactly on
+	# the box's face is in or out of it by a hair, decided afresh as the
+	# camera moves, and the room's light flickered with it.
+	_probe.size = Vector3(ROOM + 0.4, ROOM + 0.4, ROOM + 0.4)
 	_probe.position = Vector3(0.0, ROOM * 0.5, 0.0)
 	_probe.origin_offset = Vector3(0.0, 1.6 - ROOM * 0.5, 0.0)
 	_probe.box_projection = true
 	_probe.interior = true
 	# No fading toward the box's faces: the box is the room, and the panels
-	# sit 3 cm from its walls, where the default 1 m fade leaves almost
-	# no reflection.
+	# sit within 25 cm of its faces, where the default 1 m fade leaves
+	# little reflection.
 	_probe.blend_distance = 0.0
 	_probe.cull_mask = 0xFFFFF & ~(PANE | CHAMBER)
 	_probe.update_mode = ReflectionProbe.UPDATE_ONCE
