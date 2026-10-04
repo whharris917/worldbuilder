@@ -152,6 +152,7 @@ var _switch: WallSwitch
 var _probe: ReflectionProbe
 var _probe_frames := 0                  # frames left of a re-photograph; 0, none
 var _relief_mats: Array[ShaderMaterial] = []
+var _relief_meshes: Array[MeshInstance3D] = []
 var _relief_phase := 0.0
 var _relief_speed := RELIEF_SPEED
 var _rebake_in := -1.0                  # seconds to a VoxelGI re-bake; below 0, none due
@@ -330,6 +331,13 @@ func _build_panels() -> void:
 
 	var relief := _panel.panel("Relief")
 	_panel.note(relief, "Two panels with the same moving relief. North wall: the panel is flat and only its shading follows the hills, so it looks raised in the light but has a flat outline and casts no shadows. West wall: the panel is a fine mesh moved out by the hills, so the outline and shadows are real.")
+	_panel.switch(relief, "North panel (shading only)", true, func(on: bool) -> void:
+		_relief_meshes[0].visible = on
+		_rephotograph())
+	_panel.switch(relief, "West panel (moving surface)", true, func(on: bool) -> void:
+		_relief_meshes[1].visible = on
+		_rephotograph())
+	_panel.note(relief, "Each panel on or off, to see what each costs in the frame rate at the top right.")
 	_panel.slider(relief, "Speed", 0.0, 1.0, 0.01, RELIEF_SPEED, func(v: float) -> void:
 		_relief_speed = v)
 	_panel.note(relief, "How fast the hills change: noise cells a second, moving through time.")
@@ -432,6 +440,8 @@ func _reset() -> void:
 	(_panel.sliders["Ripple speed (m/s)"] as HSlider).value = RIPPLE_SPEED
 	(_panel.sliders["Picture bend"] as HSlider).value = RIPPLE_BEND
 	(_panel.sliders["Speed"] as HSlider).value = RELIEF_SPEED
+	(_panel.switches["North panel (shading only)"] as CheckButton).button_pressed = true
+	(_panel.switches["West panel (moving surface)"] as CheckButton).button_pressed = true
 	(_panel.switches["Ceiling bulb on"] as CheckButton).button_pressed = false
 	var bulb_picker := _panel.pickers["Bulb colour"] as ColorPickerButton
 	bulb_picker.color = LAMP_COLOUR
@@ -832,6 +842,7 @@ func _build_reliefs() -> void:
 		# The moving one's outline reaches past the flat mesh's bounds.
 		mi.extra_cull_margin = 0.25
 		add_child(mi)
+		_relief_meshes.append(mi)
 		if moving:
 			mi.position = Vector3(-h + 0.03, y, 0.0)
 			mi.rotation_degrees.y = 90.0
@@ -903,8 +914,11 @@ func _build_ceiling_bulb() -> void:
 ## A probe the size of the room, taking its photograph from the middle
 ## at eye height and correcting reflections for the room's box (box
 ## projection); the room is closed, so nothing outside it is used
-## (interior). It does not see the pane, whose picture is made for the
-## eye's camera, so through the opening it photographs the chamber.
+## (interior). It sees neither the pane, whose picture is made for the
+## eye's camera, nor the chamber: through the opening it photographed
+## the lamp's bright patch on the pebbles, which the partly glossy bricks
+## reflected as a hot spot sliding over them as the eye turned, a
+## flicker. So the opening is dark in its photograph.
 func _build_probe() -> void:
 	_probe = ReflectionProbe.new()
 	_probe.size = Vector3(ROOM, ROOM, ROOM)
@@ -916,7 +930,7 @@ func _build_probe() -> void:
 	# sit 3 cm from its walls, where the default 1 m fade leaves almost
 	# no reflection.
 	_probe.blend_distance = 0.0
-	_probe.cull_mask = 0xFFFFF & ~PANE
+	_probe.cull_mask = 0xFFFFF & ~(PANE | CHAMBER)
 	_probe.update_mode = ReflectionProbe.UPDATE_ONCE
 	add_child(_probe)
 
