@@ -33,6 +33,8 @@ Writes to game/audio/:
   swoosh_loop.wav 6 s seamless broadband rush, for air past a moving body
   step_pebbles_1..4.wav  footsteps on wet pebbles: a soft thud, the stones
                   shifting, a wet squelch, a bubble
+  drip_1..4.wav   a drop falling into water: a short tap, then the plink
+                  of the air bubble it traps, its pitch rising as it closes
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -1040,6 +1042,53 @@ def make_pebble_steps() -> None:
         make_pebble_step(OUT_DIR / f"step_pebbles_{idx}.wav", r)
 
 
+def make_drip(path: Path, r: random.Random) -> None:
+    """A drop falling into water. The impact: a tap, broadband noise above
+    about 1 kHz dying in a millisecond or two. Then the plink, which comes
+    mostly from a small air bubble the drop drags under: it rings at its
+    Minnaert frequency (about 3.3 kHz for a bubble a millimetre across,
+    lower for larger ones), and as it is squeezed toward the surface its
+    pitch rises quickly, here from 0.9-1.6 kHz to about twice that over
+    15-30 ms, the ring dying in about 40 ms. A faint second, lower bubble
+    now and then."""
+    duration = 0.25
+    n = int(duration * SR)
+    white = _noise_r(r, n)
+    hi = 1.0 - math.exp(-2.0 * math.pi * 900.0 / SR)
+    low = _lowpass(white, hi)
+    tap = [white[i] - low[i] for i in range(n)]
+    buf = [0.0] * n
+    f0 = 900.0 + r.random() * 700.0
+    rise = 1.7 + r.random() * 0.6
+    sweep = 0.015 + r.random() * 0.015
+    start = 0.002 + r.random() * 0.004
+    decay = 0.03 + r.random() * 0.02
+    phase = 0.0
+    second = r.random() < 0.4
+    f2 = f0 * (0.55 + r.random() * 0.2)
+    phase2 = 0.0
+    for i in range(n):
+        t = i / SR
+        v = tap[i] * 0.5 * math.exp(-t / 0.0012)
+        tb = t - start
+        if tb > 0.0:
+            f = f0 * (1.0 + (rise - 1.0) * min(1.0, tb / sweep))
+            phase += 2.0 * math.pi * f / SR
+            v += math.sin(phase) * math.exp(-tb / decay) * min(1.0, tb / 0.0008)
+        if second and t > 0.02:
+            t2 = t - 0.02
+            phase2 += 2.0 * math.pi * f2 * (1.0 + 0.5 * min(1.0, t2 / 0.03)) / SR
+            v += 0.3 * math.sin(phase2) * math.exp(-t2 / 0.05)
+        buf[i] = v
+    write_wav(path, [buf], normalize_to=0.4)
+
+
+def make_drips() -> None:
+    r = random.Random(20261006)
+    for idx in range(1, 5):
+        make_drip(OUT_DIR / f"drip_{idx}.wav", r)
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -1065,6 +1114,7 @@ def main() -> None:
     make_knocks()
     make_swoosh()
     make_pebble_steps()
+    make_drips()
     print("done")
 
 

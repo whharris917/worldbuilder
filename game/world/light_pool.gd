@@ -16,6 +16,12 @@ extends Node3D
 ## (WallSwitch, E to use) on the east wall by the stair. A reflection
 ## probe photographs the room for its shiny surfaces to reflect.
 ##
+## Drips: a number of fixed spots on the ceiling over the glass, placed at
+## random, each letting a drop fall at random moments, on average at the
+## rate set. A drop falls under gravity (drawn larger than a real one, to
+## be seen), and where it lands the glass shader adds its rings to the
+## water's slope (see pool_glass.gdshader); a drip sound plays there.
+##
 ## Drawn by the engine's own lighting (an omni light with shadows and
 ## standard materials, in an environment with a black background, no
 ## ambient light, no sky reflections and no glow), with two stand-ins
@@ -104,6 +110,11 @@ const RELIEF_SPEED := 0.15             # noise cells a second through time
 const CEILING_BULB := Vector3(0.0, 8.0, -0.5)  # 2 m below the ceiling, over the opening's middle
 const CEILING_BULB_ENERGY := 20.0
 const SWITCH_AT := Vector3(4.97, 1.2, 2.6)    # on the east wall, beside the stair's top
+# Drips from the ceiling.
+const DRIP_SPOTS := 4
+const DRIPS_PER_MINUTE := 6.0          # each spot, on average
+const MAX_DROPS := 32                  # rings the shader keeps at once
+const DROP_SOUNDS: Array[String] = ["res://audio/drip_1.wav", "res://audio/drip_2.wav", "res://audio/drip_3.wav", "res://audio/drip_4.wav"]
 const PANE := 2                        # render layer of the glass, unseen by the second camera
 const CHAMBER := 4                     # render layer of what lies in the chamber, unlit by the light through the glass
 const THROUGH_ANGLE := 72.0            # degrees: the spot's half-angle, past the opening's corners (69) seen from the lamp
@@ -151,6 +162,17 @@ var _bulb_glass: StandardMaterial3D
 var _switch: WallSwitch
 var _probe: ReflectionProbe
 var _probe_frames := 0                  # frames left of a re-photograph; 0, none
+var _clock := 0.0                       # seconds since the scene opened: the drops' times
+var _drip_spots: Array[Vector2] = []    # x, z of each spot
+var _drip_next: Array[float] = []       # when each spot next lets go
+var _drip_rate := DRIPS_PER_MINUTE
+var _falling: Array[Dictionary] = []    # {node, x, z, t0}
+var _landed := PackedVector4Array()     # x, z, time, strength, for the shader
+var _landed_next := 0
+var _drip_rng := RandomNumberGenerator.new()
+var _drop_mesh: SphereMesh
+var _drip_players: Array[AudioStreamPlayer3D] = []
+var _drip_player_next := 0
 var _relief_mats: Array[ShaderMaterial] = []
 var _relief_meshes: Array[MeshInstance3D] = []
 var _relief_phase := 0.0
@@ -175,6 +197,7 @@ func _ready() -> void:
 	_build_glass()
 	_build_reliefs()
 	_build_ceiling_bulb()
+	_build_drips()
 	_build_probe()
 	_build_panels()
 	RenderingServer.gi_set_use_half_resolution(true)
@@ -313,6 +336,19 @@ func _build_panels() -> void:
 	_panel.slider(glass, "Picture bend", 0.0, 0.1, 0.001, RIPPLE_BEND, func(v: float) -> void:
 		_glass_mat.set_shader_parameter("bend", v))
 	_panel.note(glass, "How far the picture behind shifts per unit of slope, as a share of the screen. Real water bends far things further than near ones; the picture holds no depth, so here all shift alike.")
+	_panel.heading(glass, "Drips")
+	_panel.slider(glass, "Dripping spots", 0.0, 20.0, 1.0, DRIP_SPOTS, func(v: float) -> void:
+		_place_drip_spots(int(v)))
+	_panel.slider(glass, "Drips a minute (each)", 0.0, 60.0, 0.5, DRIPS_PER_MINUTE, func(v: float) -> void:
+		_drip_rate = v
+		_schedule_all())
+	_panel.note(glass, "Spots on the ceiling over the glass, placed at random; each lets a drop fall at random moments, this many a minute on average. A drop takes about 1.45 s to fall the 10 m.")
+	_panel.slider(glass, "Drip ripples", 0.0, 4.0, 0.05, 1.0, func(v: float) -> void:
+		_glass_mat.set_shader_parameter("drip_strength", v))
+	_panel.note(glass, "How steep each drop's rings are. The rings spread at water's speeds: fine ripples, under about 1.7 cm, outrun longer ones and fade first.")
+	_panel.slider(glass, "Drip volume (dB)", -40.0, 6.0, 1.0, -6.0, func(v: float) -> void:
+		for player in _drip_players:
+			player.volume_db = v)
 	_panel.heading(glass, "Glass")
 	_panel.colour(glass, "Tint", GLASS_TINT, func(c: Color) -> void:
 		_glass_mat.set_shader_parameter("tint", c)
@@ -439,6 +475,10 @@ func _reset() -> void:
 	(_panel.sliders["Ripple size (m)"] as HSlider).value = RIPPLE_SIZE
 	(_panel.sliders["Ripple speed (m/s)"] as HSlider).value = RIPPLE_SPEED
 	(_panel.sliders["Picture bend"] as HSlider).value = RIPPLE_BEND
+	(_panel.sliders["Dripping spots"] as HSlider).value = DRIP_SPOTS
+	(_panel.sliders["Drips a minute (each)"] as HSlider).value = DRIPS_PER_MINUTE
+	(_panel.sliders["Drip ripples"] as HSlider).value = 1.0
+	(_panel.sliders["Drip volume (dB)"] as HSlider).value = -6.0
 	(_panel.sliders["Speed"] as HSlider).value = RELIEF_SPEED
 	(_panel.switches["North panel (shading only)"] as CheckButton).button_pressed = true
 	(_panel.switches["West panel (moving surface)"] as CheckButton).button_pressed = true
@@ -801,8 +841,11 @@ func _follow_eye() -> void:
 
 
 func _process(delta: float) -> void:
+	_clock += delta
+	_drip(delta)
 	_follow_eye()
 	_slide_ripples(delta)
+	_glass_mat.set_shader_parameter("now", _clock)
 	_relief_phase += _relief_speed * delta
 	_set_relief("phase", _relief_phase)
 	if _probe_frames > 0:
@@ -853,6 +896,103 @@ func _build_reliefs() -> void:
 func _set_relief(param: String, value: Variant) -> void:
 	for mat in _relief_mats:
 		mat.set_shader_parameter(param, value)
+
+
+## ---- drips --------------------------------------------------------------
+
+## The drop's look, a few voices for its sound, the spots, and room in the
+## shader for MAX_DROPS rings.
+func _build_drips() -> void:
+	_drip_rng.seed = 2026
+	var water := StandardMaterial3D.new()
+	water.albedo_color = Color(0.8, 0.9, 1.0, 0.5)
+	water.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	water.roughness = 0.0
+	water.metallic_specular = 0.5
+	_drop_mesh = SphereMesh.new()
+	_drop_mesh.radius = 0.012
+	_drop_mesh.height = 0.04
+	_drop_mesh.radial_segments = 8
+	_drop_mesh.rings = 4
+	_drop_mesh.material = water
+	for i in 6:
+		var player := AudioStreamPlayer3D.new()
+		player.volume_db = -6.0
+		player.unit_size = 3.0
+		add_child(player)
+		_drip_players.append(player)
+	_landed.resize(MAX_DROPS)
+	_glass_mat.set_shader_parameter("drops", _landed)
+	_place_drip_spots(DRIP_SPOTS)
+
+
+## The spots, at random over the glass, 30 cm in from its edges; the same
+## spots each time for a given count.
+func _place_drip_spots(count: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	_drip_spots.clear()
+	_drip_next.clear()
+	var half := OPENING_HALF - 0.3
+	for i in count:
+		_drip_spots.append(OPENING_CENTRE + Vector2(rng.randf_range(-half, half), rng.randf_range(-half, half)))
+		_drip_next.append(0.0)
+	_schedule_all()
+
+
+## Each spot's next drop, a random wait away: drips that come at random
+## at an average rate are spaced by waits drawn from an exponential
+## distribution with that mean.
+func _schedule_all() -> void:
+	for i in _drip_next.size():
+		_drip_next[i] = _clock + _wait()
+
+
+func _wait() -> float:
+	if _drip_rate <= 0.0:
+		return INF
+	return -log(1.0 - _drip_rng.randf()) * 60.0 / _drip_rate
+
+
+## Each frame: spots whose time has come let a drop go; falling drops
+## move on under gravity; one that reaches the water lands.
+func _drip(_delta: float) -> void:
+	for i in _drip_spots.size():
+		if _clock >= _drip_next[i]:
+			_drip_next[i] = _clock + _wait()
+			var node := MeshInstance3D.new()
+			node.mesh = _drop_mesh
+			node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			node.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+			add_child(node)
+			_falling.append({"node": node, "x": _drip_spots[i].x, "z": _drip_spots[i].y, "t0": _clock})
+	var still: Array[Dictionary] = []
+	for drop in _falling:
+		var t := _clock - float(drop["t0"])
+		var y := ROOM - 0.03 - 0.5 * 9.8 * t * t
+		var node := drop["node"] as MeshInstance3D
+		if y <= GLASS_TOP:
+			node.queue_free()
+			# It crossed the water a little before this frame.
+			_land(Vector2(drop["x"], drop["z"]), _clock + (y - GLASS_TOP) / maxf(9.8 * t, 0.1))
+		else:
+			node.position = Vector3(drop["x"], y, drop["z"])
+			still.append(drop)
+	_falling = still
+
+
+## A drop reaching the water at `at` at time `when`: its rings go to the
+## shader, over the oldest, and its sound plays there.
+func _land(at: Vector2, when: float) -> void:
+	_landed[_landed_next] = Vector4(at.x, at.y, when, 1.0)
+	_landed_next = (_landed_next + 1) % MAX_DROPS
+	_glass_mat.set_shader_parameter("drops", _landed)
+	var player := _drip_players[_drip_player_next]
+	_drip_player_next = (_drip_player_next + 1) % _drip_players.size()
+	player.stream = load(DROP_SOUNDS[_drip_rng.randi() % DROP_SOUNDS.size()])
+	player.pitch_scale = _drip_rng.randf_range(0.9, 1.1)
+	player.global_position = Vector3(at.x, GLASS_TOP, at.y)
+	player.play()
 
 
 ## ---- the ceiling bulb and its switch ----------------------------------------

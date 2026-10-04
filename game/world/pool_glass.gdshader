@@ -15,6 +15,22 @@ shader_type spatial;
 // it shifts where the picture behind is looked up, as refraction shifts
 // what is seen through water: by the slope times `bend`, the same for
 // near and far things, since the picture holds no depth.
+//
+// Drips add rings to that slope. Each drop (up to MAX_DROPS at once, from
+// LightPool: where it landed, when, how hard) sends out ripples of many
+// wavelengths, each at its own speed, as water's waves do: a ripple of
+// wavenumber k (2 pi over its wavelength) oscillates at w with
+//     w^2 = g k + (sigma / rho) k^3
+// (gravity, and surface tension over density, 7.28e-5 m^3/s^2). Below
+// about 1.7 cm wavelength surface tension rules and shorter ripples are
+// faster. A ripple's energy travels at its group speed dw/dk, so the ring
+// of each wavelength is centred where that speed has carried it, spread
+// over a width that grows with time; within it the crests move at
+// w / k. Rings thin as 1/sqrt(distance) past 5 cm, as a ring's length
+// grows, and
+// each wavelength dies by viscosity at 2 nu k^2 a second (nu, water's,
+// 1e-6 m^2/s), so fine ripples fade first. Eight wavelengths are summed,
+// from 10 cm to 8 mm. The slope is worked out directly from the formula.
 render_mode cull_back;
 
 uniform sampler2D behind : filter_linear, repeat_disable;
@@ -29,6 +45,48 @@ uniform vec2 offset_b = vec2(0.0);
 uniform float ripple_size = 1.5;       // metres of pane to one repeat
 uniform float ripple_strength = 0.3;   // slope at full strength of the maps
 uniform float bend = 0.02;             // screen shift per unit of slope
+const int MAX_DROPS = 32;
+uniform vec4 drops[32];                 // x, z where it landed; when (s); strength, 0 for none
+uniform float now = 0.0;               // the clock the drops' times are on
+uniform float drip_strength = 1.0;
+const float G = 9.8;
+const float SIGMA_RHO = 7.28e-5;
+const float NU = 1e-6;
+const float MAX_AGE = 12.0;
+
+// The slope from every drop's rings at a point of the surface.
+vec2 drip_slope(vec2 at) {
+	vec2 slope = vec2(0.0);
+	for (int d = 0; d < MAX_DROPS; d++) {
+		vec4 drop = drops[d];
+		float age = now - drop.z;
+		if (drop.w <= 0.0 || age <= 0.0 || age > MAX_AGE) {
+			continue;
+		}
+		vec2 off = at - drop.xy;
+		float r = length(off);
+		// No ripple outruns the fastest group speed here, about 0.35 m/s.
+		if (r > age * 0.4 + 0.1) {
+			continue;
+		}
+		vec2 dir = off / max(r, 1e-4);
+		float sum = 0.0;
+		for (int i = 0; i < 8; i++) {
+			float k = 63.0 * pow(12.5, float(i) / 7.0);      // 63 to 785 per metre
+			float w = sqrt(G * k + SIGMA_RHO * k * k * k);
+			float cg = (G + 3.0 * SIGMA_RHO * k * k) / (2.0 * w);
+			float centre = cg * age;
+			float width = 0.03 + 0.25 * centre;
+			float x = (r - centre) / width;
+			float env = exp(-x * x) * exp(-2.0 * NU * k * k * age) / sqrt(1.0 + r / 0.05);
+			// Slope of cos(k r - w t) is -k sin(k r - w t); the amplitude
+			// falls as 1/k, so each wavelength's slope is about the same.
+			sum += -sin(k * r - w * age) * env;
+		}
+		slope += dir * sum * drop.w;
+	}
+	return slope * 0.4 * drip_strength;
+}
 
 varying vec3 world_pos;
 varying vec3 world_normal;
@@ -42,7 +100,7 @@ void fragment() {
 	vec2 p = world_pos.xz / ripple_size;
 	vec2 sa = texture(ripple_a, p + offset_a).xy * 2.0 - 1.0;
 	vec2 sb = texture(ripple_b, p * 0.73 + offset_b).xy * 2.0 - 1.0;
-	vec2 slope = (sa + sb) * 0.5 * ripple_strength;
+	vec2 slope = (sa + sb) * 0.5 * ripple_strength + drip_slope(world_pos.xz);
 	vec2 uv = SCREEN_UV;
 	// Only the pane's top and bottom are water-covered; its edges are not.
 	if (abs(world_normal.y) > 0.5) {
