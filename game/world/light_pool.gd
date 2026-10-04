@@ -1,10 +1,12 @@
 class_name LightPool
 extends Node3D
 ## A closed room ten metres every way, most of its floor a shallow pool
-## whose bottom is glass, lit by one bare lamp in a dark chamber under
-## the glass. Its only light comes up through the water, so the room is
-## lit from below: the ceiling brightest, the walls fading downward, the
-## deck around the pool in the room's own reflected light.
+## whose bottom is one sheet of glass, lit by one bare lamp on a stand
+## in a dark chamber under the room. Its only light comes up through
+## the water, so the room is lit from below: the ceiling brightest, the
+## walls fading downward, the deck around the pool in the room's own
+## reflected light. A stair along the south wall goes down into the
+## chamber.
 ##
 ## The water is a grid of heights stepped by the wave equation each
 ## frame on the GPU (pool_ripples.gdshader, two SubViewports taking
@@ -25,16 +27,27 @@ extends Node3D
 ## the lamp's glass take no part in it.
 
 const ROOM := 10.0                     # inside, every way
-const POOL_HALF := 4.0                 # the pool is 8 m square
+const POOL_HALF := 3.75                # the pool is 7.5 m square
+const POOL_CENTRE := Vector2(0.0, -0.5) # x, z: north of centre, leaving the south walk for the stair
 const WATER_Y := -0.05                 # the deck is at 0
 const GLASS_TOP := -0.35               # 30 cm of water
 const GLASS_BOTTOM := -0.40
-const BEAM_DEPTH := 0.30               # the steel under the glass
-const SLAB_BOTTOM := -0.80
+const LEDGE := 0.1                     # the glass rests this far on the slab all round
+const SLAB_BOTTOM := -0.55             # the deck's underside, the chamber's ceiling
 const CHAMBER_FLOOR := -3.2
-const LAMP := Vector3(0.0, -2.4, 0.0)  # 2 m under the glass
+const LAMP := Vector3(0.0, -2.4, -0.5) # 2 m under the glass's middle, 0.8 m over the chamber floor
+const LAMP_COLOUR := Color(1.0, 0.96, 0.9)
+const LAMP_ENERGY := 60.0
+const BULB_GLOW := 40.0                # the glass's emission
+const CHAMBER_ALBEDO := 0.12           # the chamber's paint, as its colour's channels (sRGB)
 const WALL := 0.3
-const START := Vector3(0.0, 0.0, 4.5)
+const START := Vector3(-2.5, 0.0, 4.3)
+# The stair: 18 risers down the south wall, westward from x = STAIR_TOP.
+const STAIR_TOP := 4.0
+const STAIR_Z := 4.05                  # its north side; the room's wall is its south
+const RISERS := 18
+const GOING := 0.28                    # m, each tread front to back
+const HOLE_WEST := -0.3                # the deck's opening ends here: 2 m headroom past it
 const SIM_SIZE := 256                  # ripple texels across the pool
 const CAUSTIC_SIZE := 512              # texels across each face
 const WAVE_SPEED := 0.6                # m/s, the ripples' speed
@@ -140,7 +153,8 @@ func _pushes(delta: float) -> Array[Vector4]:
 	var landing := _fall if grounded else 0.0
 	_fall = 0.0 if grounded else maxf(-player.velocity.y, _fall)
 	var feet := player.global_position
-	var wading := absf(feet.x) < POOL_HALF and absf(feet.z) < POOL_HALF and feet.y < WATER_Y
+	var rel := Vector2(feet.x, feet.z) - POOL_CENTRE
+	var wading := absf(rel.x) < POOL_HALF and absf(rel.y) < POOL_HALF and feet.y < WATER_Y and feet.y > GLASS_BOTTOM - 0.2
 	if wading != _wading:
 		_wading = wading
 		player.use_steps("wade" if wading else "")
@@ -159,7 +173,7 @@ func _pushes(delta: float) -> Array[Vector4]:
 	var side := player.global_transform.basis.x * LEG_APART
 	for i in 2:
 		var leg := feet + side * (1.0 if i == 0 else -1.0)
-		var uv := Vector2(leg.x, leg.z) / (2.0 * POOL_HALF) + Vector2(0.5, 0.5)
+		var uv := (Vector2(leg.x, leg.z) - POOL_CENTRE) / (2.0 * POOL_HALF) + Vector2(0.5, 0.5)
 		out[i] = Vector4(uv.x, uv.y, radius, depth)
 	return out
 
@@ -241,6 +255,7 @@ func _build_room() -> void:
 		mat.set_shader_parameter("glass_y", GLASS_BOTTOM)
 		mat.set_shader_parameter("water_y", WATER_Y)
 		mat.set_shader_parameter("pool_half", POOL_HALF)
+		mat.set_shader_parameter("pool_centre", POOL_CENTRE)
 		mat.set_shader_parameter("n_mask", n)
 		mat.set_shader_parameter("u_mask", u)
 		mat.set_shader_parameter("v_mask", v)
@@ -269,6 +284,13 @@ func _build_room() -> void:
 
 ## A box drawn and solid.
 func _slab(centre: Vector3, size: Vector3, mat: Material) -> MeshInstance3D:
+	var mi := _shape(centre, size, mat)
+	_solid(centre, size, Basis.IDENTITY)
+	return mi
+
+
+## A box drawn only.
+func _shape(centre: Vector3, size: Vector3, mat: Material) -> MeshInstance3D:
 	var box := BoxMesh.new()
 	box.size = size
 	var mi := MeshInstance3D.new()
@@ -276,77 +298,172 @@ func _slab(centre: Vector3, size: Vector3, mat: Material) -> MeshInstance3D:
 	mi.material_override = mat
 	mi.position = centre
 	add_child(mi)
+	return mi
+
+
+## A box solid only.
+func _solid(centre: Vector3, size: Vector3, basis: Basis) -> void:
 	var body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
 	bs.size = size
 	shape.shape = bs
 	body.add_child(shape)
-	body.position = centre
+	body.transform = Transform3D(basis, centre)
 	add_child(body)
-	return mi
+
+
+## A slab between two corners.
+func _slab_between(lo: Vector3, hi: Vector3, mat: Material) -> void:
+	_slab((lo + hi) * 0.5, hi - lo, mat)
 
 
 ## ---- the pool --------------------------------------------------------------
 
-## The deck is four slabs round the pool, their inner faces its sides;
-## the glass sits on a 2 m grid of steel that spans the chamber below.
+## The deck is a slab round the pool in two layers: stone down to the
+## glass, its inner faces the pool's sides, and concrete under it
+## reaching LEDGE further in, on which the glass rests. The glass is one
+## sheet, unsupported between its edges. The deck is open over the
+## stair along the south wall.
 func _build_pool() -> void:
 	var stone := _stone()
-	var h := ROOM * 0.5
-	var ring := h - POOL_HALF
-	var depth := -SLAB_BOTTOM
-	var y := SLAB_BOTTOM * 0.5
-	_slab(Vector3(0.0, y, POOL_HALF + ring * 0.5), Vector3(ROOM, depth, ring), stone)
-	_slab(Vector3(0.0, y, -POOL_HALF - ring * 0.5), Vector3(ROOM, depth, ring), stone)
-	_slab(Vector3(POOL_HALF + ring * 0.5, y, 0.0), Vector3(ring, depth, 2.0 * POOL_HALF), stone)
-	_slab(Vector3(-POOL_HALF - ring * 0.5, y, 0.0), Vector3(ring, depth, 2.0 * POOL_HALF), stone)
+	var concrete := StandardMaterial3D.new()
+	concrete.albedo_color = Color(0.30, 0.30, 0.29)
+	concrete.roughness = 0.9
+	_deck_layer(GLASS_BOTTOM, 0.0, 0.0, stone)
+	_deck_layer(SLAB_BOTTOM, GLASS_BOTTOM, LEDGE, concrete)
 
 	# The glass: solid to walk on, drawn by the water above it.
-	var glass := StaticBody3D.new()
-	var shape := CollisionShape3D.new()
-	var bs := BoxShape3D.new()
-	bs.size = Vector3(2.0 * POOL_HALF, GLASS_TOP - GLASS_BOTTOM, 2.0 * POOL_HALF)
-	shape.shape = bs
-	glass.add_child(shape)
-	glass.position.y = (GLASS_TOP + GLASS_BOTTOM) * 0.5
-	add_child(glass)
-
-	var steel := StandardMaterial3D.new()
-	steel.albedo_color = Color(0.16, 0.16, 0.17)
-	steel.metallic = 0.6
-	steel.roughness = 0.45
-	var by := GLASS_BOTTOM - BEAM_DEPTH * 0.5
-	for k in [-2.0, 0.0, 2.0]:
-		var at: float = k
-		_slab(Vector3(at, by, 0.0), Vector3(0.08, BEAM_DEPTH, 2.0 * POOL_HALF), steel)
-		_slab(Vector3(0.0, by, at), Vector3(2.0 * POOL_HALF, BEAM_DEPTH, 0.08), steel)
-
-	# The chamber under the glass, painted dark.
-	var dark := StandardMaterial3D.new()
-	dark.albedo_color = Color(0.06, 0.06, 0.06)
-	dark.roughness = 0.9
-	var ch := SLAB_BOTTOM - CHAMBER_FLOOR
-	var cy := (SLAB_BOTTOM + CHAMBER_FLOOR) * 0.5
 	var span := 2.0 * POOL_HALF
-	_slab(Vector3(0.0, CHAMBER_FLOOR - 0.15, 0.0), Vector3(span + 0.6, 0.3, span + 0.6), dark)
-	_slab(Vector3(POOL_HALF + 0.15, cy, 0.0), Vector3(0.3, ch, span), dark)
-	_slab(Vector3(-POOL_HALF - 0.15, cy, 0.0), Vector3(0.3, ch, span), dark)
-	_slab(Vector3(0.0, cy, POOL_HALF + 0.15), Vector3(span + 0.6, ch, 0.3), dark)
-	_slab(Vector3(0.0, cy, -POOL_HALF - 0.15), Vector3(span + 0.6, ch, 0.3), dark)
+	_solid(Vector3(POOL_CENTRE.x, (GLASS_TOP + GLASS_BOTTOM) * 0.5, POOL_CENTRE.y),
+		Vector3(span, GLASS_TOP - GLASS_BOTTOM, span), Basis.IDENTITY)
+
+	# The chamber: the room's whole footprint under the deck, painted dark.
+	var h := ROOM * 0.5
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(CHAMBER_ALBEDO, CHAMBER_ALBEDO, CHAMBER_ALBEDO)
+	dark.roughness = 0.9
+	_slab_between(Vector3(-h - WALL, CHAMBER_FLOOR - WALL, -h - WALL), Vector3(h + WALL, CHAMBER_FLOOR, h + WALL), dark)
+	_slab_between(Vector3(h, CHAMBER_FLOOR, -h - WALL), Vector3(h + WALL, 0.0, h + WALL), dark)
+	_slab_between(Vector3(-h - WALL, CHAMBER_FLOOR, -h - WALL), Vector3(-h, 0.0, h + WALL), dark)
+	_slab_between(Vector3(-h, CHAMBER_FLOOR, h), Vector3(h, 0.0, h + WALL), dark)
+	_slab_between(Vector3(-h, CHAMBER_FLOOR, -h - WALL), Vector3(h, 0.0, -h), dark)
+
+	_build_stair(concrete)
 
 	var water := PlaneMesh.new()
 	water.size = Vector2(span, span)
 	_water_mat = ShaderMaterial.new()
 	_water_mat.shader = load("res://world/pool_water.gdshader")
 	_water_mat.set_shader_parameter("pool_half", POOL_HALF)
+	_water_mat.set_shader_parameter("pool_centre", POOL_CENTRE)
+	_water_mat.set_shader_parameter("lamp", LAMP)
+	_water_mat.set_shader_parameter("lamp_light", _linear(LAMP_COLOUR) * LAMP_ENERGY)
+	_water_mat.set_shader_parameter("bulb_glow", _linear(LAMP_COLOUR) * BULB_GLOW)
+	_water_mat.set_shader_parameter("chamber_floor", CHAMBER_FLOOR)
+	_water_mat.set_shader_parameter("chamber_half", ROOM * 0.5)
+	_water_mat.set_shader_parameter("chamber_albedo", Color(CHAMBER_ALBEDO, 0, 0).srgb_to_linear().r)
 	var wi := MeshInstance3D.new()
 	wi.mesh = water
 	wi.material_override = _water_mat
-	wi.position.y = WATER_Y
+	wi.position = Vector3(POOL_CENTRE.x, WATER_Y, POOL_CENTRE.y)
 	wi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	wi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 	add_child(wi)
+
+
+## One layer of the deck from y0 to y1, round the pool shrunk by inset,
+## and open over the stair.
+func _deck_layer(y0: float, y1: float, inset: float, mat: Material) -> void:
+	var h := ROOM * 0.5
+	var x0 := POOL_CENTRE.x - POOL_HALF + inset
+	var x1 := POOL_CENTRE.x + POOL_HALF - inset
+	var z0 := POOL_CENTRE.y - POOL_HALF + inset
+	var z1 := POOL_CENTRE.y + POOL_HALF - inset
+	_slab_between(Vector3(-h, y0, -h), Vector3(x0, y1, z1), mat)
+	_slab_between(Vector3(x1, y0, -h), Vector3(h, y1, z1), mat)
+	_slab_between(Vector3(x0, y0, -h), Vector3(x1, y1, z0), mat)
+	_slab_between(Vector3(-h, y0, z1), Vector3(h, y1, STAIR_Z), mat)
+	_slab_between(Vector3(-h, y0, STAIR_Z), Vector3(HOLE_WEST, y1, h), mat)
+	_slab_between(Vector3(STAIR_TOP, y0, STAIR_Z), Vector3(h, y1, h), mat)
+
+
+## The stair down to the chamber: solid concrete steps against the south
+## wall, a railing up their open side, and a railing round the opening
+## above. The steps are drawn; what the
+## player walks on is a ramp through their front edges, since a body
+## that slides cannot climb a step.
+func _build_stair(concrete: Material) -> void:
+	var h := ROOM * 0.5
+	var rise := -CHAMBER_FLOOR / RISERS
+	var width := h - STAIR_Z
+	for i in range(1, RISERS):
+		var x1 := STAIR_TOP - (i - 1) * GOING
+		var y1 := -i * rise
+		_shape(Vector3(x1 - GOING * 0.5, (CHAMBER_FLOOR + y1) * 0.5, STAIR_Z + width * 0.5),
+			Vector3(GOING, y1 - CHAMBER_FLOOR, width), concrete)
+	var foot := STAIR_TOP - (RISERS - 1) * GOING
+	var run := STAIR_TOP - foot
+	var angle := atan2(-CHAMBER_FLOOR, run)
+	var dir := Vector3(cos(angle), sin(angle), 0.0)
+	var normal := Vector3(-sin(angle), cos(angle), 0.0)
+	# From the deck's edge to 0.3 m past the foot, buried in the floor
+	# there, so the walk off is smooth.
+	var length := Vector2(run, -CHAMBER_FLOOR).length() + 0.3
+	var mid := Vector3((STAIR_TOP + foot) * 0.5, CHAMBER_FLOOR * 0.5, STAIR_Z + width * 0.5) - dir * 0.15
+	_solid(mid - normal * 0.1, Vector3(length, 0.2, width), Basis(Vector3.BACK, angle))
+	var steel := _steel()
+	_stair_rail(Vector3(STAIR_TOP, 0.0, STAIR_Z + 0.03), Vector3(foot, CHAMBER_FLOOR, STAIR_Z + 0.03), steel)
+	_railing(Vector3(HOLE_WEST, 0.0, STAIR_Z - 0.03), Vector3(STAIR_TOP, 0.0, STAIR_Z - 0.03), steel)
+	_railing(Vector3(HOLE_WEST - 0.03, 0.0, STAIR_Z), Vector3(HOLE_WEST - 0.03, 0.0, h), steel)
+
+
+## A railing a metre high from a to b on the deck: posts no more than
+## 1.2 m apart, a top rail and a middle rail, solid to its full height.
+func _railing(a: Vector3, b: Vector3, mat: Material) -> void:
+	var along := b - a
+	var length := along.length()
+	var across := along.x == 0.0
+	var posts := int(ceil(length / 1.2)) + 1
+	for i in posts:
+		var p := a + along * (float(i) / (posts - 1))
+		_shape(p + Vector3(0.0, 0.5, 0.0), Vector3(0.04, 1.0, 0.04), mat)
+	for y: float in [0.5, 1.0]:
+		var size := Vector3(0.04, 0.04, length) if across else Vector3(length, 0.04, 0.04)
+		_shape((a + b) * 0.5 + Vector3(0.0, y, 0.0), size, mat)
+	var wall := Vector3(0.05, 1.0, length) if across else Vector3(length, 1.0, 0.05)
+	_solid((a + b) * 0.5 + Vector3(0.0, 0.5, 0.0), wall, Basis.IDENTITY)
+
+
+## The railing up the stair's open side, from a at the top to b at the
+## foot along the line of the steps' front edges: posts no more than
+## 1.2 m apart, a handrail 0.9 m over that line, solid a metre up.
+func _stair_rail(a: Vector3, b: Vector3, mat: Material) -> void:
+	var along := a - b
+	var length := along.length()
+	var angle := atan2(along.y, along.x)
+	var basis := Basis(Vector3.BACK, angle)
+	var posts := int(ceil(length / 1.2)) + 1
+	for i in posts:
+		var p := b + along * (float(i) / (posts - 1))
+		_shape(p + Vector3(0.0, 0.45, 0.0), Vector3(0.04, 0.9, 0.04), mat)
+	var rail := _shape((a + b) * 0.5 + Vector3(0.0, 0.9, 0.0), Vector3(length, 0.04, 0.04), mat)
+	rail.basis = basis
+	_solid((a + b) * 0.5 + Vector3(0.0, 0.5, 0.0), Vector3(length, 1.0, 0.05), basis)
+
+
+## A colour as stored (sRGB) in the linear values a shader works in.
+func _linear(c: Color) -> Vector3:
+	var l := c.srgb_to_linear()
+	return Vector3(l.r, l.g, l.b)
+
+
+func _steel() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.18, 0.18, 0.19)
+	m.metallic = 0.7
+	m.roughness = 0.4
+	return m
 
 
 ## Limestone tiles, laid in world space so the slabs' tiles line up.
@@ -364,11 +481,31 @@ func _stone() -> StandardMaterial3D:
 
 ## ---- the lamp --------------------------------------------------------------
 
+## The lamp: a bare bulb on a slim steel stand from the chamber floor.
 func _build_lamp() -> void:
+	var steel := _steel()
+	var stem_h := LAMP.y - 0.06 - CHAMBER_FLOOR
+	var stem := CylinderMesh.new()
+	stem.top_radius = 0.012
+	stem.bottom_radius = 0.012
+	stem.height = stem_h
+	var base := CylinderMesh.new()
+	base.top_radius = 0.14
+	base.bottom_radius = 0.15
+	base.height = 0.02
+	for part: Array in [[stem, CHAMBER_FLOOR + stem_h * 0.5], [base, CHAMBER_FLOOR + 0.01]]:
+		var mesh: CylinderMesh = part[0]
+		mesh.material = steel
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.position = Vector3(LAMP.x, part[1], LAMP.z)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+	_solid(Vector3(LAMP.x, CHAMBER_FLOOR + 0.5, LAMP.z), Vector3(0.3, 1.0, 0.3), Basis.IDENTITY)
 	var light := OmniLight3D.new()
 	light.position = LAMP
-	light.light_color = Color(1.0, 0.96, 0.9)
-	light.light_energy = 60.0
+	light.light_color = LAMP_COLOUR
+	light.light_energy = LAMP_ENERGY
 	light.omni_range = 40.0
 	light.omni_attenuation = 2.0
 	light.shadow_enabled = true
@@ -376,8 +513,8 @@ func _build_lamp() -> void:
 	var glow := StandardMaterial3D.new()
 	glow.albedo_color = Color(1, 1, 1)
 	glow.emission_enabled = true
-	glow.emission = Color(1.0, 0.96, 0.9)
-	glow.emission_energy_multiplier = 40.0
+	glow.emission = LAMP_COLOUR
+	glow.emission_energy_multiplier = BULB_GLOW
 	var bulb := SphereMesh.new()
 	bulb.radius = 0.06
 	bulb.height = 0.12

@@ -15,6 +15,9 @@ const VIEWS := [
 	["ceiling", 70.0, Vector3(3.5, 1.6, 4.2), Vector3(-1.0, 10.0, -2.0)],
 	["water", 60.0, Vector3(4.4, 1.6, 4.4), Vector3(0.0, -0.3, 0.0)],
 	["corner", 75.0, Vector3(4.6, 8.5, 4.6), Vector3(-3.0, 0.0, -3.0)],
+	["stair", 70.0, Vector3(4.6, 1.6, 3.6), Vector3(0.0, -2.2, 4.5)],
+	["chamber", 75.0, Vector3(-1.5, -1.6, 4.5), Vector3(2.0, -2.0, -3.0)],
+	["under", 75.0, Vector3(-4.0, -1.6, -4.0), Vector3(1.0, -0.8, 1.0)],
 ]
 
 var _world: LightPool

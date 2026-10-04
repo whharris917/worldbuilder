@@ -22,6 +22,7 @@ uniform vec3 lamp = vec3(0.0, -2.4, 0.0);
 uniform float glass_y = -0.4;
 uniform float water_y = -0.05;
 uniform float pool_half = 4.0;
+uniform vec2 pool_centre = vec2(0.0);       // x, z
 // The face: its plane is dot(p, n_mask) == plane, facing the room along
 // sgn * n_mask; u_mask and v_mask pick the coordinates across it, and
 // the texture covers centre +- half in those.
@@ -41,7 +42,7 @@ const float WATER_N = 1.333;
 varying float bright;
 
 float height(vec2 xz) {
-	return textureLod(ripples, xz / (2.0 * pool_half) + 0.5, 0.0).r;
+	return textureLod(ripples, (xz - pool_centre) / (2.0 * pool_half) + 0.5, 0.0).r;
 }
 
 // The ray through the glass at xz: where it leaves the water (s), its
@@ -80,9 +81,9 @@ void vertex() {
 	vec3 s, da, s0, i;
 	vec3 sx, dax, s0x, ix;
 	vec3 sz, daz, s0z, iz;
-	trace(VERTEX.xz, s, da, s0, i);
-	trace(VERTEX.xz + vec2(cell, 0.0), sx, dax, s0x, ix);
-	trace(VERTEX.xz + vec2(0.0, cell), sz, daz, s0z, iz);
+	trace(VERTEX.xz + pool_centre, s, da, s0, i);
+	trace(VERTEX.xz + pool_centre + vec2(cell, 0.0), sx, dax, s0x, ix);
+	trace(VERTEX.xz + pool_centre + vec2(0.0, cell), sz, daz, s0z, iz);
 	float level = area(meet(s0, i), meet(s0x, ix), meet(s0z, iz));
 	bright = 0.0;
 	if (dot(da, da) > 0.5 && dot(dax, dax) > 0.5 && dot(daz, daz) > 0.5) {
