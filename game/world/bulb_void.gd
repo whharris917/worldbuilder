@@ -1764,7 +1764,7 @@ func _build_sound(root: Control) -> Control:
 	_switch(column, "Swooshes", func(_on: bool) -> void: pass)
 	_slider(column, "Swoosh level (dB)", -24.0, 12.0, 0.5, 0.0, func(_v: float) -> void: pass)
 	_defaults["Swoosh level (dB)"] = 0.0
-	_note(column, "Air rushing past the ball and the bulb, quiet: its power grows as speed to the sixth times the frontal area, so twice as fast is 18 dB louder, and the bulb, being small, is a whisper some 28 dB under the ball. Its pitch goes as speed over size: the ball rushes low, the bulb a little higher.")
+	_note(column, "Air rushing past the ball and the bulb, heard only when they move fast: its power grows as speed to the sixth times the frontal area, so twice as fast is 18 dB louder, and the bulb, being small, is near silent. A broad rush with no pitch, its upper edge rising with speed over size, fluttering as turbulence does.")
 	_switch(column, "Knocks", func(_on: bool) -> void: pass)
 	_note(column, "The ball striking the wall, loud as the speed it struck at: twice as fast, 6 dB louder. Raise the ball's hook speed under Motion to make it swing into the wall.")
 	_choice(column, "Spreading", ["1/d", "1/d²", "Log", "None"], func(option: String) -> void: _radio.spreading = option)
@@ -1815,20 +1815,24 @@ func _hear(delta: float) -> void:
 ## The rush of air past the ball and the bulb as they move. The noise is
 ## the turbulent wake's (dipole flow noise, after Curle): its power
 ## grows as speed^6 times frontal area, so its amplitude goes as U^3 D:
-## level = 60 log10(U / 3 m/s) + 20 log10(D / 1 m) - 30 dB, plus the
-## slider, never above -6 dB: the ball's rush about -34 dB at 2 m/s,
-## -24 at 3, -16 at 4; the bulb's a whisper some 28 dB under it. Under
-## about 1.2 m/s it fades out, so a slow swing is silent. Its pitch goes as U / D, the
-## Strouhal relation; the true shedding tone for bodies this size lies
-## under 1 Hz, so what is heard is the turbulence's broadband noise above
-## it, in a broad band at 80 (U / D)^0.45 Hz: about 95 Hz for the ball,
-## 400 Hz for the bulb (a narrow band up at 2 to 4 kHz sounded like
-## compressed air). Speed is the body's own through the air, the hook's motion
-## included, eased over a tenth of a second. Each plays from its body
-## through the radio's path to the ear, so the room's reverb and the
+## level = 60 log10(U / 3 m/s) + 20 log10(D / 1 m) - 42 dB, plus the
+## slider, never above -18 dB: the ball's rush about -36 dB at 3 m/s and
+## -28 at 4; the bulb's some 28 dB under it. Under about 1.2 m/s it fades
+## out. The noise is broadband, with no centre pitch: a gentle low-pass
+## whose edge rises as (U / D)^0.45 (the Strouhal relation; the true
+## shedding tone for bodies this size lies under 1 Hz), about 300 Hz for
+## the ball at full swing, and a high-pass two and a half octaves under
+## it. A band-pass in its place, narrow in hertz at these low pitches,
+## turned the noise into a hum like a foghorn. The loudness flutters by
+## about 3 dB at a few hertz, as turbulence does, so it never settles
+## into a tone. Speed is the body's own through the air, the hook's
+## motion included, eased over a tenth of a second. Each plays from its
+## body through the radio's path to the ear, so the room's reverb and the
 ## wall's muffling apply (for the bulb, as if it stood where the ball does).
 const SWOOSH_BUSES: Array[String] = ["BulbSwooshBall", "BulbSwooshBulb"]
 var _swooshes: Array[Dictionary] = []
+var _flutter := FastNoiseLite.new()
+var _flutter_t := 0.0
 
 
 func _build_swooshes() -> void:
@@ -1838,6 +1842,7 @@ func _build_swooshes() -> void:
 	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	stream.loop_begin = 0
 	stream.loop_end = int(stream.get_length() * stream.mix_rate)
+	_flutter.frequency = 1.0
 	var specs := [[SWOOSH_BUSES[0], _ball_swing, 2.0, _ball], [SWOOSH_BUSES[1], _bulb_swing, 0.08, _bulb]]
 	for spec: Array in specs:
 		var bus_name := str(spec[0])
@@ -1846,7 +1851,8 @@ func _build_swooshes() -> void:
 			AudioServer.add_bus(i)
 			AudioServer.set_bus_name(i, bus_name)
 			AudioServer.set_bus_send(i, "BulbRadio")
-			AudioServer.add_bus_effect(i, AudioEffectBandPassFilter.new())
+			AudioServer.add_bus_effect(i, AudioEffectHighPassFilter.new())
+			AudioServer.add_bus_effect(i, AudioEffectLowPassFilter.new())
 		var idx := AudioServer.get_bus_index(bus_name)
 		var player := AudioStreamPlayer3D.new()
 		player.stream = stream
@@ -1858,13 +1864,15 @@ func _build_swooshes() -> void:
 		player.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_PHYSICS_STEP
 		(spec[3] as Node3D).add_child(player)
 		player.play()
-		_swooshes.append({"player": player, "band": AudioServer.get_bus_effect(idx, 0), "swing": spec[1],
-			"size": float(spec[2]), "speed": 0.0})
+		_swooshes.append({"player": player, "high": AudioServer.get_bus_effect(idx, 0),
+			"low": AudioServer.get_bus_effect(idx, 1), "swing": spec[1], "size": float(spec[2]), "speed": 0.0,
+			"seed": float(_swooshes.size()) * 97.0})
 
 
 func _swoosh(delta: float) -> void:
 	var on := (_switches["Swooshes"] as CheckButton).button_pressed
 	var level := float((_sliders["Swoosh level (dB)"] as HSlider).value)
+	_flutter_t += delta
 	for sw: Dictionary in _swooshes:
 		var u := (sw["swing"] as Pendulum).velocity().length() if not _still else 0.0
 		var speed := lerpf(float(sw["speed"]), u, 1.0 - exp(-delta / 0.1))
@@ -1874,12 +1882,15 @@ func _swoosh(delta: float) -> void:
 		if not on or speed < 0.05:
 			player.volume_db = -80.0
 			continue
-		var db := 60.0 * log(speed / 3.0) / log(10.0) + 20.0 * log(size) / log(10.0) - 30.0 + level
+		var db := 60.0 * log(speed / 3.0) / log(10.0) + 20.0 * log(size) / log(10.0) - 42.0 + level
 		db += 20.0 * log(maxf(smoothstep(0.8, 1.6, speed), 0.0001)) / log(10.0)
-		player.volume_db = clampf(db, -80.0, -6.0 + level)
-		var band := sw["band"] as AudioEffectBandPassFilter
-		band.cutoff_hz = clampf(80.0 * pow(speed / size, 0.45), 40.0, 3000.0)
-		band.resonance = 0.2
+		db += 3.0 * _flutter.get_noise_1d(_flutter_t * 4.0 + float(sw["seed"]))
+		player.volume_db = clampf(db, -80.0, -18.0 + level)
+		var edge := clampf(250.0 * pow(speed / size, 0.45), 120.0, 4000.0)
+		(sw["low"] as AudioEffectLowPassFilter).cutoff_hz = edge
+		(sw["low"] as AudioEffectLowPassFilter).resonance = 0.3
+		(sw["high"] as AudioEffectHighPassFilter).cutoff_hz = edge / 6.0
+		(sw["high"] as AudioEffectHighPassFilter).resonance = 0.3
 
 
 ## ---- the terrain panel -----------------------------------------------------
