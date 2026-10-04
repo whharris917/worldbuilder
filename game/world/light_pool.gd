@@ -18,8 +18,9 @@ extends Node3D
 ## enters the bounce only. Light: the bounce method (None, SDFGI, or a
 ## VoxelGI box around the room and the chamber, baked each time it is
 ## chosen; VoxelGI to begin), the bounce traced at half the screen's
-## resolution (on to begin) and VoxelGI's quality (Low to begin, the
-## engine's default), SSIL and SSAO, and the tone curve (AgX to begin).
+## resolution (on to begin), SDFGI's smallest cell (0.2 m to begin, the
+## engine's default, which here gives no bounce), VoxelGI's quality (Low
+## to begin, the engine's default), SSIL and SSAO, and the tone curve (AgX to begin).
 ## Viewport: dithering (1 key) and the shadow atlas (2 key: 4096, 8192,
 ## 16384 texels square). Dithering, the atlas, half
 ## resolution and VoxelGI quality are engine-wide and put back as found
@@ -61,6 +62,7 @@ var _bounce := "None"                   # None, SDFGI or VoxelGI
 var _status: Label
 var _bounce_box: VBoxContainer
 var _indirect_box: VBoxContainer
+var _sdfgi_box: VBoxContainer
 var _voxel_box: VBoxContainer
 var _atlas_button: Button
 var _was: Dictionary = {}               # the engine-wide settings as found
@@ -141,6 +143,10 @@ func _build_panels() -> void:
 	_panel.switch(_bounce_box, "Half resolution", true, func(on: bool) -> void:
 		RenderingServer.gi_set_use_half_resolution(on))
 	_panel.note(_bounce_box, "Traces the bounce for every other pixel each way and fills in between: about a quarter of the cost, softer at edges.")
+	_sdfgi_box = _panel.box(light)
+	_panel.slider(_sdfgi_box, "SDFGI smallest cell (m)", 0.05, 1.0, 0.01, 0.2, func(v: float) -> void:
+		_env.sdfgi_min_cell_size = v)
+	_panel.note(_sdfgi_box, "SDFGI divides the space round the camera into cells, each further ring of them twice the size of the last. This is the size nearest the camera: smaller is finer and reaches less far. In this room the engine's default, 0.2 m, gives no bounce at all; every wall, the deck and the ceiling lie on 0.2 m multiples. Any other size works.")
 	_voxel_box = _panel.box(light)
 	_panel.choice(_voxel_box, "VoxelGI quality", ["Low", "High"], "Low", func(option: String) -> void:
 		RenderingServer.voxel_gi_set_quality(RenderingServer.VOXEL_GI_QUALITY_HIGH if option == "High"
@@ -192,6 +198,7 @@ func _refresh() -> void:
 		return
 	_panel.enable(_bounce_box, _bounce != "None")
 	_panel.enable(_indirect_box, _bounce != "None")
+	_panel.enable(_sdfgi_box, _bounce == "SDFGI")
 	_panel.enable(_voxel_box, _bounce == "VoxelGI")
 	var text := ""
 	match _bounce:
@@ -234,6 +241,7 @@ func _reset() -> void:
 	(_panel.sliders["Energy"] as HSlider).value = LAMP_ENERGY
 	(_panel.sliders["Indirect energy"] as HSlider).value = 1.0
 	(_panel.switches["Half resolution"] as CheckButton).button_pressed = true
+	(_panel.sliders["SDFGI smallest cell (m)"] as HSlider).value = 0.2
 	(_panel.switches["SSIL"] as CheckButton).button_pressed = false
 	(_panel.switches["SSAO"] as CheckButton).button_pressed = false
 	_panel.pick("VoxelGI quality", "Low")
