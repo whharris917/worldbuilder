@@ -26,7 +26,7 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/bulb_void.tscn"},
 	{"title": "LIGHT POOL", "note": "A closed white room open in its floor onto a dark chamber, lit only by a lamp below.",
 		"scene": "res://world/light_pool.tscn"},
-	{"title": "MOVEMENT", "note": "Open grassy hills under a clear sky, with nothing else in them; for trying out how you move.",
+	{"title": "MOVEMENT", "note": "Open grassy hills under the sky, with nothing else in them; for trying out how you move.",
 		"scene": "res://world/movement.tscn"},
 ]
 
