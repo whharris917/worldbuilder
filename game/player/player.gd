@@ -270,6 +270,12 @@ func _play(stream: AudioStream, pitch: float) -> void:
 	_steps.play()
 
 
+## The player that sounds the footsteps and landings, for a world that
+## echoes them.
+func step_player() -> AudioStreamPlayer:
+	return _steps
+
+
 ## The view under the crosshair, or null.
 func look_view() -> Node3D:
 	if not ray.is_colliding():

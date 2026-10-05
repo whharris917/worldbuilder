@@ -35,6 +35,15 @@ Writes to game/audio/:
                   shifting, a wet squelch, a bubble
   drip_1..4.wav   a drop falling into water: a short tap, then the plink
                   of the air bubble it traps, its pitch rising as it closes
+  shell_shift_1..5.wav  a stone bowl hundreds of metres across jolted onto
+                  a new axis: a grinding shudder, then the bowl ringing in
+                  its own beating partials for many seconds, deeper the
+                  larger the bowl
+  shell_drone_loop.wav  16 s seamless hollow drone of a turning bowl:
+                  harmonic and bowl partials in slowly beating pairs over a
+                  breathing band of air
+  shell_light.wav a high glassy chord swelling in and dying away, for the
+                  sun breaking through every bowl to the centre
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -1089,6 +1098,143 @@ def make_drips() -> None:
         make_drip(OUT_DIR / f"drip_{idx}.wav", r)
 
 
+# A free-edged bowl rings in partials that are not harmonics: the ratios
+# of a struck singing bowl, rounded. Each partial is a pair a fraction
+# of a percent apart, so it beats: the slow "wah" a bowl is known by.
+BOWL_RATIOS = [1.0, 2.71, 5.15, 8.43, 12.5, 17.3, 22.8]
+
+
+def make_shell_shift(path: Path, r: random.Random, f0: float) -> None:
+    """A stone bowl hundreds of metres across jolted onto a new axis. A
+    grinding shudder through the mass for the first second (noise from
+    about 30 to 300 Hz, rough, with grit crushed at the start); the
+    stress let go as a slight downward glide of every partial over half
+    a second; then the bowl ringing in its own partials, each a beating
+    pair, the low ones for many seconds and the high ones for one or
+    two. Saturated gently so the deep ones are heard by their
+    harmonics on small speakers. Its own generator."""
+    duration = 9.0
+    n = int(duration * SR)
+    noise = _noise_r(r, n)
+    a_hi = 1.0 - math.exp(-2.0 * math.pi * 300.0 / SR)
+    a_lo = 1.0 - math.exp(-2.0 * math.pi * 30.0 / SR)
+    low = _lowpass(_lowpass(_lowpass(_lowpass(noise, a_hi), a_hi), a_hi), a_hi)
+    under = _lowpass(low, a_lo)
+    grind = [low[i] - under[i] for i in range(n)]
+    # The grind is rough: its loudness flickers about 14 times a second.
+    flutter = _lowpass(_noise_r(r, n), 1.0 - math.exp(-2.0 * math.pi * 14.0 / SR))
+    grit = [0.0] * n
+    for _ in range(60):
+        at = int(r.random() ** 1.5 * 0.4 * SR)
+        grit[at] += (r.random() * 2.0 - 1.0)
+    soft = 1.0 - math.exp(-2.0 * math.pi * 1200.0 / SR)
+    grit = _lowpass(_lowpass(_lowpass(grit, soft), soft), soft)
+    partials = []
+    for k, ratio in enumerate(BOWL_RATIOS):
+        f = f0 * ratio
+        if f > 4000.0:
+            break
+        amp = 1.0 / (1.0 + 0.55 * k)
+        decay = 0.35 + 0.5 * k               # per second: low ones ring longest
+        beat = r.uniform(0.15, 0.6)          # Hz between the pair
+        partials.append((f, amp, decay, beat, r.uniform(0.0, math.tau)))
+    phases = [0.0] * len(partials)
+    phases_b = [0.0] * len(partials)
+    buf = [0.0] * n
+    for i in range(n):
+        t = i / SR
+        glide = 1.0 - 0.02 * (1.0 - math.exp(-t / 0.5))
+        ring = 0.0
+        swell = min(1.0, t / 0.12)
+        for k, (f, amp, decay, beat, ph) in enumerate(partials):
+            phases[k] += 2.0 * math.pi * f * glide / SR
+            phases_b[k] += 2.0 * math.pi * (f + beat) * glide / SR
+            ring += amp * math.exp(-decay * t) * (math.sin(phases[k]) + math.sin(phases_b[k] + ph))
+        shudder = grind[i] * 400.0 * (0.4 + 0.6 * min(1.0, abs(flutter[i]) * 8.0)) * math.exp(-t * 2.5) * min(1.0, t / 0.03)
+        buf[i] = ring * swell + shudder + grit[i] * 30.0
+    peak = max(abs(v) for v in buf)
+    drive = 1.3
+    buf = [math.tanh(drive * v / peak) / math.tanh(drive) for v in buf]
+    # The last half second fades to nothing.
+    fade = int(0.5 * SR)
+    for i in range(fade):
+        buf[n - 1 - i] *= i / fade
+    write_wav(path, [buf], normalize_to=0.9)
+
+
+def make_shell_shifts() -> None:
+    r = random.Random(20261005)
+    for idx, f0 in enumerate([58.0, 44.0, 34.0, 27.0, 21.0], start=1):
+        make_shell_shift(OUT_DIR / f"shell_shift_{idx}.wav", r, f0)
+
+
+def make_shell_drone() -> None:
+    """The hum of a bowl turning: harmonic partials of 55 Hz mixed with
+    the bowl's own, each a pair beating slowly (every frequency a whole
+    number of cycles in the loop, so it is seamless), the pairs swelling
+    and fading on slow cycles of their own; under them a breathing band
+    of air, 200 to 900 Hz. The game sets its pitch by how fast the bowl
+    turns. Its own generator."""
+    r = random.Random(20261006)
+    duration = 16.0
+    n = int(duration * SR)
+    buf = [0.0] * n
+    base = 55.0
+    for k, (ratio, amp) in enumerate([(1.0, 1.0), (2.0, 0.6), (2.71, 0.5), (3.0, 0.35), (5.15, 0.3),
+                                      (6.0, 0.18), (8.43, 0.2), (12.5, 0.1), (17.3, 0.06)]):
+        f = quantize(base * ratio, duration)
+        beat = quantize(r.uniform(0.125, 0.5), duration)
+        swell = quantize(r.choice([1.0, 2.0, 3.0]) / duration, duration)
+        ph = r.uniform(0.0, math.tau)
+        for i in range(n):
+            t = i / SR
+            env = 0.65 + 0.35 * math.sin(math.tau * swell * t + ph)
+            buf[i] += amp * env * (math.sin(math.tau * f * t) + math.sin(math.tau * (f + beat) * t + ph))
+    extra = int(0.5 * SR)
+    noise = _noise_r(r, n + extra)
+    a9 = 1.0 - math.exp(-2.0 * math.pi * 900.0 / SR)
+    a2 = 1.0 - math.exp(-2.0 * math.pi * 200.0 / SR)
+    hi = _lowpass(_lowpass(_lowpass(noise, a9), a9), a9)
+    lo = _lowpass(_lowpass(hi, a2), a2)
+    band = loop_crossfade([hi[i] - lo[i] for i in range(n + extra)], 0.5)
+    breath = quantize(3.0 / duration, duration)
+    for i in range(n):
+        t = i / SR
+        buf[i] += band[i] * 4.0 * (0.5 + 0.5 * math.sin(math.tau * breath * t))
+    write_wav(OUT_DIR / "shell_drone_loop.wav", [buf], normalize_to=0.5)
+
+
+def make_shell_light() -> None:
+    """The sun breaking through to the centre: a high, glassy chord (an
+    open fifth over E5 with the bowl ratio 2.71 above it), each tone a
+    pair beating slowly, swelling over a second and a half and dying
+    over four; a breath of high air under it. Its own generator."""
+    r = random.Random(20261007)
+    duration = 6.0
+    n = int(duration * SR)
+    buf = [0.0] * n
+    for f, amp in [(659.3, 1.0), (987.8, 0.7), (1786.7, 0.35), (2637.0, 0.2), (3951.0, 0.08)]:
+        beat = r.uniform(0.3, 1.1)
+        ph = r.uniform(0.0, math.tau)
+        for i in range(n):
+            t = i / SR
+            env = (1.0 - math.exp(-t / 0.6)) * math.exp(-max(0.0, t - 1.5) / 1.4)
+            buf[i] += amp * env * (math.sin(math.tau * f * t) + math.sin(math.tau * (f + beat) * t + ph))
+    air = _noise_r(r, n)
+    a_hi = 1.0 - math.exp(-2.0 * math.pi * 6000.0 / SR)
+    a_lo = 1.0 - math.exp(-2.0 * math.pi * 2000.0 / SR)
+    hi = _lowpass(_lowpass(air, a_hi), a_hi)
+    lo = _lowpass(_lowpass(hi, a_lo), a_lo)
+    for i in range(n):
+        t = i / SR
+        env = (1.0 - math.exp(-t / 0.8)) * math.exp(-max(0.0, t - 1.5) / 1.2)
+        buf[i] += (hi[i] - lo[i]) * 1.5 * env
+    fade = int(0.3 * SR)
+    for i in range(fade):
+        buf[n - 1 - i] *= i / fade
+    write_wav(OUT_DIR / "shell_light.wav", [buf], normalize_to=0.7)
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -1115,6 +1261,9 @@ def main() -> None:
     make_swoosh()
     make_pebble_steps()
     make_drips()
+    make_shell_shifts()
+    make_shell_drone()
+    make_shell_light()
     print("done")
 
 
