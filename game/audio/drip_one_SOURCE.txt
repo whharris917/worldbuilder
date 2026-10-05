@@ -1,0 +1,13 @@
+drip_one_<a|b|c><1-5>.wav: variations made by tools/vary_drips.py of three
+recordings of single water drops from Freesound, each at five playback
+speeds (0.84 to 1.19), trimmed, faded and levelled. The originals are
+kept beside them under their Freesound names.
+
+a: "water drop tap 4" by alexzavesa, https://freesound.org/people/alexzavesa/sounds/853900/
+   Licence: Creative Commons Attribution 4.0 (CC BY 4.0). CREDIT REQUIRED:
+   "water drop tap 4" by alexzavesa, freesound.org, CC BY 4.0.
+   Real water drops, recorded and processed by the author.
+b: "low quality water drop" by robo9418, https://freesound.org/people/robo9418/sounds/863461/
+   Licence: CC0 (public domain). Recorded in a bathroom sink.
+c: "WaterDrop" by noisyredfox, https://freesound.org/people/noisyredfox/sounds/868240/
+   Licence: CC0 (public domain). Recorded in a pool.

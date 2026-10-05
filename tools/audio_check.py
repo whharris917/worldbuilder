@@ -34,8 +34,13 @@ BANDS = [(20, 150), (150, 600), (600, 3000), (3000, 12000)]
 
 
 def load(path: Path) -> np.ndarray:
-    """Mono samples at SR, -1..1."""
+    """Mono samples at SR, -1..1. 16-bit WAVs are read directly; anything
+    else (other bit depths, MP3, Ogg) is decoded by ffmpeg."""
+    sixteen_bit = False
     if path.suffix.lower() == ".wav":
+        with wave.open(str(path)) as w:
+            sixteen_bit = w.getsampwidth() == 2
+    if sixteen_bit:
         with wave.open(str(path)) as w:
             raw = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(float) / 32768.0
             x = raw.reshape(-1, w.getnchannels()).mean(axis=1)

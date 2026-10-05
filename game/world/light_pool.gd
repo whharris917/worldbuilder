@@ -117,6 +117,9 @@ const MAX_DROPS := 32                  # rings the shader keeps at once
 const DROP_SOUNDS: Array[String] = ["res://audio/drip_1.wav", "res://audio/drip_2.wav", "res://audio/drip_3.wav", "res://audio/drip_4.wav"]
 # Single drops cut from recordings (BigSoundBank, CC0; see audio/drip_rec_SOURCE.txt).
 const DROP_RECORDINGS := 8
+# Recordings of single drops, three, each at five speeds (Freesound; see
+# audio/drip_one_SOURCE.txt).
+const DROP_SINGLES: Array[String] = ["a", "b", "c"]
 const PANE := 2                        # render layer of the glass, unseen by the second camera
 const CHAMBER := 4                     # render layer of what lies in the chamber, unlit by the light through the glass
 const THROUGH_ANGLE := 72.0            # degrees: the spot's half-angle, past the opening's corners (69) seen from the lamp
@@ -175,7 +178,7 @@ var _drip_rng := RandomNumberGenerator.new()
 var _drop_mesh: SphereMesh
 var _drip_players: Array[AudioStreamPlayer3D] = []
 var _drip_player_next := 0
-var _drip_recorded := true
+var _drip_sound := "Single drops"
 var _relief_mats: Array[ShaderMaterial] = []
 var _relief_meshes: Array[MeshInstance3D] = []
 var _relief_phase := 0.0
@@ -349,9 +352,9 @@ func _build_panels() -> void:
 	_panel.slider(glass, "Drip ripples", 0.0, 4.0, 0.05, 1.0, func(v: float) -> void:
 		_glass_mat.set_shader_parameter("drip_strength", v))
 	_panel.note(glass, "How steep each drop's rings are. The rings spread at water's speeds: fine ripples, under about 1.7 cm, outrun longer ones and fade first.")
-	_panel.choice(glass, "Drip sound", ["Recorded", "Generated"], "Recorded", func(option: String) -> void:
-		_drip_recorded = option == "Recorded")
-	_panel.note(glass, "Recorded: eight single drops cut from recordings of real drops falling into water (BigSoundBank, public domain). Generated: four made by formula, a tap and the rising ring of a trapped bubble.")
+	_panel.choice(glass, "Drip sound", ["Single drops", "Cut", "Generated"], "Single drops", func(option: String) -> void:
+		_drip_sound = option)
+	_panel.note(glass, "Single drops: three recordings of one drop each (Freesound), each at five speeds, higher and shorter for a smaller drop, lower and longer for a larger. Cut: eight drops cut out of recordings of many (BigSoundBank). Generated: four made by formula.")
 	_panel.slider(glass, "Drip volume (dB)", -40.0, 6.0, 1.0, -6.0, func(v: float) -> void:
 		for player in _drip_players:
 			player.volume_db = v)
@@ -485,7 +488,7 @@ func _reset() -> void:
 	(_panel.sliders["Drips a minute (each)"] as HSlider).value = DRIPS_PER_MINUTE
 	(_panel.sliders["Drip ripples"] as HSlider).value = 1.0
 	(_panel.sliders["Drip volume (dB)"] as HSlider).value = -6.0
-	_panel.pick("Drip sound", "Recorded")
+	_panel.pick("Drip sound", "Single drops")
 	(_panel.sliders["Speed"] as HSlider).value = RELIEF_SPEED
 	(_panel.switches["North panel (shading only)"] as CheckButton).button_pressed = true
 	(_panel.switches["West panel (moving surface)"] as CheckButton).button_pressed = true
@@ -1000,7 +1003,9 @@ func _land(at: Vector2, when: float) -> void:
 		return
 	var player := _drip_players[_drip_player_next]
 	_drip_player_next = (_drip_player_next + 1) % _drip_players.size()
-	if _drip_recorded:
+	if _drip_sound == "Single drops":
+		player.stream = load("res://audio/drip_one_%s%d.wav" % [DROP_SINGLES[_drip_rng.randi() % DROP_SINGLES.size()], _drip_rng.randi() % 5 + 1])
+	elif _drip_sound == "Cut":
 		player.stream = load("res://audio/drip_rec_%d.wav" % (_drip_rng.randi() % DROP_RECORDINGS + 1))
 	else:
 		player.stream = load(DROP_SOUNDS[_drip_rng.randi() % DROP_SOUNDS.size()])
