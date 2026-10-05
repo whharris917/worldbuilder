@@ -1,8 +1,9 @@
 class_name SpinningShell
 extends MeshInstance3D
-## A spherical shell of stone with a ribbon cut out round its middle: the
-## band within a tenth of the radius of its equator (a fifth of the
-## radius wide) is open, leaving two caps whose cut edges are faced. It
+## A bowl of stone: one cap of a spherical shell, from its pole down to a
+## tenth of the radius above its equator, as if a ribbon a fifth of the
+## radius wide had been cut round the middle and the far half taken
+## away. Its rim is faced. It
 ## spins at a steady rate, one turn a `period`, about an axis drawn at
 ## random afresh every `AXIS_EVERY` seconds; the turn carries on from
 ## where the shell stands, so only the axis changes.
@@ -57,43 +58,40 @@ func _random_axis() -> Vector3:
 	return Vector3(s * cos(a), z, s * sin(a))
 
 
-## Two caps, each an outer face and, if `solid`, an inner face and the
-## face of its cut edge between them.
+## The cap: an outer face and, if `solid`, an inner face and the face of
+## the rim between them.
 func _build_mesh(outer: float, inner: float, solid: bool) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var edge := asin(0.1)               # the cut's latitude: y = r / 10
-	for side: float in [1.0, -1.0]:
-		for i in LAT:
-			var a0 := lerpf(edge, PI / 2.0, float(i) / LAT)
-			var a1 := lerpf(edge, PI / 2.0, float(i + 1) / LAT)
-			for j in LON:
-				var b0 := TAU * j / LON
-				var b1 := TAU * (j + 1) / LON
-				for face: Array in ([[outer, 1.0], [inner, -1.0]] if solid else [[outer, 1.0]]):
-					var r: float = face[0]
-					var out: float = face[1]
-					var p00 := _on(a0, b0, side)
-					var p01 := _on(a0, b1, side)
-					var p10 := _on(a1, b0, side)
-					var p11 := _on(a1, b1, side)
-					_quad(st, [p00 * r, p01 * r, p11 * r, p10 * r],
-						[p00 * out, p01 * out, p11 * out, p10 * out])
-		# The cut edge: a ring between the two faces, facing the gap.
-		var n := Vector3(0, -side, 0)
-		for j in (LON if solid else 0):
-			var q0 := _on(edge, TAU * j / LON, side)
-			var q1 := _on(edge, TAU * (j + 1) / LON, side)
-			_quad(st, [q0 * outer, q1 * outer, q1 * inner, q0 * inner], [n, n, n, n])
+	var edge := asin(0.1)               # the rim's latitude: y = r / 10
+	for i in LAT:
+		var a0 := lerpf(edge, PI / 2.0, float(i) / LAT)
+		var a1 := lerpf(edge, PI / 2.0, float(i + 1) / LAT)
+		for j in LON:
+			var b0 := TAU * j / LON
+			var b1 := TAU * (j + 1) / LON
+			for face: Array in ([[outer, 1.0], [inner, -1.0]] if solid else [[outer, 1.0]]):
+				var r: float = face[0]
+				var out: float = face[1]
+				var p00 := _on(a0, b0)
+				var p01 := _on(a0, b1)
+				var p10 := _on(a1, b0)
+				var p11 := _on(a1, b1)
+				_quad(st, [p00 * r, p01 * r, p11 * r, p10 * r],
+					[p00 * out, p01 * out, p11 * out, p10 * out])
+	# The rim: a ring between the two faces, facing away from the pole.
+	for j in (LON if solid else 0):
+		var q0 := _on(edge, TAU * j / LON)
+		var q1 := _on(edge, TAU * (j + 1) / LON)
+		_quad(st, [q0 * outer, q1 * outer, q1 * inner, q0 * inner], [Vector3.DOWN, Vector3.DOWN, Vector3.DOWN, Vector3.DOWN])
 	st.index()
 	st.generate_tangents()
 	return st.commit()
 
 
-## The unit vector at latitude a (from the equator) and longitude b, on
-## the upper cap or, with side -1, the lower.
-static func _on(a: float, b: float, side: float) -> Vector3:
-	return Vector3(cos(a) * cos(b), side * sin(a), cos(a) * sin(b))
+## The unit vector at latitude a (from the equator) and longitude b.
+static func _on(a: float, b: float) -> Vector3:
+	return Vector3(cos(a) * cos(b), sin(a), cos(a) * sin(b))
 
 
 ## A quad as two triangles, each wound so its front faces the way its

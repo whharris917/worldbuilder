@@ -7,15 +7,17 @@ extends Node3D
 ## into the hills beyond; a player who falls off its edge is put back at
 ## the start.
 ##
-## Over the start hang five concentric shells of stone (SpinningShell),
-## 100 to 500 m in radius about a centre 650 m up, so the largest clears
-## the ground by 150 m. Each has a ribbon a fifth of its radius wide cut
-## round its middle and turns once in 5 to 30 s (drawn at random for
+## Over the start hang five concentric bowls of stone (SpinningShell),
+## each the cap left of a spherical shell when a ribbon a fifth of its
+## radius wide is cut round its middle and one half removed, 100 to 500
+## m in radius about a centre 650 m up, so the largest clears the ground
+## by 150 m. Each turns once in 5 to 30 s (drawn at random for
 ## each shell on arrival) about an axis drawn afresh every 10 s.
 ##
 ## Two panels of controls (BenchPanel; Esc frees the mouse), kept in
 ## user://movement.json. Sun, as One Bulb sets it: its polar angle and
-## azimuth, its energy, and whether the air colours its light. Sky: the
+## azimuth, its energy, and whether the air colours its light; and how
+## far from the player shadows are drawn. Sky: the
 ## atmosphere's air, haze and ozone against Earth's, from none to many
 ## times as much, and how forward the haze scatters.
 
@@ -86,7 +88,6 @@ func _build_sun() -> void:
 	_sun = DirectionalLight3D.new()
 	_sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	_sun.shadow_enabled = true
-	_sun.directional_shadow_max_distance = 200.0   # the near hills; 800 m cost about 80 ms a frame
 	add_child(_sun)
 
 
@@ -102,6 +103,9 @@ func _build_panel() -> void:
 	_panel.slider(sun, "Sun energy", 0.0, 4.0, 0.01, 1.0, place)
 	_panel.note(sun, "Light on a surface facing the sun, above the air.")
 	_panel.switch(sun, "Sun colour from the air", true, place)
+	_panel.slider(sun, "Shadow distance (m)", 100.0, 2000.0, 10.0, 1200.0, func(v: float) -> void:
+		_sun.directional_shadow_max_distance = v)
+	_panel.note(sun, "Shadows are drawn only this far from you; beyond it everything is drawn in sunlight. The biggest bowl's shadow is a kilometre across, so to see its edge from beneath it this must reach past the edge. Farther costs more time a frame (watch the count at the top right) and blurs the shadows near you, which share the same shadow map.")
 	_panel.note(sun, "The beam loses light on its way through the atmosphere, worked out from the Sky panel's air, haze and ozone, as the sky is: on Earth, overhead the sun keeps most of its light; low, it turns orange and red and fades; set, it gives none.")
 
 	var sky := _panel.panel("Sky")
