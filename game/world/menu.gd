@@ -2,10 +2,12 @@ class_name MainMenu
 extends Control
 ## The title screen: pick a world. Worlds are scenes the editor can Play
 ## directly, so nothing here is required. An entry with "last_look"
-## opens that world in the look it was last seen in.
+## opens that world in the look it was last seen in. Two columns: the
+## places on the left, the lab scenes ("lab") on the right.
 
-## Every button's width, in pixels.
-const BUTTON_W := 940
+## Every button's width, in pixels, and the gap between the columns.
+const BUTTON_W := 620
+const COLUMN_GAP := 16
 
 const WORLDS: Array[Dictionary] = [
 	{"title": "HARBOR TOWN", "note": "A 1940s Maine harbour town on the coast, in whatever weather you choose.",
@@ -23,13 +25,15 @@ const WORLDS: Array[Dictionary] = [
 	{"title": "OPEN HILLS", "note": "Rolling hills of long grass under a wide sky, the wind running over them in gusts; a study in wind.",
 		"scene": "res://world/grass_hills.tscn", "last_look": "hills"},
 	{"title": "ONE BULB", "note": "A gray floor in the dark under a single bare bulb.",
-		"scene": "res://world/bulb_void.tscn"},
+		"scene": "res://world/bulb_void.tscn", "lab": true},
 	{"title": "LIGHT POOL", "note": "A closed white room open in its floor onto a dark chamber, lit only by a lamp below.",
-		"scene": "res://world/light_pool.tscn"},
+		"scene": "res://world/light_pool.tscn", "lab": true},
 	{"title": "MOVEMENT", "note": "Five great bowls of stone turning around the point where you stand, high above open hills.",
-		"scene": "res://world/movement.tscn"},
+		"scene": "res://world/movement.tscn", "lab": true},
 	{"title": "LASER", "note": "A dark room with a laser and six mirrors to turn, the beam crossing from one to the next.",
-		"scene": "res://world/laser_lab.tscn"},
+		"scene": "res://world/laser_lab.tscn", "lab": true},
+	{"title": "PROJECTOR", "note": "A lantern with coloured lights and drifting shapes inside, throwing their shadows on a white wall.",
+		"scene": "res://world/projector_lab.tscn", "lab": true},
 ]
 
 
@@ -64,15 +68,23 @@ func _ready() -> void:
 	gap.custom_minimum_size = Vector2(0, 6)
 	column.add_child(gap)
 
+	var sides := HBoxContainer.new()
+	sides.add_theme_constant_override("separation", COLUMN_GAP)
+	column.add_child(sides)
+	var places := VBoxContainer.new()
+	var labs := VBoxContainer.new()
+	for side: VBoxContainer in [places, labs]:
+		side.add_theme_constant_override("separation", 2)
+		sides.add_child(side)
 	var first: Button = null
 	for world: Dictionary in WORLDS:
 		var button := _world_button(world)
-		column.add_child(button)
+		(labs if world.get("lab", false) else places).add_child(button)
 		if first == null:
 			first = button
 	var quit := Button.new()
 	quit.text = "QUIT"
-	quit.custom_minimum_size = Vector2(BUTTON_W, 34)
+	quit.custom_minimum_size = Vector2(BUTTON_W * 2 + COLUMN_GAP, 34)
 	quit.add_theme_font_size_override("font_size", 14)
 	quit.pressed.connect(func() -> void: get_tree().quit())
 	column.add_child(quit)
@@ -105,8 +117,8 @@ func _world_button(world: Dictionary) -> Button:
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(6)
 	style.set_content_margin_all(7)
-	style.content_margin_top = 2.0
-	style.content_margin_bottom = 2.0
+	style.content_margin_top = 4.0
+	style.content_margin_bottom = 4.0
 	button.add_theme_stylebox_override("normal", style)
 	var hover := style.duplicate() as StyleBoxFlat
 	hover.bg_color = Color(0.13, 0.20, 0.15)
