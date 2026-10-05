@@ -37,12 +37,25 @@ extends Node3D
 ## (PatternScope): a lamp in a tube lights a small plate showing a moving
 ## pattern, and the lens throws it onto the same wall.
 ##
+## A third setup by the screen's east end tests whether Godot's bounce
+## light can carry a pattern: a matte white panel 2 m square lies on the
+## floor 1.6 m out from the white wall, and a spot light high above
+## throws a dappled engine noise picture onto it, turning slowly. With
+## VoxelGI (a box of cells about 11 cm across round the room, baked when
+## chosen; it re-lights every frame as lights move) or SDFGI (cells round
+## the camera, smallest 0.15 m) the lit panel bounces light onto the wall
+## and the ceiling. The bounce is diffuse and coarse, so it can carry the
+## pattern's large patches at most. Moving things (the shapes, the
+## markers, the player) are left out of the bounce's picture of the room.
+##
 ## Panels (BenchPanel; Esc frees the mouse), kept in
 ## user://projector_lab.json: Lights (each light's kind, colour, energy
 ## and size; how far apart they stand), Shapes (kind, count, size, speed),
 ## Lantern (the hole's width; passable; the model; the room lamp),
 ## Telescope (on, pattern, speed, setting, start again, brightness,
-## colour, focal length, focus, open tube), Viewport (the soft-shadow
+## colour, focal length, focus, open tube), Bounce (the dappled light on,
+## its brightness, its speed, the bounce method, the light's strength in
+## the bounce), Viewport (the soft-shadow
 ## quality and the shadow atlas, engine-wide and put back on leaving).
 
 const ROOM := Vector3(14.0, 5.0, 10.0)
@@ -55,6 +68,8 @@ const LIGHT_BACK := 0.25                # the lights' plane, behind the centre
 const MODEL_OFFSET := Vector3(-3.0, 0.0, 0.0)
 const MODEL := 2                        # render layer of the model
 const SCOPE_AT := Vector3(3.0, 1.6, 2.0)
+const DAPPLE_PANEL := Vector3(5.0, 0.0, -3.4)   # the floor panel's centre
+const DAPPLE_LIGHT := Vector3(5.0, 4.6, -1.6)
 const STATE_PATH := "user://projector_lab.json"
 const KINDS := ["Off", "Point", "Spot", "Area"]
 const LIGHT_COLOURS: Array[Color] = [Color(1.0, 0.25, 0.2), Color(0.3, 1.0, 0.35), Color(0.3, 0.45, 1.0)]
@@ -77,6 +92,11 @@ var _model: Node3D
 var _model_shell: MeshInstance3D
 var _model_marks: Array[MeshInstance3D] = []
 var _scope: PatternScope
+var _env: Environment
+var _dapple: SpotLight3D
+var _dapple_turn := 0.0
+var _voxel_gi: VoxelGI
+var _built := false                     # the room is whole: the bounce may be made
 
 
 func _ready() -> void:
@@ -92,6 +112,7 @@ func _ready() -> void:
 	_build_environment()
 	_build_room()
 	_build_lantern()
+	_build_dapple()
 	_scope = PatternScope.new()
 	_scope.position = SCOPE_AT
 	add_child(_scope)
@@ -106,6 +127,11 @@ func _ready() -> void:
 	_rebuild_shapes()
 	_set_room_lamp()
 	_set_scope()
+	_set_dapple()
+	_built = true
+	_set_bounce(_picked("Bounce light"))
+	for node in player.find_children("*", "GeometryInstance3D", true, false):
+		(node as GeometryInstance3D).gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
 	MouseMode.capture()
 	if DisplayServer.get_name() == "headless":
 		print("[worldbuilder] projector lab: %d lights, %d shapes" % [
@@ -173,6 +199,21 @@ func _build_panels() -> void:
 	_panel.switch(scope, "Open the tube", false, rescope)
 	_panel.note(scope, "Hides the tube, to show the plate with its pattern at the back and the lamp shining on it.")
 
+	var bounce := _panel.panel("Bounce")
+	var redapple := func(_v: Variant) -> void: _set_dapple()
+	_panel.switch(bounce, "Dappled light on", true, redapple)
+	_panel.slider(bounce, "Dapple brightness", 0.0, 100.0, 0.5, 30.0, redapple)
+	_panel.slider(bounce, "Dapple speed", 0.0, 2.0, 0.01, 0.3, func(_v: float) -> void: pass)
+	_panel.slider(bounce, "Dapple size", 0.25, 4.0, 0.05, 1.0, redapple)
+	_panel.note(bounce, "The size of the bright and dark patches. At the largest only one or two lie on the panel at a time, the most the bounce could follow.")
+	_panel.note(bounce, "A spot light high above throws a dappled picture onto the white panel on the floor by the wall, turning slowly. The question is how much of the dapple the bounce light carries onto the wall and the ceiling.")
+	_panel.choice(bounce, "Bounce light", ["None", "VoxelGI", "SDFGI"], "VoxelGI", func(o: String) -> void:
+		if _built:
+			_set_bounce(o))
+	_panel.note(bounce, "VoxelGI: a box round the room divided into cells about 11 cm across, made once when chosen (the screen pauses), then lit afresh every frame. SDFGI: cells round wherever you stand, finer near you, made as you move. Both treat a lit surface as glowing evenly in every direction.")
+	_panel.slider(bounce, "Bounce strength", 0.0, 8.0, 0.05, 1.0, redapple)
+	_panel.note(bounce, "How strongly the dappled light enters the bounce, on top of the true amount (1). Raise it to see the bounce's shape more easily.")
+
 	var view := _panel.panel("Viewport")
 	_panel.choice(view, "Soft shadows", QUALITIES.keys(), "Low", func(o: String) -> void:
 		RenderingServer.positional_soft_shadow_filter_set_quality(int(QUALITIES[o])))
@@ -215,6 +256,10 @@ func _picked(title: String) -> String:
 
 func _build_environment() -> void:
 	var env := Environment.new()
+	_env = env
+	# Not 0.2 m: every wall, floor and ceiling here lies on 0.2 m
+	# multiples, where SDFGI's smallest cells gave no bounce at all.
+	env.sdfgi_min_cell_size = 0.15
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0, 0, 0)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -489,6 +534,7 @@ func _mark(kind: String, colour: Color, size: float, at: Vector3, facing: Vector
 	mark.mesh = mesh
 	mark.layers = MODEL
 	mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mark.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
 	_model.add_child(mark)
 	mark.transform = Transform3D(Basis.looking_at(facing.normalized(), Vector3.UP), at)
 	return mark
@@ -535,11 +581,13 @@ func _rebuild_shapes() -> void:
 		mesh.surface_set_material(0, _shape_mat)
 		var node := MeshInstance3D.new()
 		node.mesh = mesh
+		node.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
 		add_child(node)
 		var copy := MeshInstance3D.new()
 		copy.mesh = mesh
 		copy.layers = MODEL
 		copy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		copy.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
 		_model.add_child(copy)
 		_shapes.append({
 			"node": node,
@@ -570,3 +618,82 @@ func _place_shapes() -> void:
 func _process(delta: float) -> void:
 	_phase += _value("Speed") * delta
 	_place_shapes()
+	_dapple_turn += _value("Dapple speed") * 0.25 * delta
+	_dapple.transform = Transform3D(_dapple_aim() * Basis(Vector3.FORWARD, _dapple_turn), DAPPLE_LIGHT)
+
+
+## ---- the bounce test -------------------------------------------------------
+
+## The white panel on the floor, and the spot light above it carrying a
+## dappled picture: engine noise (simplex, three octaves), its contrast
+## raised by a colour ramp, mipmapped as projectors need. The cone just
+## fits the panel. Godot draws a projector picture only from a light that
+## casts shadows.
+func _build_dapple() -> void:
+	var white := StandardMaterial3D.new()
+	white.albedo_color = Color(0.85, 0.85, 0.83)
+	white.roughness = 0.95
+	_slab_between(DAPPLE_PANEL + Vector3(-1.0, 0.0, -1.0), DAPPLE_PANEL + Vector3(1.0, 0.04, 1.0), white)
+	_dapple = SpotLight3D.new()
+	_dapple.shadow_enabled = true
+	_dapple.spot_range = 8.0
+	_dapple.spot_attenuation = 2.0
+	_dapple.spot_angle_attenuation = 0.1
+	var down := DAPPLE_PANEL + Vector3(0.0, 0.04, 0.0) - DAPPLE_LIGHT
+	_dapple.spot_angle = rad_to_deg(atan(0.95 / down.length()))
+	add_child(_dapple)
+	_dapple.transform = Transform3D(_dapple_aim(), DAPPLE_LIGHT)
+
+
+func _dapple_picture(frequency: float) -> NoiseTexture2D:
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.frequency = frequency
+	noise.fractal_octaves = 3
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(0, 0, 0))
+	ramp.set_color(1, Color(1, 1, 1))
+	ramp.set_offset(0, 0.4)
+	ramp.set_offset(1, 0.6)
+	var picture := NoiseTexture2D.new()
+	picture.width = 512
+	picture.height = 512
+	picture.seamless = true
+	picture.generate_mipmaps = true
+	picture.noise = noise
+	picture.color_ramp = ramp
+	return picture
+
+
+func _dapple_aim() -> Basis:
+	var down := DAPPLE_PANEL + Vector3(0.0, 0.04, 0.0) - DAPPLE_LIGHT
+	return Basis.looking_at(down.normalized(), Vector3.FORWARD)
+
+
+func _set_dapple() -> void:
+	if _dapple == null or _panel == null:
+		return
+	_dapple.visible = (_panel.switches["Dappled light on"] as CheckButton).button_pressed
+	_dapple.light_energy = _value("Dapple brightness")
+	_dapple.light_indirect_energy = _value("Bounce strength")
+	# A new picture each time: the projector would keep the old one if it
+	# were changed in place.
+	var frequency := 0.012 / _value("Dapple size")
+	var picture := _dapple.light_projector as NoiseTexture2D
+	if picture == null or not is_equal_approx(picture.noise.frequency, frequency):
+		_dapple.light_projector = _dapple_picture(frequency)
+
+
+## The bounce method: SDFGI in the environment, or a VoxelGI box round
+## the room, baked now.
+func _set_bounce(option: String) -> void:
+	_env.sdfgi_enabled = option == "SDFGI"
+	if _voxel_gi != null:
+		_voxel_gi.queue_free()
+		_voxel_gi = null
+	if option == "VoxelGI":
+		_voxel_gi = VoxelGI.new()
+		_voxel_gi.size = ROOM + Vector3(0.6, 0.6, 0.6)
+		_voxel_gi.position.y = ROOM.y * 0.5
+		add_child(_voxel_gi)
+		_voxel_gi.bake()
