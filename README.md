@@ -11,3 +11,8 @@ Open `game/project.godot` in Godot 4.7 and press play: the title screen offers t
 # the generator and validator tests
 .venv\Scripts\python.exe -m pytest tests -q
 ```
+
+## Credits
+
+Textures, sounds, planet and star data, and survey drawings come from others; most are public domain. One sound, "water drop tap 4" by alexzavesa (Freesound, CC BY 4.0), requires credit, and the Godot Engine's MIT licence notice must accompany any exported build. All are listed, with sources and licences, in [`CREDITS.md`](CREDITS.md).
+
