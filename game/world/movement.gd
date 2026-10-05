@@ -7,6 +7,12 @@ extends Node3D
 ## into the hills beyond; a player who falls off its edge is put back at
 ## the start.
 ##
+## Over the start hang five concentric shells of stone (SpinningShell),
+## 100 to 500 m in radius about a centre 650 m up, so the largest clears
+## the ground by 150 m. Each has a ribbon a fifth of its radius wide cut
+## round its middle and turns once in 5 to 30 s (drawn at random for
+## each shell on arrival) about an axis drawn afresh every 10 s.
+##
 ## Two panels of controls (BenchPanel; Esc frees the mouse), kept in
 ## user://movement.json. Sun, as One Bulb sets it: its polar angle and
 ## azimuth, its energy, and whether the air colours its light. Sky: the
@@ -25,6 +31,8 @@ const H_RAYLEIGH := 8000.0
 const MIE_EXTINCT := 4.40e-6
 const H_MIE := 1200.0
 const OZONE := Vector3(0.650e-6, 1.881e-6, 0.085e-6)
+const SHELL_CENTRE := Vector3(0, 650, 3)
+const SHELL_RADII: Array[float] = [100.0, 170.0, 260.0, 370.0, 500.0]
 const SKY_PARAMS := {"Air density": "rayleigh_scale", "Haze": "mie_scale", "Ozone": "ozone_scale",
 	"Haze forward": "mie_g"}
 
@@ -43,6 +51,7 @@ func _ready() -> void:
 	_build_sky()
 	_build_sun()
 	_build_ground()
+	_build_shells()
 	_build_panel()
 	_panel.restore()
 	_place_sun()
@@ -186,6 +195,30 @@ func _build_ground() -> void:
 	terrain.closed = true
 	add_child(terrain)
 	terrain.build()
+
+
+## The shells in grey stone (ambientCG's marble, its veins and pits
+## kept but its polish taken off: matte, as weathered limestone), laid
+## on triplanar in the shell's own space so it turns with it, one copy
+## of the image a twentieth of the radius across: 5 m on the smallest,
+## 25 m on the largest.
+func _build_shells() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	for r: float in SHELL_RADII:
+		var mat := StandardMaterial3D.new()
+		mat.albedo_texture = load("res://textures/marble/albedo.jpg") as Texture2D
+		mat.albedo_color = Color(0.8, 0.8, 0.8)
+		mat.roughness = 0.9
+		mat.normal_enabled = true
+		mat.normal_texture = load("res://textures/marble/normal.jpg") as Texture2D
+		mat.normal_scale = 2.0
+		mat.uv1_triplanar = true
+		mat.uv1_scale = Vector3.ONE * 20.0 / r
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		var shell := SpinningShell.new(r, mat, rng)
+		shell.position = SHELL_CENTRE
+		add_child(shell)
 
 
 func _physics_process(_delta: float) -> void:
