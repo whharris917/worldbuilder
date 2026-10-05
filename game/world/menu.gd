@@ -28,6 +28,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/light_pool.tscn"},
 	{"title": "MOVEMENT", "note": "Five great bowls of stone turning around the point where you stand, high above open hills.",
 		"scene": "res://world/movement.tscn"},
+	{"title": "LASER", "note": "A dark room with a laser and six mirrors to turn, the beam crossing from one to the next.",
+		"scene": "res://world/laser_lab.tscn"},
 ]
 
 
@@ -103,8 +105,8 @@ func _world_button(world: Dictionary) -> Button:
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(6)
 	style.set_content_margin_all(7)
-	style.content_margin_top = 4.0
-	style.content_margin_bottom = 4.0
+	style.content_margin_top = 2.0
+	style.content_margin_bottom = 2.0
 	button.add_theme_stylebox_override("normal", style)
 	var hover := style.duplicate() as StyleBoxFlat
 	hover.bg_color = Color(0.13, 0.20, 0.15)
