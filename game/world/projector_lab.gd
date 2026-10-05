@@ -25,13 +25,18 @@ extends Node3D
 ## is smooth.
 ##
 ## The lantern's shell is 4 cm thick, matte white inside and dark metal
-## outside, drawn double-sided for its shadows. The room otherwise has
+## outside, drawn double-sided for its shadows. It can be made passable,
+## to put one's head inside. A model of it stands 3 m to the west: the
+## same shell and the same shapes moving in step, without the lights, lit
+## inside by a dim lamp of its own, with small glowing markers where the
+## lights stand (all on render layer MODEL, which only that lamp lights
+## and the real lights leave alone). The room otherwise has
 ## only a faint ambient light, and a dim ceiling lamp on a slider.
 ##
 ## Panels (BenchPanel; Esc frees the mouse), kept in
 ## user://projector_lab.json: Lights (each light's kind, colour, energy
 ## and size; how far apart they stand), Shapes (kind, count, size, speed),
-## Lantern (the hole's width; the room lamp), Viewport (the soft-shadow
+## Lantern (the hole's width; passable; the model; the room lamp), Viewport (the soft-shadow
 ## quality and the shadow atlas, engine-wide and put back on leaving).
 
 const ROOM := Vector3(14.0, 5.0, 10.0)
@@ -41,6 +46,8 @@ const R := 0.5                          # the lantern's outer radius
 const SHELL := 0.04
 const START := Vector3(2.5, 0.0, 4.0)
 const LIGHT_BACK := 0.25                # the lights' plane, behind the centre
+const MODEL_OFFSET := Vector3(-3.0, 0.0, 0.0)
+const MODEL := 2                        # render layer of the model
 const STATE_PATH := "user://projector_lab.json"
 const KINDS := ["Off", "Point", "Spot", "Area"]
 const LIGHT_COLOURS: Array[Color] = [Color(1.0, 0.25, 0.2), Color(0.3, 1.0, 0.35), Color(0.3, 0.45, 1.0)]
@@ -58,6 +65,10 @@ var _shapes: Array[Dictionary] = []     # {node, freq, phase, spin, spin_phase}
 var _shape_mat: StandardMaterial3D
 var _phase := 0.0
 var _was := {}
+var _solids: Array[CollisionShape3D] = []
+var _model: Node3D
+var _model_shell: MeshInstance3D
+var _model_marks: Array[MeshInstance3D] = []
 
 
 func _ready() -> void:
@@ -124,6 +135,12 @@ func _build_panels() -> void:
 	var lantern := _panel.panel("Lantern")
 	_panel.slider(lantern, "Hole (cm)", 5.0, 90.0, 1.0, 60.0, func(_v: float) -> void: _build_shell())
 	_panel.note(lantern, "The width of the round hole the light leaves by. A small hole gives the screen a small round patch of light; a wide one lets every light's shadows through.")
+	_panel.switch(lantern, "Passable", false, func(v: bool) -> void:
+		for c: CollisionShape3D in _solids:
+			c.disabled = v)
+	_panel.note(lantern, "Lets you walk into the lanterns and put your head inside.")
+	_panel.switch(lantern, "Model beside it", true, func(v: bool) -> void: _model.visible = v)
+	_panel.note(lantern, "A copy of the lantern 3 m to the west with its lights off, lit softly inside, the shapes moving in step with the real ones and small markers where the lights stand. Look in through its hole.")
 	_panel.slider(lantern, "Room lamp", 0.0, 1.0, 0.01, 0.0, func(_v: float) -> void: _set_room_lamp())
 
 	var view := _panel.panel("Viewport")
@@ -235,14 +252,34 @@ func _build_lantern() -> void:
 	_shell_mat_in = StandardMaterial3D.new()
 	_shell_mat_in.albedo_color = Color(0.85, 0.85, 0.83)
 	_shell_mat_in.roughness = 0.95
+	_shell = _lantern_parts(self, metal, 1)
+	_shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+	_model = Node3D.new()
+	_model.position = MODEL_OFFSET
+	add_child(_model)
+	_model_shell = _lantern_parts(_model, metal, MODEL)
+	_model_shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var fill := OmniLight3D.new()
+	# Just inside the hole, so the shapes are lit on the side one sees.
+	fill.position = CENTRE + Vector3(0.0, 0.0, -0.35)
+	fill.omni_range = 1.5
+	fill.light_energy = 0.25
+	fill.light_cull_mask = MODEL
+	_model.add_child(fill)
+
+
+## A lantern's solid ball, stand and empty shell node under `parent`, on
+## render layer `layer`; the shell node is returned for its mesh.
+func _lantern_parts(parent: Node3D, metal: Material, layer: int) -> MeshInstance3D:
 	var body := StaticBody3D.new()
 	body.position = CENTRE
-	add_child(body)
+	parent.add_child(body)
 	var ball := SphereShape3D.new()
 	ball.radius = R
 	var collide := CollisionShape3D.new()
 	collide.shape = ball
 	body.add_child(collide)
+	_solids.append(collide)
 	var post := CylinderMesh.new()
 	post.top_radius = 0.025
 	post.bottom_radius = 0.025
@@ -251,7 +288,8 @@ func _build_lantern() -> void:
 	var post_view := MeshInstance3D.new()
 	post_view.mesh = post
 	post_view.position = Vector3(CENTRE.x, (CENTRE.y - R) * 0.5, CENTRE.z)
-	add_child(post_view)
+	post_view.layers = layer
+	parent.add_child(post_view)
 	var foot := CylinderMesh.new()
 	foot.top_radius = 0.2
 	foot.bottom_radius = 0.22
@@ -260,11 +298,13 @@ func _build_lantern() -> void:
 	var foot_view := MeshInstance3D.new()
 	foot_view.mesh = foot
 	foot_view.position = Vector3(CENTRE.x, 0.02, CENTRE.z)
-	add_child(foot_view)
-	_shell = MeshInstance3D.new()
-	_shell.position = CENTRE
-	_shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
-	add_child(_shell)
+	foot_view.layers = layer
+	parent.add_child(foot_view)
+	var shell := MeshInstance3D.new()
+	shell.position = CENTRE
+	shell.layers = layer
+	parent.add_child(shell)
+	return shell
 
 
 ## The shell: a sphere's outer and inner faces from the hole's edge round
@@ -314,6 +354,7 @@ func _build_shell() -> void:
 	mesh.surface_set_material(0, _shell_mat_out)
 	mesh.surface_set_material(1, _shell_mat_in)
 	_shell.mesh = mesh
+	_model_shell.mesh = mesh
 	_rebuild_lights()
 
 
@@ -326,6 +367,9 @@ func _rebuild_lights() -> void:
 		return
 	var spread := _value("Spread (cm)") * 0.01
 	var hole_r := _value("Hole (cm)") * 0.005
+	for mark: MeshInstance3D in _model_marks:
+		mark.queue_free()
+	_model_marks.clear()
 	for i in 3:
 		if _lights[i] != null:
 			_lights[i].queue_free()
@@ -367,9 +411,40 @@ func _rebuild_lights() -> void:
 		light.shadow_enabled = true
 		light.shadow_bias = 0.03
 		light.shadow_normal_bias = 0.5
+		light.light_cull_mask = 0xFFFFF & ~MODEL
 		add_child(light)
 		light.global_transform = Transform3D(Basis.looking_at(to_hole.normalized(), Vector3.UP), at)
 		_lights[i] = light
+		_model_marks.append(_mark(kind, colour, maxf(size, 0.02), at, to_hole))
+
+
+## A small glowing stand-in for a light in the model: a ball for a point
+## or spot light, a thin square for an area light, at the light's size
+## (at least 2 cm).
+func _mark(kind: String, colour: Color, size: float, at: Vector3, facing: Vector3) -> MeshInstance3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = colour
+	mat.emission_enabled = true
+	mat.emission = colour
+	mat.emission_energy_multiplier = 2.0
+	var mesh: Mesh
+	if kind == "Area":
+		var box := BoxMesh.new()
+		box.size = Vector3(size, size, 0.003)
+		mesh = box
+	else:
+		var ball := SphereMesh.new()
+		ball.radius = size * 0.5
+		ball.height = size
+		mesh = ball
+	mesh.surface_set_material(0, mat)
+	var mark := MeshInstance3D.new()
+	mark.mesh = mesh
+	mark.layers = MODEL
+	mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_model.add_child(mark)
+	mark.transform = Transform3D(Basis.looking_at(facing.normalized(), Vector3.UP), at)
+	return mark
 
 
 ## ---- the shapes ------------------------------------------------------------
@@ -381,6 +456,7 @@ func _rebuild_shapes() -> void:
 		return
 	for s: Dictionary in _shapes:
 		(s["node"] as Node).queue_free()
+		(s["copy"] as Node).queue_free()
 	_shapes.clear()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
@@ -413,8 +489,14 @@ func _rebuild_shapes() -> void:
 		var node := MeshInstance3D.new()
 		node.mesh = mesh
 		add_child(node)
+		var copy := MeshInstance3D.new()
+		copy.mesh = mesh
+		copy.layers = MODEL
+		copy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_model.add_child(copy)
 		_shapes.append({
 			"node": node,
+			"copy": copy,
 			"freq": Vector3(rng.randf_range(0.13, 0.31), rng.randf_range(0.11, 0.29), rng.randf_range(0.07, 0.19)),
 			"phase": Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU),
 			"spin": Vector3(rng.randf_range(-0.6, 0.6), rng.randf_range(-0.6, 0.6), rng.randf_range(-0.6, 0.6)),
@@ -434,6 +516,8 @@ func _place_shapes() -> void:
 		var node := s["node"] as Node3D
 		node.position = CENTRE + at
 		node.rotation = (s["spin"] as Vector3) * _phase + (s["spin_phase"] as Vector3)
+		var copy := s["copy"] as Node3D
+		copy.transform = node.transform
 
 
 func _process(delta: float) -> void:
