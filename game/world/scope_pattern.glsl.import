@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dkuim3x2rbsm5"
+path="res://.godot/imported/scope_pattern.glsl-f287f8f3a4aed4671d2f1ee203def8e9.res"
+
+[deps]
+
+source_file="res://world/scope_pattern.glsl"
+dest_files=["res://.godot/imported/scope_pattern.glsl-f287f8f3a4aed4671d2f1ee203def8e9.res"]
+
+[params]
+

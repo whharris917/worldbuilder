@@ -33,10 +33,16 @@ extends Node3D
 ## and the real lights leave alone). The room otherwise has
 ## only a faint ambient light, and a dim ceiling lamp on a slider.
 ##
+## A second projector stands 3 m to the east, built like a telescope
+## (PatternScope): a lamp in a tube lights a small plate showing a moving
+## pattern, and the lens throws it onto the same wall.
+##
 ## Panels (BenchPanel; Esc frees the mouse), kept in
 ## user://projector_lab.json: Lights (each light's kind, colour, energy
 ## and size; how far apart they stand), Shapes (kind, count, size, speed),
-## Lantern (the hole's width; passable; the model; the room lamp), Viewport (the soft-shadow
+## Lantern (the hole's width; passable; the model; the room lamp),
+## Telescope (on, pattern, speed, setting, start again, brightness,
+## colour, focal length, focus, open tube), Viewport (the soft-shadow
 ## quality and the shadow atlas, engine-wide and put back on leaving).
 
 const ROOM := Vector3(14.0, 5.0, 10.0)
@@ -48,6 +54,7 @@ const START := Vector3(2.5, 0.0, 4.0)
 const LIGHT_BACK := 0.25                # the lights' plane, behind the centre
 const MODEL_OFFSET := Vector3(-3.0, 0.0, 0.0)
 const MODEL := 2                        # render layer of the model
+const SCOPE_AT := Vector3(3.0, 1.6, 2.0)
 const STATE_PATH := "user://projector_lab.json"
 const KINDS := ["Off", "Point", "Spot", "Area"]
 const LIGHT_COLOURS: Array[Color] = [Color(1.0, 0.25, 0.2), Color(0.3, 1.0, 0.35), Color(0.3, 0.45, 1.0)]
@@ -69,6 +76,7 @@ var _solids: Array[CollisionShape3D] = []
 var _model: Node3D
 var _model_shell: MeshInstance3D
 var _model_marks: Array[MeshInstance3D] = []
+var _scope: PatternScope
 
 
 func _ready() -> void:
@@ -84,6 +92,10 @@ func _ready() -> void:
 	_build_environment()
 	_build_room()
 	_build_lantern()
+	_scope = PatternScope.new()
+	_scope.position = SCOPE_AT
+	add_child(_scope)
+	_solids.append(_scope.body_shape)
 	_shape_mat = StandardMaterial3D.new()
 	_shape_mat.albedo_color = Color(0.25, 0.25, 0.25)
 	_shape_mat.roughness = 0.8
@@ -93,6 +105,7 @@ func _ready() -> void:
 	_rebuild_lights()
 	_rebuild_shapes()
 	_set_room_lamp()
+	_set_scope()
 	MouseMode.capture()
 	if DisplayServer.get_name() == "headless":
 		print("[worldbuilder] projector lab: %d lights, %d shapes" % [
@@ -143,6 +156,23 @@ func _build_panels() -> void:
 	_panel.note(lantern, "A copy of the lantern 3 m to the west with its lights off, lit softly inside, the shapes moving in step with the real ones and small markers where the lights stand. Look in through its hole.")
 	_panel.slider(lantern, "Room lamp", 0.0, 1.0, 0.01, 0.0, func(_v: float) -> void: _set_room_lamp())
 
+	var scope := _panel.panel("Telescope")
+	var rescope := func(_v: Variant) -> void: _set_scope()
+	_panel.switch(scope, "Telescope on", true, rescope)
+	_panel.choice(scope, "Pattern", PatternScope.PATTERNS, "Caustics", rescope)
+	_panel.note(scope, "Caustics: sunlight through rippling water gathered into bright lines, traced ray by ray through the surface. Reaction: two chemicals spreading and reacting, growing spots, mazes or coral. Interference: waves from five drifting sources adding and cancelling. Convection: the cells of a liquid heated from below, seen from above.")
+	_panel.slider(scope, "Pattern speed", 0.0, 3.0, 0.01, 1.0, rescope)
+	_panel.slider(scope, "Pattern setting", 0.5, 2.0, 0.01, 1.0, rescope)
+	_panel.note(scope, "Caustics: how deep the water, so how strongly the ripples gather the light. Reaction: from dividing spots (low) through mazes to coral (high). Interference: the wavelength. Convection: how much the cells are enlarged.")
+	_panel.button(scope, "Start the pattern again", func() -> void: _scope.reset())
+	_panel.slider(scope, "Brightness", 0.0, 400.0, 1.0, 120.0, rescope)
+	_panel.colour(scope, "Telescope colour", Color(1.0, 0.95, 0.85), rescope)
+	_panel.slider(scope, "Focal length (cm)", 5.0, 40.0, 0.5, 8.0, rescope)
+	_panel.note(scope, "The lens's focal length: the picture on the wall is the 6 cm plate enlarged by the wall's distance over this. Short makes it large and dim, long small and bright.")
+	_panel.slider(scope, "Out of focus", 0.0, 1.0, 0.01, 0.0, rescope)
+	_panel.switch(scope, "Open the tube", false, rescope)
+	_panel.note(scope, "Hides the tube, to show the plate with its pattern at the back and the lamp shining on it.")
+
 	var view := _panel.panel("Viewport")
 	_panel.choice(view, "Soft shadows", QUALITIES.keys(), "Low", func(o: String) -> void:
 		RenderingServer.positional_soft_shadow_filter_set_quality(int(QUALITIES[o])))
@@ -150,6 +180,23 @@ func _build_panels() -> void:
 	_panel.choice(view, "Shadow atlas", ATLAS_SIZES, str(get_viewport().positional_shadow_atlas_size), func(o: String) -> void:
 		get_viewport().positional_shadow_atlas_size = int(o))
 	_panel.note(view, "The size of the picture that holds every light's shadow map. A larger one gives sharper shadows: magnified twenty times onto the screen, a shadow map's squares can show.")
+
+
+## The telescope as the panel has it; a new pattern starts afresh.
+func _set_scope() -> void:
+	if _scope == null or _panel == null:
+		return
+	var index := maxi(PatternScope.PATTERNS.find(_picked("Pattern")), 0)
+	if index != _scope.pattern:
+		_scope.pattern = index
+		_scope.reset()
+	_scope.speed = _value("Pattern speed")
+	_scope.setting = _value("Pattern setting")
+	_scope.focus_blur = _value("Out of focus")
+	_scope.set_on((_panel.switches["Telescope on"] as CheckButton).button_pressed)
+	_scope.set_open((_panel.switches["Open the tube"] as CheckButton).button_pressed)
+	_scope.set_beam(_value("Brightness"), (_panel.pickers["Telescope colour"] as ColorPickerButton).color,
+		_value("Focal length (cm)") * 0.01)
 
 
 func _value(title: String) -> float:
