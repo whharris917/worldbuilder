@@ -8,7 +8,9 @@ extends StaticBody3D
 ## the horizon, so the detail falls off as the eye's does from the
 ## room. The ground is level out to a little past the wall and rises
 ## into the hills over a quarter of `feature`. The collider is built from
-## the same mesh, so what is walked on is what is seen.
+## the same mesh, so what is walked on is what is seen. With `closed` the
+## middle is filled too, a level disc fanned from the centre, for a world
+## with no room standing there.
 
 const RINGS := 160
 const SEGMENTS := 384
@@ -19,6 +21,7 @@ var roughness := 0.5                    # each octave's amplitude against the la
 var noise_seed := 1
 var flat_r := 15.0                      # m, the room's radius: the terrain starts here
 var outer_r := 1500.0                   # m, where the ground ends
+var closed := false                     # fill the middle inside flat_r
 
 var _view: MeshInstance3D
 var _shape: CollisionShape3D
@@ -53,7 +56,8 @@ func build() -> void:
 	_noise.fractal_octaves = 8
 	_noise.fractal_lacunarity = 2.0
 	_noise.fractal_gain = roughness
-	var count := (RINGS + 1) * SEGMENTS
+	var ring_count := (RINGS + 1) * SEGMENTS
+	var count := ring_count + (1 if closed else 0)
 	var verts := PackedVector3Array()
 	verts.resize(count)
 	var uvs := PackedVector2Array()
@@ -90,8 +94,15 @@ func build() -> void:
 			tangents[k + 1] = t.y
 			tangents[k + 2] = t.z
 			tangents[k + 3] = 1.0
+	if closed:
+		verts[ring_count] = Vector3.ZERO
+		uvs[ring_count] = Vector2.ZERO
+		normals[ring_count] = Vector3.UP
+		var k := ring_count * 4
+		tangents[k] = 1.0
+		tangents[k + 3] = 1.0
 	var indices := PackedInt32Array()
-	indices.resize(RINGS * SEGMENTS * 6)
+	indices.resize(RINGS * SEGMENTS * 6 + (SEGMENTS * 3 if closed else 0))
 	var faces := PackedVector3Array()
 	var up_first := _up_first()
 	var w := 0
@@ -108,11 +119,21 @@ func build() -> void:
 			indices[w + 4] = v11 if up_first else v10
 			indices[w + 5] = v10 if up_first else v11
 			w += 6
+	if closed:
+		for j in SEGMENTS:
+			var fan := _fan(j, 1, ring_count, up_first)
+			for v in fan:
+				indices[w] = v
+				w += 1
 	# The collider: every other ring and segment, a quarter of the
 	# triangles, close enough underfoot and four times quicker to build.
 	for i in range(0, RINGS, 2):
 		for j in range(0, SEGMENTS, 2):
 			for v in _quad(i, j, 2, up_first):
+				faces.append(verts[v])
+	if closed:
+		for j in range(0, SEGMENTS, 2):
+			for v in _fan(j, 2, ring_count, up_first):
 				faces.append(verts[v])
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -149,3 +170,15 @@ func _quad(i: int, j: int, step: int, up_first: bool) -> Array[int]:
 	if up_first:
 		return [v00, v01, v10, v01, v11, v10]
 	return [v00, v10, v01, v01, v10, v11]
+
+
+## The three indices of the triangle from the centre to the first ring's
+## segment j, spanning `step`, facing up.
+func _fan(j: int, step: int, centre: int, up_first: bool) -> Array[int]:
+	var a := j
+	var b := (j + step) % SEGMENTS
+	# The centre lies inward of the ring, where a quad's next ring lies
+	# outward, so the turn runs the other way.
+	if up_first:
+		return [a, centre, b]
+	return [a, b, centre]

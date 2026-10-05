@@ -5,7 +5,7 @@ extends Control
 ## opens that world in the look it was last seen in.
 
 ## Every button's width, in pixels.
-const BUTTON_W := 760
+const BUTTON_W := 940
 
 const WORLDS: Array[Dictionary] = [
 	{"title": "HARBOR TOWN", "note": "A 1940s Maine harbour town on the coast, in whatever weather you choose.",
@@ -26,6 +26,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/bulb_void.tscn"},
 	{"title": "LIGHT POOL", "note": "A closed white room open in its floor onto a dark chamber, lit only by a lamp below.",
 		"scene": "res://world/light_pool.tscn"},
+	{"title": "MOVEMENT", "note": "Open grassy hills under a clear sky, with nothing else in them; for trying out how you move.",
+		"scene": "res://world/movement.tscn"},
 ]
 
 
@@ -93,7 +95,7 @@ func _world_button(world: Dictionary) -> Button:
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	# A long note wraps within the button's width.
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	button.custom_minimum_size = Vector2(BUTTON_W, 54)
+	button.custom_minimum_size = Vector2(BUTTON_W, 0)
 	button.add_theme_font_size_override("font_size", 14)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.10, 0.11, 0.13)
@@ -101,6 +103,8 @@ func _world_button(world: Dictionary) -> Button:
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(6)
 	style.set_content_margin_all(7)
+	style.content_margin_top = 4.0
+	style.content_margin_bottom = 4.0
 	button.add_theme_stylebox_override("normal", style)
 	var hover := style.duplicate() as StyleBoxFlat
 	hover.bg_color = Color(0.13, 0.20, 0.15)
