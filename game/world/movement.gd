@@ -2,19 +2,31 @@ extends Node3D
 ## Open ground under the sky, for studying how the player moves: One
 ## Bulb's hills without its room, lit by its far sun under its
 ## Atmosphere sky. The hills and grass as One Bulb was last set (hills
-## 53 m high and 350 m across, ruggedness 0.29, seed 58); the sky a clear
-## day in the standard atmosphere. Godot's default shading; no
+## 53 m high and 350 m across, ruggedness 0.29, seed 58). Godot's default shading; no
 ## WorldBase. The ground is level for 19 m round the start and rises
 ## into the hills beyond; a player who falls off its edge is put back at
 ## the start.
 ##
-## One panel of controls (BenchPanel; Esc frees the mouse), the sun as
-## One Bulb sets it: its polar angle and azimuth, its energy, and whether
-## the air colours its light. Kept in user://movement.json.
+## Two panels of controls (BenchPanel; Esc frees the mouse), kept in
+## user://movement.json. Sun, as One Bulb sets it: its polar angle and
+## azimuth, its energy, and whether the air colours its light. Sky: the
+## atmosphere's air, haze and ozone against Earth's, from none to many
+## times as much, and how forward the haze scatters.
 
 const START := Vector3(0, 0, 3)
 const STATE_PATH := "user://movement.json"
-const BulbVoid := preload("res://world/bulb_void.gd")
+
+# The atmosphere as atmosphere_sky.gdshader has it, for the sunlight
+# that reaches the ground: per metre for red, green and blue.
+const R_EARTH := 6360e3
+const R_AIR := 6460e3
+const RAYLEIGH := Vector3(5.802e-6, 13.558e-6, 33.1e-6)
+const H_RAYLEIGH := 8000.0
+const MIE_EXTINCT := 4.40e-6
+const H_MIE := 1200.0
+const OZONE := Vector3(0.650e-6, 1.881e-6, 0.085e-6)
+const SKY_PARAMS := {"Air density": "rayleigh_scale", "Haze": "mie_scale", "Ozone": "ozone_scale",
+	"Haze forward": "mie_g"}
 
 var _debanding_was := false
 var _panel: BenchPanel
@@ -81,7 +93,21 @@ func _build_panel() -> void:
 	_panel.slider(sun, "Sun energy", 0.0, 4.0, 0.01, 1.0, place)
 	_panel.note(sun, "Light on a surface facing the sun, above the air.")
 	_panel.switch(sun, "Sun colour from the air", true, place)
-	_panel.note(sun, "The beam loses light on its way through the atmosphere, blue most: overhead the sun keeps about three quarters of its light; low, it turns orange and red and fades; set, it gives none.")
+	_panel.note(sun, "The beam loses light on its way through the atmosphere, worked out from the Sky panel's air, haze and ozone, as the sky is: on Earth, overhead the sun keeps most of its light; low, it turns orange and red and fades; set, it gives none.")
+
+	var sky := _panel.panel("Sky")
+	for spec: Array in [["Air density", 0.0, 20.0, 0.01, 1.0], ["Haze", 0.0, 100.0, 0.1, 1.0],
+			["Ozone", 0.0, 20.0, 0.01, 1.0], ["Haze forward", 0.0, 0.95, 0.01, 0.8]]:
+		var param := str(SKY_PARAMS[spec[0]])
+		_panel.slider(sky, str(spec[0]), float(spec[1]), float(spec[2]), float(spec[3]), float(spec[4]),
+			func(v: float) -> void:
+				_sky_mat.set_shader_parameter(param, v)
+				_place_sun())
+	_panel.note(sky, "Each against Earth's on a clear day, which is 1. Air density: the gas itself, which scatters blue most, so more air gives a deeper blue overhead and redder sunsets, and none a black sky by day. Haze: dust and droplets low down, which scatter all colours alike, whitening the sky and dimming the sun. Ozone: a layer high up that takes out orange and yellow, turning twilight purple. Haze forward: how much of the haze's light goes on in the sun's direction, making a bright glow round the sun.")
+	_panel.button(sky, "Back to Earth", func() -> void:
+		for title: String in ["Air density", "Haze", "Ozone"]:
+			(_panel.sliders[title] as HSlider).value = 1.0
+		(_panel.sliders["Haze forward"] as HSlider).value = 0.8)
 
 
 ## Unit vector toward the sun.
@@ -104,11 +130,36 @@ func _place_sun() -> void:
 	_sky_mat.set_shader_parameter("sun_illuminance", energy)
 	var through := Color(1, 1, 1)
 	if (_panel.switches["Sun colour from the air"] as CheckButton).button_pressed:
-		through = BulbVoid._air_transmittance(float((_panel.sliders["Polar angle"] as HSlider).value))
+		through = _transmittance(dir)
 	var lum := 0.2126 * through.r + 0.7152 * through.g + 0.0722 * through.b
-	var hue := Color(through.r / maxf(through.r, 1e-6), through.g / maxf(through.r, 1e-6), through.b / maxf(through.r, 1e-6))
+	var top := maxf(maxf(through.r, through.g), maxf(through.b, 1e-6))
+	var hue := Color(through.r / top, through.g / top, through.b / top)
 	_sun.light_color = hue.linear_to_srgb() if lum > 0.0 else Color.WHITE
 	_sun.light_energy = energy * lum
+
+
+## The share of the sun's light in red, green and blue that crosses the
+## air to the ground, by the sky's own model: exp of the optical depth
+## from the eye toward the sun to the top of the air, summed in 64 steps.
+## None when the Earth stands in the way.
+func _transmittance(dir: Vector3) -> Color:
+	var from := Vector3(0.0, R_EARTH + 2.0, 0.0)
+	var b := from.dot(dir)
+	var c := from.length_squared() - R_EARTH * R_EARTH
+	if b < 0.0 and b * b - c > 0.0:
+		return Color(0, 0, 0)
+	var length := -b + sqrt(b * b - (from.length_squared() - R_AIR * R_AIR))
+	var air := float((_panel.sliders["Air density"] as HSlider).value)
+	var haze := float((_panel.sliders["Haze"] as HSlider).value)
+	var ozone := float((_panel.sliders["Ozone"] as HSlider).value)
+	var steps := 64
+	var dl := length / steps
+	var depth := Vector3.ZERO
+	for i in steps:
+		var h := (from + dir * dl * (i + 0.5)).length() - R_EARTH
+		depth += (RAYLEIGH * air * exp(-h / H_RAYLEIGH) + Vector3.ONE * MIE_EXTINCT * haze * exp(-h / H_MIE)
+			+ OZONE * ozone * maxf(0.0, 1.0 - absf(h - 25000.0) / 15000.0)) * dl
+	return Color(exp(-depth.x), exp(-depth.y), exp(-depth.z))
 
 
 ## One Bulb's terrain, filled in the middle, in its grass: the image 5.6 m
