@@ -26,7 +26,6 @@ import numpy as np
 AUDIO = Path(__file__).resolve().parents[1] / "game" / "audio"
 SOURCES = {
     "a": "853900__alexzavesa__water-drop-tap-4.wav",
-    "b": "863461__robo9418__low-quality-water-drop.wav",
     "c": "868240__noisyredfox__waterdrop.ogg",
 }
 SPEEDS = [0.84, 0.92, 1.0, 1.09, 1.19]

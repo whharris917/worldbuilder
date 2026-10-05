@@ -117,9 +117,9 @@ const MAX_DROPS := 32                  # rings the shader keeps at once
 const DROP_SOUNDS: Array[String] = ["res://audio/drip_1.wav", "res://audio/drip_2.wav", "res://audio/drip_3.wav", "res://audio/drip_4.wav"]
 # Single drops cut from recordings (BigSoundBank, CC0; see audio/drip_rec_SOURCE.txt).
 const DROP_RECORDINGS := 8
-# Recordings of single drops, three, each at five speeds (Freesound; see
+# Recordings of single drops, two, each at five speeds (Freesound; see
 # audio/drip_one_SOURCE.txt).
-const DROP_SINGLES: Array[String] = ["a", "b", "c"]
+const DROP_SINGLES: Array[String] = ["a", "c"]
 const PANE := 2                        # render layer of the glass, unseen by the second camera
 const CHAMBER := 4                     # render layer of what lies in the chamber, unlit by the light through the glass
 const THROUGH_ANGLE := 72.0            # degrees: the spot's half-angle, past the opening's corners (69) seen from the lamp
@@ -354,7 +354,7 @@ func _build_panels() -> void:
 	_panel.note(glass, "How steep each drop's rings are. The rings spread at water's speeds: fine ripples, under about 1.7 cm, outrun longer ones and fade first.")
 	_panel.choice(glass, "Drip sound", ["Single drops", "Cut", "Generated"], "Single drops", func(option: String) -> void:
 		_drip_sound = option)
-	_panel.note(glass, "Single drops: three recordings of one drop each (Freesound), each at five speeds, higher and shorter for a smaller drop, lower and longer for a larger. Cut: eight drops cut out of recordings of many (BigSoundBank). Generated: four made by formula.")
+	_panel.note(glass, "Single drops: two recordings of one drop each (Freesound), each at five speeds, higher and shorter for a smaller drop, lower and longer for a larger. Cut: eight drops cut out of recordings of many (BigSoundBank). Generated: four made by formula.")
 	_panel.slider(glass, "Drip volume (dB)", -40.0, 6.0, 1.0, -6.0, func(v: float) -> void:
 		for player in _drip_players:
 			player.volume_db = v)
