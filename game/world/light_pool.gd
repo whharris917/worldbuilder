@@ -72,8 +72,8 @@ extends Node3D
 ## worked out each frame from the same two ripple maps the glass shows
 ## (PoolCaustics, pool_caustics.glsl, custom: rays from the lamp refracted
 ## into the water through the flat glass and out through the rippled
-## surface by Snell's law, tallied by where they reach the ceiling's
-## height). The tally is blurred by the bulb's size times the water-to-
+## surface, the drops' rings included, by Snell's law, tallied by where
+## they reach the ceiling's height). The tally is blurred by the bulb's size times the water-to-
 ## ceiling distance over the lamp-to-water distance (about 5), since every
 ## point of the bulb casts its own copy of the pattern. The picture holds a
 ## quarter of the light relative to still water, so the light's energy is
@@ -368,7 +368,7 @@ func _build_panels() -> void:
 		_caustics_on = on
 		if not on:
 			_show_caustics(null))
-	_panel.note(glass, "The lamp's light bent by the ripples on its way up, gathered into moving bright lines where it lands, worked out each frame from the same ripples the glass shows. The drops' rings are not in it.")
+	_panel.note(glass, "The lamp's light bent by the ripples and the drops' rings on its way up, gathered into moving bright lines where it lands, worked out each frame from the same water the glass shows.")
 	_panel.slider(glass, "Bulb size (cm)", 1.0, 30.0, 0.5, BULB_SIZE * 100.0, func(v: float) -> void:
 		_bulb_size = v / 100.0
 		_bulb_mesh.radius = _bulb_size * 0.5
@@ -764,6 +764,7 @@ func _build_glass() -> void:
 	_glass_mat.set_shader_parameter("ripple_size", RIPPLE_SIZE)
 	_glass_mat.set_shader_parameter("ripple_strength", RIPPLE_STRENGTH)
 	_glass_mat.set_shader_parameter("bend", RIPPLE_BEND)
+	_glass_mat.set_shader_parameter("drip_strength", 1.0)
 	for i in 2:
 		var noise := FastNoiseLite.new()
 		noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -884,7 +885,7 @@ func _update_caustics() -> void:
 	var spread := half / (ROOM - LAMP.y) / (2.0 * tan(deg_to_rad(THROUGH_ANGLE)))
 	var picture := _caustics.render(LAMP, THROUGH_ANGLE, GLASS_TOP, ROOM,
 		float(_glass_mat.get_shader_parameter("ripple_strength")), _ripple_size, _ripple_offsets,
-		spread * PoolCaustics.SIZE)
+		_landed, _clock, float(_glass_mat.get_shader_parameter("drip_strength")), spread * PoolCaustics.SIZE)
 	if picture != null:
 		_show_caustics(picture)
 

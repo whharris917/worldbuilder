@@ -7,7 +7,9 @@
 // underside, is bent into the water (the glass is a parallel slab, so
 // only the water's index counts), leaves through the rippled water
 // surface, bent by Snell's law at the surface's normal there, and goes on
-// to the ceiling's height. The direction from the lamp to where it lands
+// to the ceiling's height. The surface's slope is the two sliding ripple
+// maps' plus the drops' rings, both read exactly as pool_glass.gdshader
+// reads them. The direction from the lamp to where it lands
 // is tallied in the light's picture, so the picture, thrown from the
 // lamp, puts the light where the rays land on the ceiling. Then the
 // tally is smoothed and blurred by the bulb's size.
@@ -22,6 +24,9 @@ layout(set = 0, binding = 0, r32ui) uniform restrict uimage2D tally;
 layout(set = 0, binding = 1, r8) uniform restrict writeonly image2D picture;
 layout(set = 0, binding = 2) uniform sampler2D ripple_a;
 layout(set = 0, binding = 3) uniform sampler2D ripple_b;
+layout(set = 0, binding = 4, std430) restrict readonly buffer Drops {
+	vec4 drops[];        // x, z where it landed; when (s); strength, 0 for none
+};
 
 layout(push_constant, std430) uniform Params {
 	int stage;
@@ -35,13 +40,51 @@ layout(push_constant, std430) uniform Params {
 	float ripple_size;
 	vec4 offsets;    // xy the first map's slide, zw the second's
 	float blur;      // the bulb's blur, in pixels of the picture
-	float pad0;
-	float pad1;
-	float pad2;
+	float now;       // the clock the drops' times are on
+	float drip_strength;
+	float pad;
 } pc;
 
 const float WATER = 1.33;
 const float TAU = 6.2831853;
+const int MAX_DROPS = 32;
+const float G = 9.8;
+const float SIGMA_RHO = 7.28e-5;
+const float NU = 1e-6;
+const float MAX_AGE = 12.0;
+
+// The slope from every drop's rings at a point of the surface: a copy of
+// drip_slope in pool_glass.gdshader, which explains it; the two must stay
+// the same, so the caustics' rings are the rings on the glass.
+vec2 drip_slope(vec2 at) {
+	vec2 slope = vec2(0.0);
+	for (int d = 0; d < MAX_DROPS; d++) {
+		vec4 drop = drops[d];
+		float age = pc.now - drop.z;
+		if (drop.w <= 0.0 || age <= 0.0 || age > MAX_AGE) {
+			continue;
+		}
+		vec2 off = at - drop.xy;
+		float r = length(off);
+		if (r > age * 0.4 + 0.1) {
+			continue;
+		}
+		vec2 dir = off / max(r, 1e-4);
+		float sum = 0.0;
+		for (int i = 0; i < 8; i++) {
+			float k = 63.0 * pow(12.5, float(i) / 7.0);
+			float w = sqrt(G * k + SIGMA_RHO * k * k * k);
+			float cg = (G + 3.0 * SIGMA_RHO * k * k) / (2.0 * w);
+			float centre = cg * age;
+			float width = 0.03 + 0.25 * centre;
+			float x = (r - centre) / width;
+			float env = exp(-x * x) * exp(-2.0 * NU * k * k * age) / sqrt(1.0 + r / 0.05);
+			sum += -sin(k * r - w * age) * env;
+		}
+		slope += dir * sum * drop.w;
+	}
+	return slope * 0.4 * pc.drip_strength;
+}
 
 // The water's slope (rise over run along x and z) at a point of the
 // surface, from the two sliding normal maps exactly as pool_glass.gdshader
@@ -50,7 +93,7 @@ vec2 slope(vec2 xz) {
 	vec2 p = xz / pc.ripple_size;
 	vec2 sa = textureLod(ripple_a, p + pc.offsets.xy, 0.0).xy * 2.0 - 1.0;
 	vec2 sb = textureLod(ripple_b, p * 0.73 + pc.offsets.zw, 0.0).xy * 2.0 - 1.0;
-	return (sa + sb) * 0.5 * pc.strength;
+	return (sa + sb) * 0.5 * pc.strength + drip_slope(xz);
 }
 
 // Picture pixel for a direction from the lamp given as its tangents

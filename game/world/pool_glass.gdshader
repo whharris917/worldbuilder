@@ -54,7 +54,8 @@ const float SIGMA_RHO = 7.28e-5;
 const float NU = 1e-6;
 const float MAX_AGE = 12.0;
 
-// The slope from every drop's rings at a point of the surface.
+// The slope from every drop's rings at a point of the surface. The
+// caustics (pool_caustics.glsl) hold a copy; change both alike.
 vec2 drip_slope(vec2 at) {
 	vec2 slope = vec2(0.0);
 	for (int d = 0; d < MAX_DROPS; d++) {

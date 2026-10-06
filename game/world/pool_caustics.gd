@@ -10,6 +10,7 @@ extends RefCounted
 ## Without a rendering device (headless runs) it gives nothing.
 
 const SIZE := 512                       # the picture's side; at 1024, Godot's copying of each new projector picture cost about 15 ms a frame
+const DROPS := 32                       # as many as the glass keeps
 const RAYS := 1024                      # rays per side of the cone: four a pixel
 
 var _rd: RenderingDevice
@@ -19,6 +20,7 @@ var _tally: RID
 var _picture: RID
 var _maps: Array[RID] = []
 var _sampler: RID
+var _drops: RID
 var _set: RID
 var _textures: Array[ImageTexture] = []
 var _shown := 0
@@ -70,6 +72,9 @@ func start(maps: Array[NoiseTexture2D]) -> bool:
 	state.repeat_u = RenderingDevice.SAMPLER_REPEAT_MODE_REPEAT
 	state.repeat_v = RenderingDevice.SAMPLER_REPEAT_MODE_REPEAT
 	_sampler = _rd.sampler_create(state)
+	var none := PackedVector4Array()
+	none.resize(DROPS)
+	_drops = _rd.storage_buffer_create(DROPS * 16, none.to_byte_array())
 	var uniforms: Array[RDUniform] = []
 	for pair: Array in [[0, _tally], [1, _picture]]:
 		var u := RDUniform.new()
@@ -84,6 +89,11 @@ func start(maps: Array[NoiseTexture2D]) -> bool:
 		u.add_id(_sampler)
 		u.add_id(_maps[i])
 		uniforms.append(u)
+	var drops := RDUniform.new()
+	drops.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+	drops.binding = 4
+	drops.add_id(_drops)
+	uniforms.append(drops)
 	_set = _rd.uniform_set_create(uniforms, _shader, 0)
 	var blank := Image.create(SIZE, SIZE, true, Image.FORMAT_L8)
 	for i in 2:
@@ -96,7 +106,7 @@ func free_device() -> void:
 		return
 	if _pending:
 		_rd.sync()
-	for rid: RID in [_set, _sampler, _tally, _picture, _pipeline, _shader] + _maps:
+	for rid: RID in [_set, _drops, _sampler, _tally, _picture, _pipeline, _shader] + _maps:
 		if rid.is_valid():
 			_rd.free_rid(rid)
 	_rd.free()
@@ -106,10 +116,12 @@ func free_device() -> void:
 ## The last frame's picture, collected now, and this frame's work sent
 ## off; null on the first frame. For a light at `lamp` pointing straight up with
 ## half-angle `angle` degrees; water at `water` height, ceiling at
-## `ceiling`; the ripples as the glass has them; `blur_px` the bulb's
-## blur in pixels of the picture.
+## `ceiling`; the ripples and the drops (where, when, how hard, on the
+## clock `now`) as the glass has them; `blur_px` the bulb's blur in pixels
+## of the picture.
 func render(lamp: Vector3, angle: float, water: float, ceiling: float, strength: float,
-		ripple_size: float, offsets: Array[Vector2], blur_px: float) -> ImageTexture:
+		ripple_size: float, offsets: Array[Vector2], drops: PackedVector4Array, now: float,
+		drip_strength: float, blur_px: float) -> ImageTexture:
 	if _rd == null:
 		return null
 	var picture: ImageTexture = null
@@ -139,6 +151,9 @@ func render(lamp: Vector3, angle: float, water: float, ceiling: float, strength:
 	params.encode_float(56, offsets[1].x)
 	params.encode_float(60, offsets[1].y)
 	params.encode_float(64, blur_px)
+	params.encode_float(68, now)
+	params.encode_float(72, drip_strength)
+	_rd.buffer_update(_drops, 0, DROPS * 16, drops.to_byte_array())
 	var list := _rd.compute_list_begin()
 	_rd.compute_list_bind_compute_pipeline(list, _pipeline)
 	_rd.compute_list_bind_uniform_set(list, _set, 0)
