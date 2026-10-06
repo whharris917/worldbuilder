@@ -4,8 +4,10 @@ extends Node
 ##   godot --path game res://world/pool_probe.tscn
 ## WORLDBUILDER_POOL_SHOTS=name,name limits it to those views;
 ## WORLDBUILDER_POOL_VIEWS=name:fov:x,y,z:tx,ty,tz;... takes its own;
-## WORLDBUILDER_POOL_OFF=gi,shadow,glow switches those parts off, to see
-## what each costs.
+## WORLDBUILDER_POOL_OFF=gi,shadow,glow,caustics switches those parts off, to see
+## what each costs. WORLDBUILDER_POOL_CAUSTIC_TEST=1 makes the caustics'
+## picture a marker lighting the ceiling only east of the lamp and well
+## south of it, to check the picture's way round.
 
 ## name, fov, camera, target.
 const VIEWS := [
@@ -31,12 +33,15 @@ func _ready() -> void:
 func _run() -> void:
 	await get_tree().create_timer(2.0).timeout
 	_world.player.visible = false
+	_world._caustics.test = OS.get_environment("WORLDBUILDER_POOL_CAUSTIC_TEST") == "1"
 	var off := OS.get_environment("WORLDBUILDER_POOL_OFF").split(",")
 	for n: Node in _world.find_children("*", "", true, false):
 		if "gi" in off and n is VoxelGI:
 			(n as VoxelGI).visible = false
 		if "shadow" in off and n is OmniLight3D:
 			(n as OmniLight3D).shadow_enabled = false
+	if "caustics" in off:
+		(_world._panel.switches["Caustics"] as CheckButton).button_pressed = false
 	if "glow" in off:
 		(_world.get_node("WorldEnvironment") as WorldEnvironment).environment.glow_enabled = false
 	for layer: Node in get_tree().root.find_children("*", "CanvasLayer", true, false):

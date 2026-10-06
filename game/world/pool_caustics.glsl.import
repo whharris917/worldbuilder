@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://s2vxhx2ayxuo"
+path="res://.godot/imported/pool_caustics.glsl-570173522e8fada73b79fd464e393d78.res"
+
+[deps]
+
+source_file="res://world/pool_caustics.glsl"
+dest_files=["res://.godot/imported/pool_caustics.glsl-570173522e8fada73b79fd464e393d78.res"]
+
+[params]
+

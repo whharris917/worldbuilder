@@ -66,7 +66,21 @@ extends Node3D
 ## clear glass, with the bulb's falloff and its sharp shadows; its colour
 ## is the lamp's times the tint, its energy the lamp's times 1 minus the
 ## opacity.
-## shadows. The pane is always in the bounce (GI mode Static), so the
+##
+## Caustics (Glass panel, on to begin): that light carries a picture of
+## where the lamp's light lands on the ceiling after the water bends it,
+## worked out each frame from the same two ripple maps the glass shows
+## (PoolCaustics, pool_caustics.glsl, custom: rays from the lamp refracted
+## into the water through the flat glass and out through the rippled
+## surface by Snell's law, tallied by where they reach the ceiling's
+## height). The tally is blurred by the bulb's size times the water-to-
+## ceiling distance over the lamp-to-water distance (about 5), since every
+## point of the bulb casts its own copy of the pattern. The picture holds a
+## quarter of the light relative to still water, so the light's energy is
+## four times the plain through-light's. On the walls the picture lands
+## where the ceiling's would, along the same directions from the lamp.
+##
+## The pane casts The pane is always in the bounce (GI mode Static), so the
 ## bounce methods find the lamp's light blocked, as the shadow does; the
 ## picture it shows lights nothing. Dithering, the atlas, half
 ## resolution and VoxelGI quality are engine-wide and put back as found
@@ -122,6 +136,7 @@ const DROP_RECORDINGS := 8
 const DROP_SINGLES: Array[String] = ["a", "c"]
 const PANE := 2                        # render layer of the glass, unseen by the second camera
 const CHAMBER := 4                     # render layer of what lies in the chamber, unlit by the light through the glass
+const BULB_SIZE := 0.12                # m across the lamp's bulb
 const THROUGH_ANGLE := 72.0            # degrees: the spot's half-angle, past the opening's corners (69) seen from the lamp
 
 const ATLAS_SIZES: Array[int] = [4096, 8192, 16384]
@@ -183,6 +198,12 @@ var _relief_mats: Array[ShaderMaterial] = []
 var _relief_meshes: Array[MeshInstance3D] = []
 var _relief_phase := 0.0
 var _relief_speed := RELIEF_SPEED
+var _ripple_maps: Array[NoiseTexture2D] = []
+var _caustics := PoolCaustics.new()
+var _caustics_on := true
+var _caustics_shown := false            # the through-light carries the caustics now
+var _bulb_size := BULB_SIZE
+var _bulb_mesh: SphereMesh
 var _rebake_in := -1.0                  # seconds to a VoxelGI re-bake; below 0, none due
 
 
@@ -220,6 +241,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	_caustics.free_device()
 	var vp := get_viewport()
 	vp.use_debanding = _was["debanding"]
 	vp.positional_shadow_atlas_size = _was["atlas"]
@@ -342,6 +364,16 @@ func _build_panels() -> void:
 	_panel.slider(glass, "Picture bend", 0.0, 0.1, 0.001, RIPPLE_BEND, func(v: float) -> void:
 		_glass_mat.set_shader_parameter("bend", v))
 	_panel.note(glass, "How far the picture behind shifts per unit of slope, as a share of the screen. Real water bends far things further than near ones; the picture holds no depth, so here all shift alike.")
+	_panel.switch(glass, "Caustics", true, func(on: bool) -> void:
+		_caustics_on = on
+		if not on:
+			_show_caustics(null))
+	_panel.note(glass, "The lamp's light bent by the ripples on its way up, gathered into moving bright lines where it lands, worked out each frame from the same ripples the glass shows. The drops' rings are not in it.")
+	_panel.slider(glass, "Bulb size (cm)", 1.0, 30.0, 0.5, BULB_SIZE * 100.0, func(v: float) -> void:
+		_bulb_size = v / 100.0
+		_bulb_mesh.radius = _bulb_size * 0.5
+		_bulb_mesh.height = _bulb_size)
+	_panel.note(glass, "Every point of the bulb casts its own copy of the lines, offset from the others, so a larger bulb blurs them: on the ceiling, by about five times its size (the ceiling is five times as far above the water as the lamp is below it).")
 	_panel.heading(glass, "Drips")
 	_panel.slider(glass, "Dripping spots", 0.0, 20.0, 1.0, DRIP_SPOTS, func(v: float) -> void:
 		_place_drip_spots(int(v)))
@@ -484,6 +516,8 @@ func _reset() -> void:
 	(_panel.sliders["Ripple size (m)"] as HSlider).value = RIPPLE_SIZE
 	(_panel.sliders["Ripple speed (m/s)"] as HSlider).value = RIPPLE_SPEED
 	(_panel.sliders["Picture bend"] as HSlider).value = RIPPLE_BEND
+	(_panel.switches["Caustics"] as CheckButton).button_pressed = true
+	(_panel.sliders["Bulb size (cm)"] as HSlider).value = BULB_SIZE * 100.0
 	(_panel.sliders["Dripping spots"] as HSlider).value = DRIP_SPOTS
 	(_panel.sliders["Drips a minute (each)"] as HSlider).value = DRIPS_PER_MINUTE
 	(_panel.sliders["Drip ripples"] as HSlider).value = 1.0
@@ -745,6 +779,7 @@ func _build_glass() -> void:
 		tex.generate_mipmaps = true
 		tex.noise = noise
 		_glass_mat.set_shader_parameter("ripple_a" if i == 0 else "ripple_b", tex)
+		_ripple_maps.append(tex)
 	var size := Vector3(2.0 * OPENING_HALF, GLASS_THICK, 2.0 * OPENING_HALF)
 	var centre := Vector3(OPENING_CENTRE.x, GLASS_TOP - GLASS_THICK * 0.5, OPENING_CENTRE.y)
 	_glass_pane = _shape(centre, size, _glass_mat)
@@ -826,7 +861,32 @@ func _set_thickness(t: float) -> void:
 func _set_through() -> void:
 	if _through == null or _light == null:
 		return
-	_through.light_energy = _light.light_energy * (1.0 - _opacity)
+	_through.light_energy = _light.light_energy * (1.0 - _opacity) * (4.0 if _caustics_shown else 1.0)
+
+
+## The caustics' picture for the light through the glass, or none.
+func _show_caustics(picture: ImageTexture) -> void:
+	_through.light_projector = picture
+	if _caustics_shown != (picture != null):
+		_caustics_shown = picture != null
+		_set_through()
+
+
+## This frame's caustics, once the ripple maps are made. The blur: the
+## bulb's size times the water-to-ceiling over the lamp-to-water distance,
+## as half-width, turned into pixels of the light's picture.
+func _update_caustics() -> void:
+	if not _caustics_on or not _caustics.start(_ripple_maps):
+		return
+	var lamp_to_water := GLASS_TOP - LAMP.y
+	var water_to_ceiling := ROOM - GLASS_TOP
+	var half := _bulb_size * 0.5 * water_to_ceiling / lamp_to_water
+	var spread := half / (ROOM - LAMP.y) / (2.0 * tan(deg_to_rad(THROUGH_ANGLE)))
+	var picture := _caustics.render(LAMP, THROUGH_ANGLE, GLASS_TOP, ROOM,
+		float(_glass_mat.get_shader_parameter("ripple_strength")), _ripple_size, _ripple_offsets,
+		spread * PoolCaustics.SIZE)
+	if picture != null:
+		_show_caustics(picture)
 
 
 ## Each frame: the second camera where the eye is, with the same lens, at
@@ -855,6 +915,7 @@ func _process(delta: float) -> void:
 	_drip(delta)
 	_follow_eye()
 	_slide_ripples(delta)
+	_update_caustics()
 	_glass_mat.set_shader_parameter("now", _clock)
 	_relief_phase += _relief_speed * delta
 	_set_relief("phase", _relief_phase)
@@ -1146,9 +1207,10 @@ func _build_lamp() -> void:
 	glow.emission_energy_multiplier = BULB_GLOW
 	_glass = glow
 	var bulb := SphereMesh.new()
-	bulb.radius = 0.06
-	bulb.height = 0.12
+	bulb.radius = BULB_SIZE * 0.5
+	bulb.height = BULB_SIZE
 	bulb.material = glow
+	_bulb_mesh = bulb
 	var mi := MeshInstance3D.new()
 	mi.mesh = bulb
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
