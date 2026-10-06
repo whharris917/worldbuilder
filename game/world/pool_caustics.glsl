@@ -7,11 +7,12 @@
 // underside, is bent into the water (the glass is a parallel slab, so
 // only the water's index counts), leaves through the rippled water
 // surface, bent by Snell's law at the surface's normal there, and goes on
-// to the ceiling's height. The surface's slope is the two sliding ripple
+// to whichever it meets first of the ceiling and the four walls. The surface's slope is the two sliding ripple
 // maps' plus the drops' rings, both read exactly as pool_glass.gdshader
-// reads them. The direction from the lamp to where it lands
-// is tallied in the light's picture, so the picture, thrown from the
-// lamp, puts the light where the rays land on the ceiling. Then the
+// reads them. The direction from the lamp to where it lands is tallied in
+// the light's picture. Every point of the room lies in one direction from
+// the lamp, so the picture, thrown from the lamp, puts the light where
+// the rays land, on the ceiling and the walls alike. Then the
 // tally is smoothed and blurred by the bulb's size.
 //
 // Stages: 0 clear the tally, 1 trace, 2 draw the picture as sRGB.
@@ -42,7 +43,7 @@ layout(push_constant, std430) uniform Params {
 	float blur;      // the bulb's blur, in pixels of the picture
 	float now;       // the clock the drops' times are on
 	float drip_strength;
-	float pad;
+	float half_room; // the walls stand this far either way from x 0, z 0
 } pc;
 
 const float WATER = 1.33;
@@ -126,8 +127,15 @@ void trace() {
 	if (out_dir.y < 0.01) {
 		return;          // turned back inside the water, or skimming flat
 	}
-	vec3 lands = at + out_dir * (pc.ceiling - at.y) / out_dir.y;
-	vec2 seen = (lands.xz - pc.lamp.xz) / (pc.ceiling - pc.lamp.y);
+	float reach = (pc.ceiling - at.y) / out_dir.y;
+	if (abs(out_dir.x) > 1e-6) {
+		reach = min(reach, (sign(out_dir.x) * pc.half_room - at.x) / out_dir.x);
+	}
+	if (abs(out_dir.z) > 1e-6) {
+		reach = min(reach, (sign(out_dir.z) * pc.half_room - at.z) / out_dir.z);
+	}
+	vec3 lands = at + out_dir * max(reach, 0.0);
+	vec2 seen = (lands.xz - pc.lamp.xz) / (lands.y - pc.lamp.y);
 	ivec2 px = ivec2(floor(to_pixel(seen)));
 	if (px.x < 0 || px.y < 0 || px.x >= pc.size || px.y >= pc.size) {
 		return;

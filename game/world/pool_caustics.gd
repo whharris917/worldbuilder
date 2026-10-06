@@ -116,10 +116,10 @@ func free_device() -> void:
 ## The last frame's picture, collected now, and this frame's work sent
 ## off; null on the first frame. For a light at `lamp` pointing straight up with
 ## half-angle `angle` degrees; water at `water` height, ceiling at
-## `ceiling`; the ripples and the drops (where, when, how hard, on the
+## `ceiling`, walls `half_room` either way from x 0, z 0; the ripples and the drops (where, when, how hard, on the
 ## clock `now`) as the glass has them; `blur_px` the bulb's blur in pixels
 ## of the picture.
-func render(lamp: Vector3, angle: float, water: float, ceiling: float, strength: float,
+func render(lamp: Vector3, angle: float, water: float, ceiling: float, half_room: float, strength: float,
 		ripple_size: float, offsets: Array[Vector2], drops: PackedVector4Array, now: float,
 		drip_strength: float, blur_px: float) -> ImageTexture:
 	if _rd == null:
@@ -153,6 +153,7 @@ func render(lamp: Vector3, angle: float, water: float, ceiling: float, strength:
 	params.encode_float(64, blur_px)
 	params.encode_float(68, now)
 	params.encode_float(72, drip_strength)
+	params.encode_float(76, half_room)
 	_rd.buffer_update(_drops, 0, DROPS * 16, drops.to_byte_array())
 	var list := _rd.compute_list_begin()
 	_rd.compute_list_bind_compute_pipeline(list, _pipeline)

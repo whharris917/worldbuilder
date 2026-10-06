@@ -77,8 +77,8 @@ extends Node3D
 ## ceiling distance over the lamp-to-water distance (about 5), since every
 ## point of the bulb casts its own copy of the pattern. The picture holds a
 ## quarter of the light relative to still water, so the light's energy is
-## four times the plain through-light's. On the walls the picture lands
-## where the ceiling's would, along the same directions from the lamp.
+## four times the plain through-light's. Each ray is followed to the
+## ceiling or the wall it meets, so the walls get their own pattern.
 ##
 ## The pane casts The pane is always in the bounce (GI mode Static), so the
 ## bounce methods find the lamp's light blocked, as the shadow does; the
@@ -883,7 +883,7 @@ func _update_caustics() -> void:
 	var water_to_ceiling := ROOM - GLASS_TOP
 	var half := _bulb_size * 0.5 * water_to_ceiling / lamp_to_water
 	var spread := half / (ROOM - LAMP.y) / (2.0 * tan(deg_to_rad(THROUGH_ANGLE)))
-	var picture := _caustics.render(LAMP, THROUGH_ANGLE, GLASS_TOP, ROOM,
+	var picture := _caustics.render(LAMP, THROUGH_ANGLE, GLASS_TOP, ROOM, ROOM * 0.5,
 		float(_glass_mat.get_shader_parameter("ripple_strength")), _ripple_size, _ripple_offsets,
 		_landed, _clock, float(_glass_mat.get_shader_parameter("drip_strength")), spread * PoolCaustics.SIZE)
 	if picture != null:
