@@ -5,7 +5,9 @@ extends Node
 ## WORLDBUILDER_SHIFT_SHOTS=name,name limits it to those views;
 ## WORLDBUILDER_SHIFT_VIEWS=name:fov:x,y,z:tx,ty,tz;... takes its own;
 ## WORLDBUILDER_SHIFT_SET=Title=value;... sets panel switches (0/1),
-## sliders and choices (Title=Option) by title.
+## sliders and choices (Title=Option) by title;
+## WORLDBUILDER_SHIFT_CLOCK=s sets the eye's clock (it is out and open
+## from 11 s).
 
 ## name, fov, camera, target.
 const VIEWS := [
@@ -41,6 +43,8 @@ func _run() -> void:
 				(panel.sliders[kv[0]] as HSlider).value = float(kv[1])
 			elif panel.choices.has(kv[0]):
 				panel.pick(kv[0], kv[1])
+	if OS.get_environment("WORLDBUILDER_SHIFT_CLOCK") != "":
+		_world.eye_clock = float(OS.get_environment("WORLDBUILDER_SHIFT_CLOCK"))
 	await get_tree().create_timer(1.0).timeout
 	for layer: Node in get_tree().root.find_children("*", "CanvasLayer", true, false):
 		(layer as CanvasLayer).visible = false

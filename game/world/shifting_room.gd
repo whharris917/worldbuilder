@@ -15,6 +15,20 @@ extends Node3D
 ## A player who jumps off falls to the floor and may walk about there; R
 ## puts them back on the platform, through a short fade to black.
 ##
+## The eye: the front wall (north, the one the player faces on arriving)
+## has a patch 8 m square, its middle level with the platform's view,
+## made of a plane divided 192 times each way whose points the wall's
+## shader (eye_wall.gdshader) moves out by a height picture drawn afresh
+## each frame (eye_height.gdshader, in a SubViewport 512 square, half-float
+## so heights and slopes keep their precision). The wall is open behind
+## the patch and closed by a slab just behind it. The eye has no colour of
+## its own, only shape in the bulb's light: an eyeball 3.2 m across pushes
+## out through the wall over 8 s, 1.5 s after arrival, its lid closed;
+## the lid then opens, and it blinks once every 10 s. It looks about the
+## room, darting to a new point every 1.2 to 3.5 s (a third of the time,
+## the player's head, which it then follows), turning no more than 40
+## degrees from straight out.
+##
 ## One panel (BenchPanel; Esc frees the mouse), kept in
 ## user://shifting_room.json: dithering (on to begin; put back as found on
 ## leaving), the bulb's energy, and the bounce method:
@@ -32,6 +46,16 @@ const PLATFORM_TOP := 12.0
 const BULB := Vector3(0.0, PLATFORM_TOP - 0.2 - 1.0, 0.0)
 const START := Vector3(0.0, PLATFORM_TOP, 0.0)
 const STATE_PATH := "user://shifting_room.json"
+const EYE_PATCH := 8.0
+const EYE_CENTRE := Vector3(0.0, 13.0, -ROOM * 0.5)
+const EYE_GRID := 192                   # points each way: 4 cm apart; at 400, 39 fps from the side on the laptop
+const EYE_PICTURE := 512
+const EYE_BALL := 1.6
+const EMERGE_START := 1.5
+const EMERGE_TIME := 8.0
+const OPEN_TIME := 1.5
+const BLINK_EVERY := 10.0
+const GAZE_LIMIT := 40.0                # degrees from straight out of the wall
 
 var player: Player
 var _panel: BenchPanel
@@ -43,6 +67,15 @@ var _fade: ColorRect
 var _returning := -1.0                  # s since the fade out began; below 0, none
 var _built := false
 var _debanding_was := false
+var _eye_mat: ShaderMaterial
+var eye_clock := 0.0                    # s since arrival, for the eye
+var _next_blink := 0.0
+var _blink_at := -1.0                   # when the current blink began; below 0, none
+var _gaze := Vector3.BACK               # where the eye looks, out of the wall (+z)
+var _gaze_target := Vector3.ZERO
+var _follow_player := false
+var _next_glance := 0.0
+var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
@@ -54,6 +87,7 @@ func _ready() -> void:
 	_build_environment()
 	_build_room()
 	_build_platform()
+	_build_eye()
 	_build_bulb()
 	_build_fade()
 	_build_panel()
@@ -118,7 +152,14 @@ func _build_room() -> void:
 	_slab_between(Vector3(h, 0.0, -h), Vector3(h + WALL, ROOM, h), grey)
 	_slab_between(Vector3(-h - WALL, 0.0, -h), Vector3(-h, ROOM, h), grey)
 	_slab_between(Vector3(-h - WALL, 0.0, h), Vector3(h + WALL, ROOM, h + WALL), grey)
-	_slab_between(Vector3(-h - WALL, 0.0, -h - WALL), Vector3(h + WALL, ROOM, -h), grey)
+	# The front wall, open where the eye's patch is and closed behind it.
+	var e := EYE_PATCH * 0.5
+	var ey := EYE_CENTRE.y
+	_slab_between(Vector3(-h - WALL, 0.0, -h - WALL), Vector3(-e, ROOM, -h), grey)
+	_slab_between(Vector3(e, 0.0, -h - WALL), Vector3(h + WALL, ROOM, -h), grey)
+	_slab_between(Vector3(-e, 0.0, -h - WALL), Vector3(e, ey - e, -h), grey)
+	_slab_between(Vector3(-e, ey + e, -h - WALL), Vector3(e, ROOM, -h), grey)
+	_slab_between(Vector3(-e, ey - e, -h - WALL), Vector3(e, ey + e, -h - 0.01), grey)
 
 
 ## The platform, plain darker grey, held up by nothing, and its lip: four
@@ -193,6 +234,100 @@ func _set_bounce(option: String) -> void:
 		_voxel_gi.position.y = ROOM * 0.5
 		add_child(_voxel_gi)
 		_voxel_gi.bake()
+
+
+## ---- the eye -----------------------------------------------------------------
+
+## The height picture's viewport and the patch of wall it moves.
+func _build_eye() -> void:
+	var view := SubViewport.new()
+	view.size = Vector2i(EYE_PICTURE, EYE_PICTURE)
+	view.use_hdr_2d = true
+	view.disable_3d = true
+	view.transparent_bg = false
+	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(view)
+	var canvas := ColorRect.new()
+	canvas.size = Vector2(EYE_PICTURE, EYE_PICTURE)
+	_eye_mat = ShaderMaterial.new()
+	_eye_mat.shader = load("res://world/eye_height.gdshader") as Shader
+	_eye_mat.set_shader_parameter("patch", EYE_PATCH)
+	_eye_mat.set_shader_parameter("ball", EYE_BALL)
+	canvas.material = _eye_mat
+	view.add_child(canvas)
+	var wall := ShaderMaterial.new()
+	wall.shader = load("res://world/eye_wall.gdshader") as Shader
+	wall.set_shader_parameter("heights", view.get_texture())
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(EYE_PATCH, EYE_PATCH)
+	plane.subdivide_width = EYE_GRID - 1
+	plane.subdivide_depth = EYE_GRID - 1
+	plane.material = wall
+	var patch := MeshInstance3D.new()
+	patch.mesh = plane
+	patch.position = EYE_CENTRE
+	patch.rotation_degrees.x = 90.0
+	# The moved surface stands up to about 1.5 m out of the plane.
+	patch.extra_cull_margin = 2.0
+	add_child(patch)
+	_rng.randomize()
+	_gaze_target = Vector3(0.0, EYE_CENTRE.y, 0.0)
+
+
+## How far the lid is closed at `t` seconds into a blink: shut in 0.1 s,
+## held 0.06 s, open again in 0.22 s.
+func _blink_shape(t: float) -> float:
+	if t < 0.1:
+		return smoothstep(0.0, 0.1, t)
+	if t < 0.16:
+		return 1.0
+	return 1.0 - smoothstep(0.16, 0.38, t)
+
+
+func _process(delta: float) -> void:
+	eye_clock += delta
+	var emerge := smoothstep(EMERGE_START, EMERGE_START + EMERGE_TIME, eye_clock)
+	var opened_at := EMERGE_START + EMERGE_TIME
+	var blink := 1.0 - smoothstep(opened_at, opened_at + OPEN_TIME, eye_clock)
+	if eye_clock >= opened_at + OPEN_TIME:
+		if _next_blink <= 0.0:
+			_next_blink = opened_at + OPEN_TIME + BLINK_EVERY
+		if eye_clock >= _next_blink:
+			_blink_at = eye_clock
+			_next_blink += BLINK_EVERY
+		if _blink_at >= 0.0:
+			var t := eye_clock - _blink_at
+			blink = _blink_shape(t)
+			if t > 0.38:
+				_blink_at = -1.0
+	_look(delta, emerge)
+	_eye_mat.set_shader_parameter("emerge", emerge)
+	_eye_mat.set_shader_parameter("blink", blink)
+	_eye_mat.set_shader_parameter("gaze", _gaze)
+
+
+## Where the eye looks: a new point every 1.2 to 3.5 s, anywhere in the
+## room in front of the wall or, a third of the time, the player's head,
+## followed until the next glance. The eye turns to it in a quick dart
+## (time constant 40 ms), never more than GAZE_LIMIT from straight out.
+func _look(delta: float, emerge: float) -> void:
+	if eye_clock >= _next_glance:
+		_next_glance = eye_clock + _rng.randf_range(1.2, 3.5)
+		_follow_player = _rng.randf() < 0.33
+		var h := ROOM * 0.5
+		_gaze_target = Vector3(_rng.randf_range(-h + 1.0, h - 1.0), _rng.randf_range(0.5, ROOM - 0.5),
+			_rng.randf_range(-h + 3.0, h - 0.5))
+	var target := _gaze_target
+	if _follow_player:
+		target = player.camera.global_position
+	var centre := EYE_CENTRE + Vector3(0.0, 0.0, emerge * 1.3 - EYE_BALL)
+	var want := (target - centre).normalized()
+	var limit := deg_to_rad(GAZE_LIMIT)
+	if want.angle_to(Vector3.BACK) > limit:
+		var side := want - Vector3.BACK * want.dot(Vector3.BACK)
+		side = side.normalized() if side.length() > 1e-5 else Vector3.DOWN
+		want = Vector3.BACK * cos(limit) + side * sin(limit)
+	_gaze = _gaze.lerp(want, 1.0 - exp(-delta / 0.04)).normalized()
 
 
 func _exit_tree() -> void:
