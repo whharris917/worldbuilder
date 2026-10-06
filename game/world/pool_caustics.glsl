@@ -7,13 +7,19 @@
 // underside, is bent into the water (the glass is a parallel slab, so
 // only the water's index counts), leaves through the rippled water
 // surface, bent by Snell's law at the surface's normal there, and goes on
-// to whichever it meets first of the ceiling and the four walls. The surface's slope is the two sliding ripple
-// maps' plus the drops' rings, both read exactly as pool_glass.gdshader
-// reads them. The direction from the lamp to where it lands is tallied in
-// the light's picture. Every point of the room lies in one direction from
-// the lamp, so the picture, thrown from the lamp, puts the light where
-// the rays land, on the ceiling and the walls alike. Then the
-// tally is smoothed and blurred by the bulb's size.
+// to whichever it meets first of the ceiling and the four walls. The
+// surface's slope is the two sliding ripple maps' plus the drops' rings,
+// both read exactly as pool_glass.gdshader reads them.
+//
+// The direction from the lamp to where a ray lands is tallied in the
+// light's picture. Every point of the room lies in one direction from the
+// lamp, so the picture, thrown from the lamp, puts the light where the
+// rays land, on the ceiling and the walls alike. Each ray is shared among
+// the four pixels round where it lands, by nearness (in 64ths), so a
+// shift of the rays by part of a pixel changes the tally smoothly; counted
+// whole in one pixel, the rays' starting grid showed as outlines wherever
+// the shift crossed a pixel's edge. Then the tally is blurred by the
+// bulb's size.
 //
 // Stages: 0 clear the tally, 1 trace, 2 draw the picture as sRGB.
 // The picture holds a quarter of the intensity relative to still water
@@ -48,6 +54,7 @@ layout(push_constant, std430) uniform Params {
 
 const float WATER = 1.33;
 const float TAU = 6.2831853;
+const float SHARE = 64.0;              // a whole ray in the tally
 const int MAX_DROPS = 100;
 const float G = 9.8;
 const float SIGMA_RHO = 7.28e-5;
@@ -136,11 +143,19 @@ void trace() {
 	}
 	vec3 lands = at + out_dir * max(reach, 0.0);
 	vec2 seen = (lands.xz - pc.lamp.xz) / (lands.y - pc.lamp.y);
-	ivec2 px = ivec2(floor(to_pixel(seen)));
-	if (px.x < 0 || px.y < 0 || px.x >= pc.size || px.y >= pc.size) {
-		return;
+	vec2 pos = to_pixel(seen) - 0.5;
+	ivec2 base = ivec2(floor(pos));
+	vec2 f = pos - vec2(base);
+	for (int y = 0; y <= 1; y++) {
+		for (int x = 0; x <= 1; x++) {
+			ivec2 px = base + ivec2(x, y);
+			if (px.x < 0 || px.y < 0 || px.x >= pc.size || px.y >= pc.size) {
+				continue;
+			}
+			float w = (x == 0 ? 1.0 - f.x : f.x) * (y == 0 ? 1.0 - f.y : f.y);
+			imageAtomicAdd(tally, px, uint(round(w * SHARE)));
+		}
 	}
-	imageAtomicAdd(tally, px, 1u);
 }
 
 float count(ivec2 p) {
@@ -161,7 +176,7 @@ void draw() {
 		// The tally averaged over a disc as wide as the bulb's blur (rings
 		// of 6, 12, 18 ... samples), or, for a blur under a pixel and a
 		// half, smoothed over its neighbours (weights 4, 2, 1).
-		float per = float(pc.rays * pc.rays) / float(pc.size * pc.size);
+		float per = SHARE * float(pc.rays * pc.rays) / float(pc.size * pc.size);
 		float sum = 0.0;
 		float weight = 0.0;
 		int rings = clamp(int(ceil(pc.blur / 1.5)), 0, 8);
