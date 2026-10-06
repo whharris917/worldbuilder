@@ -127,7 +127,7 @@ const SWITCH_AT := Vector3(4.97, 1.2, 2.6)    # on the east wall, beside the sta
 # Drips from the ceiling.
 const DRIP_SPOTS := 4
 const DRIPS_PER_MINUTE := 6.0          # each spot, on average
-const MAX_DROPS := 32                  # rings the shader keeps at once
+const MAX_DROPS := 100                 # rings the shader keeps at once
 const DROP_SOUNDS: Array[String] = ["res://audio/drip_1.wav", "res://audio/drip_2.wav", "res://audio/drip_3.wav", "res://audio/drip_4.wav"]
 # Single drops cut from recordings (BigSoundBank, CC0; see audio/drip_rec_SOURCE.txt).
 const DROP_RECORDINGS := 8

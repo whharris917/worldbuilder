@@ -10,7 +10,7 @@ extends RefCounted
 ## Without a rendering device (headless runs) it gives nothing.
 
 const SIZE := 512                       # the picture's side; at 1024, Godot's copying of each new projector picture cost about 15 ms a frame
-const DROPS := 32                       # as many as the glass keeps
+const DROPS := 100                      # as many as the glass keeps
 const RAYS := 1024                      # rays per side of the cone: four a pixel
 
 var _rd: RenderingDevice

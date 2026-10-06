@@ -19,11 +19,13 @@ shader_type spatial;
 // Drips add rings to that slope. Each drop (up to MAX_DROPS at once, from
 // LightPool: where it landed, when, how hard) sends out ripples of many
 // wavelengths, each at its own speed, as water's waves do: a ripple of
-// wavenumber k (2 pi over its wavelength) oscillates at w with
-//     w^2 = g k + (sigma / rho) k^3
-// (gravity, and surface tension over density, 7.28e-5 m^3/s^2). Below
-// about 1.7 cm wavelength surface tension rules and shorter ripples are
-// faster. A ripple's energy travels at its group speed dw/dk, so the ring
+// wavenumber k (2 pi over its wavelength) on water h deep oscillates at w
+// with
+//     w^2 = (g k + (sigma / rho) k^3) tanh(k h)
+// (gravity, and surface tension over density, 7.28e-5 m^3/s^2). The film
+// is 3 mm deep, so the longer ripples feel the glass and go slower than on
+// deep water; below about 1.7 cm wavelength surface tension rules and
+// shorter ripples are faster. A ripple's energy travels at its group speed dw/dk, so the ring
 // of each wavelength is centred where that speed has carried it, spread
 // over a width that grows with time; within it the crests move at
 // w / k. Rings thin as 1/sqrt(distance) past 5 cm, as a ring's length
@@ -46,8 +48,8 @@ uniform vec2 offset_b = vec2(0.0);
 uniform float ripple_size = 1.5;       // metres of pane to one repeat
 uniform float ripple_strength = 0.3;   // slope at full strength of the maps
 uniform float bend = 0.02;             // screen shift per unit of slope
-const int MAX_DROPS = 32;
-uniform vec4 drops[32];                 // x, z where it landed; when (s); strength, 0 for none
+const int MAX_DROPS = 100;
+uniform vec4 drops[100];                // x, z where it landed; when (s); strength, 0 for none
 uniform float now = 0.0;               // the clock the drops' times are on
 uniform float drip_strength = 1.0;
 const float G = 9.8;
@@ -80,8 +82,12 @@ vec2 drip_slope(vec2 at) {
 		float sum = 0.0;
 		for (int i = 0; i < 8; i++) {
 			float k = 63.0 * pow(12.5, float(i) / 7.0);      // 63 to 785 per metre
-			float w = sqrt(G * k + SIGMA_RHO * k * k * k);
-			float cg = (G + 3.0 * SIGMA_RHO * k * k) / (2.0 * w);
+			// Waves on water FILM deep: w^2 = (g k + (sigma/rho) k^3) tanh(k h);
+			// the group speed is d(w^2)/dk / (2 w).
+			float t = tanh(k * FILM);
+			float deep = G * k + SIGMA_RHO * k * k * k;
+			float w = sqrt(deep * t);
+			float cg = ((G + 3.0 * SIGMA_RHO * k * k) * t + deep * FILM * (1.0 - t * t)) / (2.0 * w);
 			float centre = cg * age;
 			float width = 0.03 + 0.25 * centre;
 			float x = (r - centre) / width;

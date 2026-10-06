@@ -47,7 +47,7 @@ layout(push_constant, std430) uniform Params {
 
 const float WATER = 1.33;
 const float TAU = 6.2831853;
-const int MAX_DROPS = 32;
+const int MAX_DROPS = 100;
 const float G = 9.8;
 const float SIGMA_RHO = 7.28e-5;
 const float NU = 1e-6;
@@ -78,8 +78,12 @@ vec2 drip_slope(vec2 at) {
 		float sum = 0.0;
 		for (int i = 0; i < 8; i++) {
 			float k = 63.0 * pow(12.5, float(i) / 7.0);
-			float w = sqrt(G * k + SIGMA_RHO * k * k * k);
-			float cg = (G + 3.0 * SIGMA_RHO * k * k) / (2.0 * w);
+			// Waves on water FILM deep: w^2 = (g k + (sigma/rho) k^3) tanh(k h);
+			// the group speed is d(w^2)/dk / (2 w).
+			float t = tanh(k * FILM);
+			float deep = G * k + SIGMA_RHO * k * k * k;
+			float w = sqrt(deep * t);
+			float cg = ((G + 3.0 * SIGMA_RHO * k * k) * t + deep * FILM * (1.0 - t * t)) / (2.0 * w);
 			float centre = cg * age;
 			float width = 0.03 + 0.25 * centre;
 			float x = (r - centre) / width;
