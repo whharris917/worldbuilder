@@ -67,6 +67,9 @@ func _run() -> void:
 		cam.fov = float(v[1])
 		cam.global_position = v[2]
 		cam.look_at(v[3])
+		# The eye follows the player now and then: the player stands where
+		# the camera is, so its glances at them meet the camera.
+		_world.player.global_position = cam.global_position - Vector3(0.0, 1.6, 0.0)
 		await get_tree().create_timer(1.0).timeout
 		var frames := Engine.get_frames_drawn()
 		var t0 := Time.get_ticks_usec()

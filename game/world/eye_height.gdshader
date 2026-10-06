@@ -1,12 +1,17 @@
 shader_type canvas_item;
+// Written as is, not blended: the alpha is a label, not a coverage.
+render_mode blend_disabled;
 // The height of the Shifting Room's eye over the front wall, drawn each
 // frame into a picture the wall's shader moves its surface by. A patch of
 // wall `patch` metres square; the picture's red is the height out of the
 // wall in metres, its green and blue the slope across and up, held to
 // -8..8 and stored as 0.5 + slope / 16 so no value is negative (worked out
 // here at full precision, so the wall's shading does not step with the
-// picture's half-float values). Nothing here is coloured: the eye is shape
-// alone, the same grey as the walls.
+// picture's half-float values). Its alpha says what the surface is there,
+// for the wall's shader to colour: 0 rock (the wall, and the lid, which is
+// the wall's own skin), 0.3 the white of the eye, 0.5 to 0.75 the iris (the
+// fraction its shade, for streaks running out from the pupil and a darker
+// rim), 1 the pupil.
 //
 // An eyeball, a sphere of radius `ball`, pushes out through the wall as
 // `emerge` goes from 0 to 1 (its centre rising from behind the wall). Over
@@ -33,6 +38,33 @@ const float FILLET = 0.35;
 float smax(float a, float b, float k) {
 	float h = clamp(0.5 + 0.5 * (a - b) / k, 0.0, 1.0);
 	return mix(b, a, h) + k * h * (1.0 - h);
+}
+
+// What the surface is at p (see above), worked out as height() is.
+float label(vec2 p) {
+	float centre = emerge * 1.3 - ball;
+	float r2 = dot(p, p);
+	float across = clamp(abs(p.x) / SLIT_HALF_WIDTH, 0.0, 1.0);
+	float half_open = SLIT_HALF_HEIGHT * (1.0 - blink) * pow(1.0 - across * across, 0.8);
+	if (r2 >= ball * ball || half_open <= 0.0 || abs(p.y) > half_open + 0.06) {
+		return 0.0;
+	}
+	vec3 n = vec3(p, sqrt(ball * ball - r2)) / ball;
+	vec3 g = normalize(gaze);
+	float angle = acos(clamp(dot(n, g), -1.0, 1.0));
+	if (angle < 0.12) {
+		return 1.0;
+	}
+	if (angle < 0.42) {
+		vec3 side = normalize(cross(g, vec3(0.0, 1.0, 0.0)));
+		vec3 up = cross(side, g);
+		float around = atan(dot(n, up), dot(n, side));
+		float streak = 0.5 + 0.5 * sin(around * 23.0 + 3.0 * sin(around * 7.0));
+		float rim = smoothstep(0.30, 0.42, angle);
+		float shade = clamp(0.65 * streak * (1.0 - rim) + 0.35 * (1.0 - rim), 0.0, 1.0);
+		return 0.5 + 0.25 * shade;
+	}
+	return 0.3;
 }
 
 float height(vec2 p) {
@@ -68,5 +100,5 @@ void fragment() {
 	float h = height(p);
 	float dx = (height(p + vec2(step_m, 0.0)) - height(p - vec2(step_m, 0.0))) / (2.0 * step_m);
 	float dy = (height(p + vec2(0.0, step_m)) - height(p - vec2(0.0, step_m))) / (2.0 * step_m);
-	COLOR = vec4(h, 0.5 + clamp(dx, -8.0, 8.0) / 16.0, 0.5 + clamp(dy, -8.0, 8.0) / 16.0, 1.0);
+	COLOR = vec4(h, 0.5 + clamp(dx, -8.0, 8.0) / 16.0, 0.5 + clamp(dy, -8.0, 8.0) / 16.0, label(p));
 }
