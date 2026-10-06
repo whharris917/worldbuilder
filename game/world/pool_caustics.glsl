@@ -21,6 +21,16 @@
 // the shift crossed a pixel's edge. Then the tally is blurred by the
 // bulb's size.
 //
+// The same work makes up to two pictures, each a pass with its own tally
+// and picture: the wide light's, over its whole cone, and optionally a
+// finer one for a narrower light over the ceiling and the upper walls. In
+// a band at the narrow cone's edge (from 90% of its tangent out) the two
+// cross-fade, so the lights together give the room the light once.
+//
+// Rays start on a grid across the launch square (a little wider than a
+// picture, so rays bent in from outside are counted), at each cell's
+// middle or, jittered, at a random place in it that changes every frame.
+//
 // Stages: 0 clear the tally, 1 trace, 2 draw the picture as sRGB.
 // The picture holds a quarter of the intensity relative to still water
 // (1 = still water), so the light's energy is four times the plain one.
@@ -50,12 +60,39 @@ layout(push_constant, std430) uniform Params {
 	float now;       // the clock the drops' times are on
 	float drip_strength;
 	float half_room; // the walls stand this far either way from x 0, z 0
+	float core;      // drops' centres smoothed within about this (m)
+	float launch;    // the rays start across -launch..launch in tangent
+	float fine_tan;  // the narrow light's tangent, 0 for none
+	float jitter;    // 1: rays at random places in their cells
+	int is_fine;     // 1: this pass is the narrow light's picture
+	int frame;
+	int pad0;
+	int pad1;
 } pc;
 
 const float WATER = 1.33;
 const float TAU = 6.2831853;
 const float SHARE = 64.0;              // a whole ray in the tally
 const int MAX_DROPS = 100;
+
+vec2 hash2(uvec2 p) {
+	uvec3 v = uvec3(p, uint(pc.frame) * 747796405u + 2891336453u);
+	v = v * 1664525u + 1013904223u;
+	v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+	v ^= v >> 16u;
+	v.x += v.y * v.z; v.y += v.z * v.x;
+	return vec2(v.xy) / 4294967296.0;
+}
+
+// This picture's share of the light in direction t: the narrow light
+// takes it inside its cone, the two cross-fading over its outer tenth.
+float share(vec2 t) {
+	if (pc.fine_tan <= 0.0) {
+		return 1.0;
+	}
+	float inner = smoothstep(pc.fine_tan, 0.9 * pc.fine_tan, length(t));
+	return pc.is_fine == 1 ? inner : 1.0 - inner;
+}
 const float G = 9.8;
 const float SIGMA_RHO = 7.28e-5;
 const float NU = 1e-6;
@@ -98,7 +135,12 @@ vec2 drip_slope(vec2 at) {
 			float env = exp(-x * x) * exp(-(2.0 * NU * k * k + DRAG) * age) / sqrt(1.0 + r / 0.05);
 			sum += -sin(k * r - w * age) * env;
 		}
-		slope += dir * sum * drop.w;
+		// A ring's tilt points away from the drop whichever way one looks,
+		// so at the drop itself it would come to a point, as on a cone; real
+		// water is level there. Within about `core` of the centre the tilt
+		// is brought down to nothing.
+		float smooth_centre = pc.core > 0.0 ? 1.0 - exp(-(r * r) / (pc.core * pc.core)) : 1.0;
+		slope += dir * sum * drop.w * smooth_centre;
 	}
 	return slope * 0.4 * pc.drip_strength;
 }
@@ -126,7 +168,8 @@ void trace() {
 	if (id.x >= pc.rays || id.y >= pc.rays) {
 		return;
 	}
-	vec2 t = ((vec2(id) + 0.5) / float(pc.rays) * 2.0 - 1.0) * pc.tan_angle;
+	vec2 cell = pc.jitter > 0.5 ? hash2(uvec2(id)) : vec2(0.5);
+	vec2 t = ((vec2(id) + cell) / float(pc.rays) * 2.0 - 1.0) * pc.launch;
 	vec3 d = normalize(vec3(t.x, 1.0, t.y));
 	vec3 at = pc.lamp.xyz + d * (pc.lamp.w - pc.lamp.y) / d.y;
 	vec3 inside = refract(d, vec3(0.0, -1.0, 0.0), 1.0 / WATER);
@@ -171,15 +214,18 @@ void draw() {
 		return;
 	}
 	float v;
+	vec2 t = ((vec2(id) + 0.5) / float(pc.size) * 2.0 - 1.0) * pc.tan_angle;
+	t.y = -t.y;
 	if (pc.test == 1) {
-		vec2 t = ((vec2(id) + 0.5) / float(pc.size) * 2.0 - 1.0) * pc.tan_angle;
-		t.y = -t.y;
 		v = (t.x > 0.05 && t.y > 0.15) ? 0.25 : 0.0;
 	} else {
 		// The tally averaged over a disc as wide as the bulb's blur (rings
 		// of 6, 12, 18 ... samples), or, for a blur under a pixel and a
 		// half, smoothed over its neighbours (weights 4, 2, 1).
-		float per = SHARE * float(pc.rays * pc.rays) / float(pc.size * pc.size);
+		// Rays a pixel on still water: the rays' spacing against the
+		// picture's, both in tangent.
+		float across = float(pc.rays) * pc.tan_angle / (pc.launch * float(pc.size));
+		float per = SHARE * across * across;
 		float sum = 0.0;
 		float weight = 0.0;
 		int rings = clamp(int(ceil(pc.blur / 1.5)), 0, 8);
@@ -204,7 +250,7 @@ void draw() {
 				weight += 1.0;
 			}
 		}
-		v = 0.25 * sum / weight / per;
+		v = 0.25 * sum / weight / per * share(t);
 	}
 	v = clamp(v, 0.0, 1.0);
 	imageStore(picture, id, vec4(pow(v, 1.0 / 2.2), 0.0, 0.0, 1.0));

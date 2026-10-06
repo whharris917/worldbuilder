@@ -79,6 +79,12 @@ extends Node3D
 ## quarter of the light relative to still water, so the light's energy is
 ## four times the plain through-light's. Each ray is followed to the
 ## ceiling or the wall it meets, so the walls get their own pattern.
+## Options on the Glass panel: rays per pixel (4, 16, 64) and rays at
+## random places each frame, for the fine ripples round a fresh drop; a
+## finer picture for the ceiling and the walls above 3.5 m, carried by a
+## second, narrower light at the lamp (`_through_fine`, 40 degrees) the two
+## cross-fading at its edge; and how far round each drop's centre its
+## rings' tilt is smoothed away (on the glass too).
 ##
 ## The pane casts The pane is always in the bounce (GI mode Static), so the
 ## bounce methods find the lamp's light blocked, as the shadow does; the
@@ -202,6 +208,7 @@ var _ripple_maps: Array[NoiseTexture2D] = []
 var _caustics := PoolCaustics.new()
 var _caustics_on := true
 var _caustics_shown := false            # the through-light carries the caustics now
+var _through_fine: SpotLight3D
 var _bulb_size := BULB_SIZE
 var _bulb_mesh: SphereMesh
 var _rebake_in := -1.0                  # seconds to a VoxelGI re-bake; below 0, none due
@@ -374,6 +381,17 @@ func _build_panels() -> void:
 		_bulb_mesh.radius = _bulb_size * 0.5
 		_bulb_mesh.height = _bulb_size)
 	_panel.note(glass, "Every point of the bulb casts its own copy of the lines, offset from the others, so a larger bulb blurs them: on the ceiling, by about five times its size (the ceiling is five times as far above the water as the lamp is below it).")
+	_panel.choice(glass, "Rays per pixel", ["4", "16", "64"], "4", func(o: String) -> void:
+		_caustics.rays_per_pixel = int(o))
+	_panel.switch(glass, "Rays at random", false, func(on: bool) -> void: _caustics.jitter = on)
+	_panel.note(glass, "The light is worked out by sending rays up through the water and counting where they land. Ripples finer than the rays' spacing, about 1.2 cm at 4 a pixel, are sampled at only a point or two each, which shows as coarse patches round a fresh drop. More rays sample them properly and cost more. At random, the rays start from slightly different places every frame, so the error turns into a fine flicker instead of patches.")
+	_panel.choice(glass, "Ceiling detail", ["Off", "512", "1024"], "Off", func(o: String) -> void:
+		_caustics.fine_size = 0 if o == "Off" else int(o))
+	_panel.note(glass, "The light's picture covers its whole wide cone, so each of its points lights about 15 cm of ceiling. This adds a second, narrower light at the lamp for the ceiling and the walls above 3.5 m with a picture of its own, about four times as sharp at 512 and eight at 1024; the two blend at its edge. 1024 costs far more: Godot copies each new picture into its store every frame.")
+	_panel.slider(glass, "Drop centre (cm)", 0.0, 3.0, 0.1, 1.0, func(v: float) -> void:
+		_caustics.core = v / 100.0
+		_glass_mat.set_shader_parameter("drop_core", v / 100.0))
+	_panel.note(glass, "The rings' tilt points away from the drop all round, so at the drop itself it would come to a point, like the tip of a cone, which the light magnifies into a hard bright spot. Real water is level there. Within about this distance of each drop the tilt is smoothed away, on the glass and in the light. 0 leaves the point.")
 	_panel.heading(glass, "Drips")
 	_panel.slider(glass, "Dripping spots", 0.0, 20.0, 1.0, DRIP_SPOTS, func(v: float) -> void:
 		_place_drip_spots(int(v)))
@@ -518,6 +536,10 @@ func _reset() -> void:
 	(_panel.sliders["Picture bend"] as HSlider).value = RIPPLE_BEND
 	(_panel.switches["Caustics"] as CheckButton).button_pressed = true
 	(_panel.sliders["Bulb size (cm)"] as HSlider).value = BULB_SIZE * 100.0
+	_panel.pick("Rays per pixel", "4")
+	(_panel.switches["Rays at random"] as CheckButton).button_pressed = false
+	_panel.pick("Ceiling detail", "Off")
+	(_panel.sliders["Drop centre (cm)"] as HSlider).value = 1.0
 	(_panel.sliders["Dripping spots"] as HSlider).value = DRIP_SPOTS
 	(_panel.sliders["Drips a minute (each)"] as HSlider).value = DRIPS_PER_MINUTE
 	(_panel.sliders["Drip ripples"] as HSlider).value = 1.0
@@ -765,6 +787,7 @@ func _build_glass() -> void:
 	_glass_mat.set_shader_parameter("ripple_strength", RIPPLE_STRENGTH)
 	_glass_mat.set_shader_parameter("bend", RIPPLE_BEND)
 	_glass_mat.set_shader_parameter("drip_strength", 1.0)
+	_glass_mat.set_shader_parameter("drop_core", 0.01)
 	for i in 2:
 		var noise := FastNoiseLite.new()
 		noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -820,6 +843,11 @@ func _build_glass() -> void:
 	_through.shadow_caster_mask = 0xFFFFF & ~PANE
 	add_child(_through)
 	_through.global_transform = Transform3D(Basis.looking_at(Vector3.UP, Vector3.BACK), LAMP)
+	_through_fine = _through.duplicate() as SpotLight3D
+	_through_fine.spot_angle = PoolCaustics.FINE_ANGLE
+	_through_fine.visible = false
+	add_child(_through_fine)
+	_through_fine.global_transform = _through.global_transform
 	_set_through()
 	_set_through_colour()
 
@@ -832,6 +860,8 @@ func _set_through_colour() -> void:
 	var lamp := _lamp_colour.srgb_to_linear()
 	var tint := _tint.srgb_to_linear()
 	_through.light_color = Color(lamp.r * tint.r, lamp.g * tint.g, lamp.b * tint.b).linear_to_srgb()
+	if _through_fine != null:
+		_through_fine.light_color = _through.light_color
 
 
 ## The ripple maps slide on, each by its speed this frame, the distance
@@ -863,31 +893,36 @@ func _set_through() -> void:
 	if _through == null or _light == null:
 		return
 	_through.light_energy = _light.light_energy * (1.0 - _opacity) * (4.0 if _caustics_shown else 1.0)
+	if _through_fine != null:
+		_through_fine.light_energy = _through.light_energy
 
 
-## The caustics' picture for the light through the glass, or none.
-func _show_caustics(picture: ImageTexture) -> void:
-	_through.light_projector = picture
-	if _caustics_shown != (picture != null):
-		_caustics_shown = picture != null
+## The caustics' pictures for the light through the glass and the narrow
+## light, or none: without the wide one, the plain light; without the
+## narrow one, no narrow light.
+func _show_caustics(wide: ImageTexture, fine: ImageTexture = null) -> void:
+	_through.light_projector = wide
+	_through_fine.light_projector = fine
+	_through_fine.visible = wide != null and fine != null
+	if _caustics_shown != (wide != null):
+		_caustics_shown = wide != null
 		_set_through()
 
 
 ## This frame's caustics, once the ripple maps are made. The blur: the
 ## bulb's size times the water-to-ceiling over the lamp-to-water distance,
-## as half-width, turned into pixels of the light's picture.
+## as half-width, seen from the lamp (a tangent).
 func _update_caustics() -> void:
 	if not _caustics_on or not _caustics.start(_ripple_maps):
 		return
 	var lamp_to_water := GLASS_TOP - LAMP.y
 	var water_to_ceiling := ROOM - GLASS_TOP
 	var half := _bulb_size * 0.5 * water_to_ceiling / lamp_to_water
-	var spread := half / (ROOM - LAMP.y) / (2.0 * tan(deg_to_rad(THROUGH_ANGLE)))
-	var picture := _caustics.render(LAMP, THROUGH_ANGLE, GLASS_TOP, ROOM, ROOM * 0.5,
+	var pictures := _caustics.render(LAMP, THROUGH_ANGLE, GLASS_TOP, ROOM, ROOM * 0.5,
 		float(_glass_mat.get_shader_parameter("ripple_strength")), _ripple_size, _ripple_offsets,
-		_landed, _clock, float(_glass_mat.get_shader_parameter("drip_strength")), spread * PoolCaustics.SIZE)
-	if picture != null:
-		_show_caustics(picture)
+		_landed, _clock, float(_glass_mat.get_shader_parameter("drip_strength")), half / (ROOM - LAMP.y))
+	if pictures[0] != null:
+		_show_caustics(pictures[0], pictures[1])
 
 
 ## Each frame: the second camera where the eye is, with the same lens, at

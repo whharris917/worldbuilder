@@ -6,7 +6,7 @@ extends Node
 ## WORLDBUILDER_POOL_VIEWS=name:fov:x,y,z:tx,ty,tz;... takes its own;
 ## WORLDBUILDER_POOL_OFF=gi,shadow,glow,caustics switches those parts off, to see
 ## what each costs. WORLDBUILDER_POOL_SET=Title=value;... sets panel
-## switches (0/1) and sliders by title. WORLDBUILDER_POOL_CAUSTIC_TEST=1 makes the caustics'
+## switches (0/1), sliders and choices (Title=Option) by title. WORLDBUILDER_POOL_CAUSTIC_TEST=1 makes the caustics'
 ## picture a marker lighting the ceiling only east of the lamp and well
 ## south of it, to check the picture's way round.
 
@@ -43,6 +43,8 @@ func _run() -> void:
 				(_world._panel.switches[kv[0]] as CheckButton).button_pressed = kv[1] == "1"
 			elif _world._panel.sliders.has(kv[0]):
 				(_world._panel.sliders[kv[0]] as HSlider).value = float(kv[1])
+			elif _world._panel.choices.has(kv[0]):
+				_world._panel.pick(kv[0], kv[1])
 	var off := OS.get_environment("WORLDBUILDER_POOL_OFF").split(",")
 	for n: Node in _world.find_children("*", "", true, false):
 		if "gi" in off and n is VoxelGI:

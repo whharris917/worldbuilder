@@ -52,6 +52,7 @@ const int MAX_DROPS = 100;
 uniform vec4 drops[100];                // x, z where it landed; when (s); strength, 0 for none
 uniform float now = 0.0;               // the clock the drops' times are on
 uniform float drip_strength = 1.0;
+uniform float drop_core = 0.01;         // m: the rings' tilt fades to nothing within about this of a drop
 const float G = 9.8;
 const float SIGMA_RHO = 7.28e-5;
 const float NU = 1e-6;
@@ -96,7 +97,12 @@ vec2 drip_slope(vec2 at) {
 			// falls as 1/k, so each wavelength's slope is about the same.
 			sum += -sin(k * r - w * age) * env;
 		}
-		slope += dir * sum * drop.w;
+		// A ring's tilt points away from the drop whichever way one looks,
+		// so at the drop itself it would come to a point, as on a cone; real
+		// water is level there. Within about `core` of the centre the tilt
+		// is brought down to nothing.
+		float smooth_centre = drop_core > 0.0 ? 1.0 - exp(-(r * r) / (drop_core * drop_core)) : 1.0;
+		slope += dir * sum * drop.w * smooth_centre;
 	}
 	return slope * 0.4 * drip_strength;
 }

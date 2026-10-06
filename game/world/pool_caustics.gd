@@ -3,29 +3,33 @@ extends RefCounted
 ## Works out the light pool's caustics each frame on a rendering device of
 ## its own (pool_caustics.glsl, a compute shader), from the same two
 ## ripple maps the glass shows, and hands back the picture for the light
-## through the glass to carry, one channel of grey. Godot's projector takes
+## through the glass to carry, one channel of grey, and, when asked, a
+## finer one for a narrower light over the ceiling and the upper walls. Godot's projector takes
 ## up a new picture only when handed a different texture, so two
 ## alternate. Each frame's work is sent off and collected on the next
 ## frame, so the game never waits for it; the picture is a frame behind.
 ## Without a rendering device (headless runs) it gives nothing.
 
-const SIZE := 512                       # the picture's side; at 1024, Godot's copying of each new projector picture cost about 15 ms a frame
+const SIZE := 512                       # the wide picture's side; at 1024, Godot's copying of each new projector picture cost about 15 ms a frame
 const DROPS := 100                      # as many as the glass keeps
-const RAYS := 1024                      # rays per side of the cone: four a pixel
+const FINE_ANGLE := 40.0                # degrees: the narrow light's half-angle, the ceiling and the walls above 3.5 m
+const LAUNCH_MARGIN := 1.1              # the narrow pass's rays start this much wider than its picture
+
+var rays_per_pixel := 4                 # on still water: 4, 16 or 64
+var jitter := false
+var core := 0.01
+var fine_size := 0                      # the narrow picture's side; 0, none
+var test := false                       # a marker in one quarter, to check the picture's way round
 
 var _rd: RenderingDevice
 var _shader: RID
 var _pipeline: RID
-var _tally: RID
-var _picture: RID
 var _maps: Array[RID] = []
 var _sampler: RID
 var _drops: RID
-var _set: RID
-var _textures: Array[ImageTexture] = []
-var _shown := 0
-var _pending := false                   # work sent and not yet collected
-var test := false                        # a marker in one quarter, to check the picture's way round
+var _passes: Array[Dictionary] = []     # {size, tally, picture, set, textures, shown}
+var _pending: Array[int] = []           # sizes of the passes sent and not yet collected
+var _frame := 0
 
 
 ## Ready to work once both ripple maps have their images.
@@ -47,18 +51,6 @@ func start(maps: Array[NoiseTexture2D]) -> bool:
 	var file := load("res://world/pool_caustics.glsl") as RDShaderFile
 	_shader = _rd.shader_create_from_spirv(file.get_spirv())
 	_pipeline = _rd.compute_pipeline_create(_shader)
-	var tally_fmt := RDTextureFormat.new()
-	tally_fmt.width = SIZE
-	tally_fmt.height = SIZE
-	tally_fmt.format = RenderingDevice.DATA_FORMAT_R32_UINT
-	tally_fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT
-	_tally = _rd.texture_create(tally_fmt, RDTextureView.new())
-	var pic_fmt := RDTextureFormat.new()
-	pic_fmt.width = SIZE
-	pic_fmt.height = SIZE
-	pic_fmt.format = RenderingDevice.DATA_FORMAT_R8_UNORM
-	pic_fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT | RenderingDevice.TEXTURE_USAGE_CAN_COPY_FROM_BIT
-	_picture = _rd.texture_create(pic_fmt, RDTextureView.new())
 	for img in images:
 		var fmt := RDTextureFormat.new()
 		fmt.width = img.get_width()
@@ -75,8 +67,28 @@ func start(maps: Array[NoiseTexture2D]) -> bool:
 	var none := PackedVector4Array()
 	none.resize(DROPS)
 	_drops = _rd.storage_buffer_create(DROPS * 16, none.to_byte_array())
+	_passes.append(_make_pass(SIZE))
+	_passes.append({})
+	return true
+
+
+## A tally, a picture and the two textures that take it in turn, at
+## `size` square.
+func _make_pass(size: int) -> Dictionary:
+	var tally_fmt := RDTextureFormat.new()
+	tally_fmt.width = size
+	tally_fmt.height = size
+	tally_fmt.format = RenderingDevice.DATA_FORMAT_R32_UINT
+	tally_fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT
+	var tally := _rd.texture_create(tally_fmt, RDTextureView.new())
+	var pic_fmt := RDTextureFormat.new()
+	pic_fmt.width = size
+	pic_fmt.height = size
+	pic_fmt.format = RenderingDevice.DATA_FORMAT_R8_UNORM
+	pic_fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT | RenderingDevice.TEXTURE_USAGE_CAN_COPY_FROM_BIT
+	var picture := _rd.texture_create(pic_fmt, RDTextureView.new())
 	var uniforms: Array[RDUniform] = []
-	for pair: Array in [[0, _tally], [1, _picture]]:
+	for pair: Array in [[0, tally], [1, picture]]:
 		var u := RDUniform.new()
 		u.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
 		u.binding = int(pair[0])
@@ -94,77 +106,118 @@ func start(maps: Array[NoiseTexture2D]) -> bool:
 	drops.binding = 4
 	drops.add_id(_drops)
 	uniforms.append(drops)
-	_set = _rd.uniform_set_create(uniforms, _shader, 0)
-	var blank := Image.create(SIZE, SIZE, true, Image.FORMAT_L8)
+	var textures: Array[ImageTexture] = []
+	var blank := Image.create(size, size, true, Image.FORMAT_L8)
 	for i in 2:
-		_textures.append(ImageTexture.create_from_image(blank))
-	return true
+		textures.append(ImageTexture.create_from_image(blank))
+	return {"size": size, "tally": tally, "picture": picture,
+		"set": _rd.uniform_set_create(uniforms, _shader, 0), "textures": textures, "shown": 0}
+
+
+func _free_pass(p: Dictionary) -> void:
+	for key: String in ["set", "tally", "picture"]:
+		if p.has(key) and (p[key] as RID).is_valid():
+			_rd.free_rid(p[key])
 
 
 func free_device() -> void:
 	if _rd == null:
 		return
-	if _pending:
+	if not _pending.is_empty():
 		_rd.sync()
-	for rid: RID in [_set, _drops, _sampler, _tally, _picture, _pipeline, _shader] + _maps:
+	for p in _passes:
+		_free_pass(p)
+	for rid: RID in [_drops, _sampler, _pipeline, _shader] + _maps:
 		if rid.is_valid():
 			_rd.free_rid(rid)
 	_rd.free()
 	_rd = null
 
 
-## The last frame's picture, collected now, and this frame's work sent
-## off; null on the first frame. For a light at `lamp` pointing straight up with
-## half-angle `angle` degrees; water at `water` height, ceiling at
-## `ceiling`, walls `half_room` either way from x 0, z 0; the ripples and the drops (where, when, how hard, on the
-## clock `now`) as the glass has them; `blur_px` the bulb's blur in pixels
-## of the picture.
+## The last frame's pictures, collected now, and this frame's work sent
+## off: [the wide light's, the narrow light's], each null when there is
+## none yet or none wanted. For lights at `lamp` pointing straight up,
+## the wide one with half-angle `angle` degrees; water at `water` height,
+## ceiling at `ceiling`, walls `half_room` either way from x 0, z 0; the
+## ripples and the drops (where, when, how hard, on the clock `now`) as
+## the glass has them; `blur` the bulb's blur as a tangent.
 func render(lamp: Vector3, angle: float, water: float, ceiling: float, half_room: float, strength: float,
 		ripple_size: float, offsets: Array[Vector2], drops: PackedVector4Array, now: float,
-		drip_strength: float, blur_px: float) -> ImageTexture:
+		drip_strength: float, blur: float) -> Array[ImageTexture]:
+	var out: Array[ImageTexture] = [null, null]
 	if _rd == null:
-		return null
-	var picture: ImageTexture = null
-	if _pending:
+		return out
+	if not _pending.is_empty():
 		_rd.sync()
-		_pending = false
-		var img := Image.create_from_data(SIZE, SIZE, false, Image.FORMAT_L8, _rd.texture_get_data(_picture, 0))
-		img.generate_mipmaps()
-		_shown = 1 - _shown
-		_textures[_shown].update(img)
-		picture = _textures[_shown]
-	var params := PackedByteArray()
-	params.resize(80)
-	params.encode_s32(4, SIZE)
-	params.encode_s32(8, RAYS)
-	params.encode_s32(12, 1 if test else 0)
-	params.encode_float(16, lamp.x)
-	params.encode_float(20, lamp.y)
-	params.encode_float(24, lamp.z)
-	params.encode_float(28, water)
-	params.encode_float(32, ceiling)
-	params.encode_float(36, tan(deg_to_rad(angle)))
-	params.encode_float(40, strength)
-	params.encode_float(44, ripple_size)
-	params.encode_float(48, offsets[0].x)
-	params.encode_float(52, offsets[0].y)
-	params.encode_float(56, offsets[1].x)
-	params.encode_float(60, offsets[1].y)
-	params.encode_float(64, blur_px)
-	params.encode_float(68, now)
-	params.encode_float(72, drip_strength)
-	params.encode_float(76, half_room)
+		for i in _passes.size():
+			var p := _passes[i]
+			if p.is_empty() or _pending[i] != int(p["size"]):
+				continue
+			var size := int(p["size"])
+			var img := Image.create_from_data(size, size, false, Image.FORMAT_L8, _rd.texture_get_data(p["picture"], 0))
+			img.generate_mipmaps()
+			p["shown"] = 1 - int(p["shown"])
+			var tex := (p["textures"] as Array)[p["shown"]] as ImageTexture
+			tex.update(img)
+			out[i] = tex
+		_pending.clear()
+	# The narrow pass made afresh when its size changes.
+	var fine := _passes[1]
+	if (fine.is_empty() and fine_size > 0) or (not fine.is_empty() and int(fine["size"]) != fine_size):
+		if not fine.is_empty():
+			_free_pass(fine)
+		_passes[1] = _make_pass(fine_size) if fine_size > 0 else {}
+	var wide_tan := tan(deg_to_rad(angle))
+	var fine_tan := tan(deg_to_rad(FINE_ANGLE)) if fine_size > 0 else 0.0
+	var side := sqrt(float(rays_per_pixel))
+	_frame += 1
 	_rd.buffer_update(_drops, 0, DROPS * 16, drops.to_byte_array())
 	var list := _rd.compute_list_begin()
 	_rd.compute_list_bind_compute_pipeline(list, _pipeline)
-	_rd.compute_list_bind_uniform_set(list, _set, 0)
-	for stage: int in [0, 1, 2]:
-		params.encode_s32(0, stage)
-		_rd.compute_list_set_push_constant(list, params, params.size())
-		var groups := ceili((RAYS if stage == 1 else SIZE) / 8.0)
-		_rd.compute_list_dispatch(list, groups, groups, 1)
-		_rd.compute_list_add_barrier(list)
+	for i in _passes.size():
+		var p := _passes[i]
+		if p.is_empty():
+			_pending.append(0)
+			continue
+		var size := int(p["size"])
+		var span := wide_tan if i == 0 else fine_tan
+		var launch := span if i == 0 else span * LAUNCH_MARGIN
+		var rays := roundi(size * side * launch / span)
+		var params := PackedByteArray()
+		params.resize(112)
+		params.encode_s32(4, size)
+		params.encode_s32(8, rays)
+		params.encode_s32(12, 1 if test else 0)
+		params.encode_float(16, lamp.x)
+		params.encode_float(20, lamp.y)
+		params.encode_float(24, lamp.z)
+		params.encode_float(28, water)
+		params.encode_float(32, ceiling)
+		params.encode_float(36, span)
+		params.encode_float(40, strength)
+		params.encode_float(44, ripple_size)
+		params.encode_float(48, offsets[0].x)
+		params.encode_float(52, offsets[0].y)
+		params.encode_float(56, offsets[1].x)
+		params.encode_float(60, offsets[1].y)
+		params.encode_float(64, blur / (2.0 * span) * size)
+		params.encode_float(68, now)
+		params.encode_float(72, drip_strength)
+		params.encode_float(76, half_room)
+		params.encode_float(80, core)
+		params.encode_float(84, launch)
+		params.encode_float(88, fine_tan)
+		params.encode_float(92, 1.0 if jitter else 0.0)
+		params.encode_s32(96, i)
+		params.encode_s32(100, _frame)
+		_rd.compute_list_bind_uniform_set(list, p["set"], 0)
+		for stage: int in [0, 1, 2]:
+			params.encode_s32(0, stage)
+			_rd.compute_list_set_push_constant(list, params, params.size())
+			var groups := ceili((rays if stage == 1 else size) / 8.0)
+			_rd.compute_list_dispatch(list, groups, groups, 1)
+			_rd.compute_list_add_barrier(list)
+		_pending.append(size)
 	_rd.compute_list_end()
 	_rd.submit()
-	_pending = true
-	return picture
+	return out
