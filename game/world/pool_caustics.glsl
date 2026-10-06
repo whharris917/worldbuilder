@@ -114,9 +114,11 @@ vec2 slope(vec2 xz) {
 }
 
 // Picture pixel for a direction from the lamp given as its tangents
-// across x and z: the light's picture spans -tan_angle..tan_angle.
+// across x and z: the light's picture spans -tan_angle..tan_angle, its
+// first axis along +x and its second along -z (the light points up with
+// +z as its own up, and a picture's rows run down).
 vec2 to_pixel(vec2 t) {
-	return (t / pc.tan_angle * 0.5 + 0.5) * float(pc.size);
+	return (vec2(t.x, -t.y) / pc.tan_angle * 0.5 + 0.5) * float(pc.size);
 }
 
 void trace() {
@@ -171,6 +173,7 @@ void draw() {
 	float v;
 	if (pc.test == 1) {
 		vec2 t = ((vec2(id) + 0.5) / float(pc.size) * 2.0 - 1.0) * pc.tan_angle;
+		t.y = -t.y;
 		v = (t.x > 0.05 && t.y > 0.15) ? 0.25 : 0.0;
 	} else {
 		// The tally averaged over a disc as wide as the bulb's blur (rings
