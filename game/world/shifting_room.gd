@@ -2,17 +2,18 @@ class_name ShiftingRoom
 extends Node3D
 ## The Shifting Room: a cube 24 m every way, plain matte grey inside, no
 ## textures, and in its middle a floating platform 1.2 m square, just room
-## to stand, its top 12 m up, with a lip 15 cm high round its edge. The
+## to stand, its top 12 m up, with a lip 30 cm high round its edge. The
 ## player's body is a capsule 35 cm in radius, which rides up over any
 ## edge low enough to meet its rounded foot at under 45 degrees, about
-## 10 cm; at 15 cm the lip stops a walk and the player must jump to leave. The one light is a bare bulb 1 m under
+## 10 cm; the lip stops a walk, and the player must jump (a 60 cm rise) to
+## leave. The one light is a bare bulb 1 m under
 ## the platform (an omni light, inverse square, with shadows), so the room
 ## is lit from below the player's feet: the floor and the lower walls
 ## brightest, and the platform's shadow over the ceiling and the tops of
 ## the walls. Godot's default shading; no WorldBase.
 ##
-## Off the platform's edge the fall is caught 6 m down: the screen fades to
-## black and the player is put back on the platform.
+## A player who jumps off falls to the floor and may walk about there; R
+## puts them back on the platform, through a short fade to black.
 ##
 ## One panel (BenchPanel; Esc frees the mouse), kept in
 ## user://shifting_room.json: dithering (on to begin; put back as found on
@@ -26,11 +27,10 @@ extends Node3D
 const ROOM := 24.0
 const WALL := 0.5
 const PLATFORM := Vector3(1.2, 0.2, 1.2)
-const LIP := Vector2(0.04, 0.15)        # m wide and high, round the platform's top edge
+const LIP := Vector2(0.04, 0.30)        # m wide and high, round the platform's top edge
 const PLATFORM_TOP := 12.0
 const BULB := Vector3(0.0, PLATFORM_TOP - 0.2 - 1.0, 0.0)
 const START := Vector3(0.0, PLATFORM_TOP, 0.0)
-const FALL_LIMIT := 6.0                 # m below the platform's top: put back
 const STATE_PATH := "user://shifting_room.json"
 
 var player: Player
@@ -40,7 +40,7 @@ var _bulb: OmniLight3D
 var _bulb_glass: StandardMaterial3D
 var _voxel_gi: VoxelGI
 var _fade: ColorRect
-var _falling := -1.0                    # s since the fade out began; below 0, none
+var _returning := -1.0                  # s since the fade out began; below 0, none
 var _built := false
 var _debanding_was := false
 
@@ -199,7 +199,7 @@ func _exit_tree() -> void:
 	get_viewport().use_debanding = _debanding_was
 
 
-## A black screen to fade through when a fall is caught.
+## A black screen to fade through on the way back to the platform.
 func _build_fade() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 10
@@ -211,23 +211,28 @@ func _build_fade() -> void:
 	layer.add_child(_fade)
 
 
-## Off the platform: once FALL_LIMIT below its top, the screen fades to
-## black over a second, the player is put back on the platform, and it
-## fades in again.
+## R: back to the platform.
+func _unhandled_input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_R and _returning < 0.0:
+		_returning = 0.0
+
+
+## The way back: the screen fades to black over 0.3 s, the player is put
+## on the platform, and it fades in again over half a second.
 func _physics_process(delta: float) -> void:
-	if _falling < 0.0 and player.global_position.y < PLATFORM_TOP - FALL_LIMIT:
-		_falling = 0.0
-	if _falling >= 0.0:
-		_falling += delta
-		var down := 1.0
-		if _falling < down:
-			_fade.color.a = _falling / down
-		elif _falling < down + 0.4:
-			_fade.color.a = 1.0
-			player.global_position = START
-			player.velocity = Vector3.ZERO
-		elif _falling < down + 2.0:
-			_fade.color.a = 1.0 - (_falling - down - 0.4) / 1.6
-		else:
-			_fade.color.a = 0.0
-			_falling = -1.0
+	if _returning < 0.0:
+		return
+	_returning += delta
+	var down := 0.3
+	if _returning < down:
+		_fade.color.a = _returning / down
+	elif _returning < down + 0.1:
+		_fade.color.a = 1.0
+		player.global_position = START
+		player.velocity = Vector3.ZERO
+	elif _returning < down + 0.6:
+		_fade.color.a = 1.0 - (_returning - down - 0.1) / 0.5
+	else:
+		_fade.color.a = 0.0
+		_returning = -1.0
