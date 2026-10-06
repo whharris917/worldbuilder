@@ -1,8 +1,8 @@
 class_name ShiftingRoom
 extends Node3D
 ## The Shifting Room: a cube 24 m every way, plain matte grey inside but
-## for the front wall, which is rough rock (ambientCG's Rock063, 4 m to a
-## repeat, laid triplanar in world space), and in its middle a floating platform 1.2 m square, just room
+## for the front wall, which is rough stone made from noise in world space
+## (rough_stone.gdshader), never repeating, and in its middle a floating platform 1.2 m square, just room
 ## to stand, its top 12 m up, with a lip 30 cm high round its edge. The
 ## player's body is a capsule 35 cm in radius, which rides up over any
 ## edge low enough to meet its rounded foot at under 45 degrees, about
@@ -20,9 +20,9 @@ extends Node3D
 ## has a patch 8 m square, its middle level with the platform's view,
 ## made of a plane divided 192 times each way whose points the wall's
 ## shader (eye_wall.gdshader) moves out by a height picture drawn afresh
-## each frame (eye_height.gdshader, in a SubViewport 512 square, half-float
+## each frame (eye_height.gdshader, in a SubViewport 1024 square, half-float
 ## so heights and slopes keep their precision), the picture's alpha saying
-## what the surface is: rock, laid to match the rest of the wall, for the
+## what the surface is: stone, the same as the rest of the wall, for the
 ## wall and the eye's lid; white, a streaked blue iris and a black pupil
 ## for the eye. The wall is open behind the patch and closed by a slab just
 ## behind it. an eyeball 3.2 m across pushes
@@ -50,11 +50,9 @@ const BULB := Vector3(0.0, PLATFORM_TOP - 0.2 - 1.0, 0.0)
 const START := Vector3(0.0, PLATFORM_TOP, 0.0)
 const STATE_PATH := "user://shifting_room.json"
 const EYE_PATCH := 8.0
-const ROCK := "res://textures/rough_rock/"
-const ROCK_SCALE := 0.25                # repeats a metre: 4 m of wall to one, so the repeat shows less
 const EYE_CENTRE := Vector3(0.0, 13.0, -ROOM * 0.5)
 const EYE_GRID := 192                   # points each way: 4 cm apart; at 400, 39 fps from the side on the laptop
-const EYE_PICTURE := 512
+const EYE_PICTURE := 1024
 const EYE_BALL := 1.6
 const EMERGE_START := 1.5
 const EMERGE_TIME := 8.0
@@ -157,20 +155,9 @@ func _build_room() -> void:
 	_slab_between(Vector3(h, 0.0, -h), Vector3(h + WALL, ROOM, h), grey)
 	_slab_between(Vector3(-h - WALL, 0.0, -h), Vector3(-h, ROOM, h), grey)
 	_slab_between(Vector3(-h - WALL, 0.0, h), Vector3(h + WALL, ROOM, h + WALL), grey)
-	# The front wall, rock, open where the eye's patch is and closed behind it.
-	var rock := StandardMaterial3D.new()
-	rock.albedo_texture = load(ROCK + "albedo.jpg") as Texture2D
-	rock.normal_enabled = true
-	rock.normal_texture = load(ROCK + "normal.jpg") as Texture2D
-	rock.roughness_texture = load(ROCK + "roughness.jpg") as Texture2D
-	rock.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
-	rock.ao_enabled = true
-	rock.ao_texture = load(ROCK + "ao.jpg") as Texture2D
-	rock.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
-	rock.uv1_triplanar = true
-	rock.uv1_world_triplanar = true
-	rock.uv1_scale = Vector3.ONE * ROCK_SCALE
-	rock.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	# The front wall, stone, open where the eye's patch is and closed behind it.
+	var rock := ShaderMaterial.new()
+	rock.shader = load("res://world/rough_stone.gdshader") as Shader
 	var e := EYE_PATCH * 0.5
 	var ey := EYE_CENTRE.y
 	_slab_between(Vector3(-h - WALL, 0.0, -h - WALL), Vector3(-e, ROOM, -h), rock)
@@ -277,9 +264,6 @@ func _build_eye() -> void:
 	var wall := ShaderMaterial.new()
 	wall.shader = load("res://world/eye_wall.gdshader") as Shader
 	wall.set_shader_parameter("heights", view.get_texture())
-	for map: String in ["albedo", "normal", "roughness", "ao"]:
-		wall.set_shader_parameter("rock_" + map, load(ROCK + map + ".jpg") as Texture2D)
-	wall.set_shader_parameter("rock_scale", ROCK_SCALE)
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(EYE_PATCH, EYE_PATCH)
 	plane.subdivide_width = EYE_GRID - 1

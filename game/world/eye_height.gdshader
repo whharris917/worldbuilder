@@ -96,7 +96,7 @@ float height(vec2 p) {
 void fragment() {
 	// Picture rows run down; y here runs up.
 	vec2 p = vec2(UV.x - 0.5, 0.5 - UV.y) * patch;
-	float step_m = patch / 1024.0;
+	float step_m = patch / 2048.0;
 	float h = height(p);
 	float dx = (height(p + vec2(step_m, 0.0)) - height(p - vec2(step_m, 0.0))) / (2.0 * step_m);
 	float dy = (height(p + vec2(0.0, step_m)) - height(p - vec2(0.0, step_m))) / (2.0 * step_m);
