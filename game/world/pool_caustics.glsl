@@ -51,7 +51,12 @@ const int MAX_DROPS = 32;
 const float G = 9.8;
 const float SIGMA_RHO = 7.28e-5;
 const float NU = 1e-6;
-const float MAX_AGE = 12.0;
+const float FILM = 0.003;               // m, the water's depth on the glass
+// The glass drags on the thin film under every wave: amplitude falls at
+// 3 nu / (2 h^2) a second, a third every 6 s. After 30 s less than 1%
+// is left, so a drop is let go then.
+const float DRAG = 3.0 * NU / (2.0 * FILM * FILM);
+const float MAX_AGE = 30.0;
 
 // The slope from every drop's rings at a point of the surface: a copy of
 // drip_slope in pool_glass.gdshader, which explains it; the two must stay
@@ -78,7 +83,7 @@ vec2 drip_slope(vec2 at) {
 			float centre = cg * age;
 			float width = 0.03 + 0.25 * centre;
 			float x = (r - centre) / width;
-			float env = exp(-x * x) * exp(-2.0 * NU * k * k * age) / sqrt(1.0 + r / 0.05);
+			float env = exp(-x * x) * exp(-(2.0 * NU * k * k + DRAG) * age) / sqrt(1.0 + r / 0.05);
 			sum += -sin(k * r - w * age) * env;
 		}
 		slope += dir * sum * drop.w;

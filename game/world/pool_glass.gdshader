@@ -29,7 +29,8 @@ shader_type spatial;
 // w / k. Rings thin as 1/sqrt(distance) past 5 cm, as a ring's length
 // grows, and
 // each wavelength dies by viscosity at 2 nu k^2 a second (nu, water's,
-// 1e-6 m^2/s), so fine ripples fade first. Eight wavelengths are summed,
+// 1e-6 m^2/s), so fine ripples fade first; and all of them fade as the
+// glass under the thin film drags on the water (DRAG). Eight wavelengths are summed,
 // from 10 cm to 8 mm. The slope is worked out directly from the formula.
 render_mode cull_back;
 
@@ -52,7 +53,12 @@ uniform float drip_strength = 1.0;
 const float G = 9.8;
 const float SIGMA_RHO = 7.28e-5;
 const float NU = 1e-6;
-const float MAX_AGE = 12.0;
+const float FILM = 0.003;               // m, the water's depth on the glass
+// The glass drags on the thin film under every wave: amplitude falls at
+// 3 nu / (2 h^2) a second, a third every 6 s. After 30 s less than 1%
+// is left, so a drop is let go then.
+const float DRAG = 3.0 * NU / (2.0 * FILM * FILM);
+const float MAX_AGE = 30.0;
 
 // The slope from every drop's rings at a point of the surface. The
 // caustics (pool_caustics.glsl) hold a copy; change both alike.
@@ -79,7 +85,7 @@ vec2 drip_slope(vec2 at) {
 			float centre = cg * age;
 			float width = 0.03 + 0.25 * centre;
 			float x = (r - centre) / width;
-			float env = exp(-x * x) * exp(-2.0 * NU * k * k * age) / sqrt(1.0 + r / 0.05);
+			float env = exp(-x * x) * exp(-(2.0 * NU * k * k + DRAG) * age) / sqrt(1.0 + r / 0.05);
 			// Slope of cos(k r - w t) is -k sin(k r - w t); the amplitude
 			// falls as 1/k, so each wavelength's slope is about the same.
 			sum += -sin(k * r - w * age) * env;
