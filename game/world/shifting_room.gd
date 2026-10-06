@@ -32,6 +32,16 @@ extends Node3D
 ## the player's head, which it then follows), turning no more than 40
 ## degrees from straight out.
 ##
+## The rear wall (south, behind the player on arriving) is a single flat
+## plane carved to look deep by parallax occlusion mapping
+## (ornament_wall.gdshader): the carving drawn once into a picture 2048
+## square (ornament_static.gdshader), a frieze strip 2048 by 160 drawn
+## every frame (ornament_frieze.gdshader), and gold vines worked out in
+## the wall's own shader; stone, marble, wood, silver and gold. The
+## manuscript's script is written over 90 s, held 20 s, faded over 5 s,
+## and after 5 s blank begins again. A reflection probe the size of the
+## room, photographed once, gives the metals something to reflect.
+##
 ## One panel (BenchPanel; Esc frees the mouse), kept in
 ## user://shifting_room.json: dithering (on to begin; put back as found on
 ## leaving), the bulb's energy, and the bounce method:
@@ -59,6 +69,12 @@ const EMERGE_TIME := 8.0
 const OPEN_TIME := 1.5
 const BLINK_EVERY := 10.0
 const GAZE_LIMIT := 40.0                # degrees from straight out of the wall
+const CARVING_PICTURE := 2048
+const FRIEZE_PICTURE := Vector2i(2048, 160)
+const WRITE_TIME := 90.0
+const HOLD_TIME := 20.0
+const FADE_TIME := 5.0
+const BLANK_TIME := 5.0
 
 var player: Player
 var _panel: BenchPanel
@@ -79,6 +95,8 @@ var _gaze_target := Vector3.ZERO
 var _follow_player := false
 var _next_glance := 0.0
 var _rng := RandomNumberGenerator.new()
+var _ornament: ShaderMaterial
+var _frieze_mat: ShaderMaterial
 
 
 func _ready() -> void:
@@ -91,6 +109,7 @@ func _ready() -> void:
 	_build_room()
 	_build_platform()
 	_build_eye()
+	_build_ornament()
 	_build_bulb()
 	_build_fade()
 	_build_panel()
@@ -154,7 +173,8 @@ func _build_room() -> void:
 	_slab_between(Vector3(-h - WALL, ROOM, -h - WALL), Vector3(h + WALL, ROOM + WALL, h + WALL), grey)
 	_slab_between(Vector3(h, 0.0, -h), Vector3(h + WALL, ROOM, h), grey)
 	_slab_between(Vector3(-h - WALL, 0.0, -h), Vector3(-h, ROOM, h), grey)
-	_slab_between(Vector3(-h - WALL, 0.0, h), Vector3(h + WALL, ROOM, h + WALL), grey)
+	# The rear wall stands a centimetre back, behind the ornamented plane.
+	_slab_between(Vector3(-h - WALL, 0.0, h + 0.01), Vector3(h + WALL, ROOM, h + WALL), grey)
 	# The front wall, stone, open where the eye's patch is and closed behind it.
 	var rock := ShaderMaterial.new()
 	rock.shader = load("res://world/rough_stone.gdshader") as Shader
@@ -280,6 +300,74 @@ func _build_eye() -> void:
 	_gaze_target = Vector3(0.0, EYE_CENTRE.y, 0.0)
 
 
+## ---- the rear wall -------------------------------------------------------------
+
+## The two pictures (the carving once, the frieze every frame), the plane
+## that shows them, and the reflection probe.
+func _build_ornament() -> void:
+	var carving := _picture(Vector2i(CARVING_PICTURE, CARVING_PICTURE), "res://world/ornament_static.gdshader",
+		SubViewport.UPDATE_ONCE)
+	var frieze := _picture(FRIEZE_PICTURE, "res://world/ornament_frieze.gdshader", SubViewport.UPDATE_ALWAYS)
+	_frieze_mat = (frieze.get_child(0) as ColorRect).material as ShaderMaterial
+	_ornament = ShaderMaterial.new()
+	_ornament.shader = load("res://world/ornament_wall.gdshader") as Shader
+	_ornament.set_shader_parameter("carving", carving.get_texture())
+	_ornament.set_shader_parameter("carving_exact", carving.get_texture())
+	_ornament.set_shader_parameter("frieze", frieze.get_texture())
+	_ornament.set_shader_parameter("frieze_exact", frieze.get_texture())
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(ROOM, ROOM)
+	plane.material = _ornament
+	var wall := MeshInstance3D.new()
+	wall.mesh = plane
+	wall.position = Vector3(0.0, ROOM * 0.5, ROOM * 0.5)
+	wall.rotation_degrees.x = -90.0
+	add_child(wall)
+	var probe := ReflectionProbe.new()
+	probe.size = Vector3.ONE * (ROOM + 0.4)
+	probe.position = Vector3(0.0, ROOM * 0.5, 0.0)
+	probe.origin_offset = Vector3(0.0, PLATFORM_TOP + 1.6 - ROOM * 0.5, 0.0)
+	probe.box_projection = true
+	probe.interior = true
+	probe.blend_distance = 0.0
+	probe.ambient_mode = ReflectionProbe.AMBIENT_DISABLED
+	probe.update_mode = ReflectionProbe.UPDATE_ONCE
+	add_child(probe)
+
+
+## A SubViewport of `size` with a ColorRect drawn by `shader`, half-float,
+## its alpha kept.
+func _picture(size: Vector2i, shader: String, update: SubViewport.UpdateMode) -> SubViewport:
+	var view := SubViewport.new()
+	view.size = size
+	view.use_hdr_2d = true
+	view.disable_3d = true
+	view.transparent_bg = true
+	view.render_target_update_mode = update
+	add_child(view)
+	var canvas := ColorRect.new()
+	canvas.size = Vector2(size)
+	var mat := ShaderMaterial.new()
+	mat.shader = load(shader) as Shader
+	canvas.material = mat
+	view.add_child(canvas)
+	return view
+
+
+## The manuscript's cycle: how much is written (0..1) and how dark the
+## ink stands (it fades before the page is begun again).
+func _writing(t: float) -> Vector2:
+	var cycle := WRITE_TIME + HOLD_TIME + FADE_TIME + BLANK_TIME
+	var c := fmod(t, cycle)
+	if c < WRITE_TIME:
+		return Vector2(c / WRITE_TIME, 1.0)
+	if c < WRITE_TIME + HOLD_TIME:
+		return Vector2(1.0, 1.0)
+	if c < WRITE_TIME + HOLD_TIME + FADE_TIME:
+		return Vector2(1.0, 1.0 - (c - WRITE_TIME - HOLD_TIME) / FADE_TIME)
+	return Vector2(0.0, 1.0)
+
+
 ## How far the lid is closed at `t` seconds into a blink: shut in 0.1 s,
 ## held 0.06 s, open again in 0.22 s.
 func _blink_shape(t: float) -> float:
@@ -310,6 +398,11 @@ func _process(delta: float) -> void:
 	_eye_mat.set_shader_parameter("emerge", emerge)
 	_eye_mat.set_shader_parameter("blink", blink)
 	_eye_mat.set_shader_parameter("gaze", _gaze)
+	_frieze_mat.set_shader_parameter("time_s", eye_clock)
+	_ornament.set_shader_parameter("time_s", eye_clock)
+	var writing := _writing(eye_clock)
+	_ornament.set_shader_parameter("write_progress", writing.x)
+	_ornament.set_shader_parameter("ink", writing.y)
 
 
 ## Where the eye looks: a new point every 1.2 to 3.5 s, anywhere in the
