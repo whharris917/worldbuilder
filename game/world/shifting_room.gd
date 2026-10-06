@@ -1,8 +1,11 @@
 class_name ShiftingRoom
 extends Node3D
 ## The Shifting Room: a cube 24 m every way, plain matte grey inside, no
-## textures, and in its middle a floating platform 3 m square where the
-## player stands, its top 12 m up. The one light is a bare bulb 1 m under
+## textures, and in its middle a floating platform 1.2 m square, just room
+## to stand, its top 12 m up, with a lip 15 cm high round its edge. The
+## player's body is a capsule 35 cm in radius, which rides up over any
+## edge low enough to meet its rounded foot at under 45 degrees, about
+## 10 cm; at 15 cm the lip stops a walk and the player must jump to leave. The one light is a bare bulb 1 m under
 ## the platform (an omni light, inverse square, with shadows), so the room
 ## is lit from below the player's feet: the floor and the lower walls
 ## brightest, and the platform's shadow over the ceiling and the tops of
@@ -12,7 +15,8 @@ extends Node3D
 ## black and the player is put back on the platform.
 ##
 ## One panel (BenchPanel; Esc frees the mouse), kept in
-## user://shifting_room.json: the bulb's energy, and the bounce method:
+## user://shifting_room.json: dithering (on to begin; put back as found on
+## leaving), the bulb's energy, and the bounce method:
 ## None; SDFGI, the default, smallest cell 0.15 m, since the room's faces
 ## lie on 0.2 m multiples where SDFGI's default gave no bounce in another
 ## room; or VoxelGI, a box round the room baked when chosen, which gives
@@ -21,10 +25,11 @@ extends Node3D
 
 const ROOM := 24.0
 const WALL := 0.5
-const PLATFORM := Vector3(3.0, 0.2, 3.0)
+const PLATFORM := Vector3(1.2, 0.2, 1.2)
+const LIP := Vector2(0.04, 0.15)        # m wide and high, round the platform's top edge
 const PLATFORM_TOP := 12.0
 const BULB := Vector3(0.0, PLATFORM_TOP - 0.2 - 1.0, 0.0)
-const START := Vector3(0.0, PLATFORM_TOP, 0.6)
+const START := Vector3(0.0, PLATFORM_TOP, 0.0)
 const FALL_LIMIT := 6.0                 # m below the platform's top: put back
 const STATE_PATH := "user://shifting_room.json"
 
@@ -37,11 +42,13 @@ var _voxel_gi: VoxelGI
 var _fade: ColorRect
 var _falling := -1.0                    # s since the fade out began; below 0, none
 var _built := false
+var _debanding_was := false
 
 
 func _ready() -> void:
 	player = $Player as Player
 	player.global_position = START
+	_debanding_was = get_viewport().use_debanding
 	for node in player.find_children("*", "GeometryInstance3D", true, false):
 		(node as GeometryInstance3D).gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
 	_build_environment()
@@ -50,6 +57,7 @@ func _ready() -> void:
 	_build_bulb()
 	_build_fade()
 	_build_panel()
+	get_viewport().use_debanding = true
 	_panel.restore()
 	_built = true
 	_set_bounce(_picked("Bounce"))
@@ -62,6 +70,8 @@ func _build_panel() -> void:
 	_panel = BenchPanel.new(STATE_PATH)
 	add_child(_panel)
 	var light := _panel.panel("Light")
+	_panel.switch(light, "Dithering", true, func(on: bool) -> void: get_viewport().use_debanding = on)
+	_panel.note(light, "Adds a faint noise to each pixel before it is stored at 8 bits a channel, which breaks the bands in the walls' smooth gradients into grain too fine to see.")
 	_panel.slider(light, "Bulb energy", 0.0, 600.0, 1.0, 150.0, func(v: float) -> void:
 		_bulb.light_energy = v
 		_bulb_glass.emission_energy_multiplier = 40.0 * v / 150.0)
@@ -111,14 +121,22 @@ func _build_room() -> void:
 	_slab_between(Vector3(-h - WALL, 0.0, -h - WALL), Vector3(h + WALL, ROOM, -h), grey)
 
 
-## The platform, plain darker grey, held up by nothing.
+## The platform, plain darker grey, held up by nothing, and its lip: four
+## strips standing on its top along the edges.
 func _build_platform() -> void:
 	var dark := StandardMaterial3D.new()
 	dark.albedo_color = Color(0.3, 0.3, 0.3)
 	dark.roughness = 0.8
 	var top := Vector3(0.0, PLATFORM_TOP, 0.0)
-	_slab_between(top - Vector3(PLATFORM.x * 0.5, PLATFORM.y, PLATFORM.z * 0.5),
-		top + Vector3(PLATFORM.x * 0.5, 0.0, PLATFORM.z * 0.5), dark)
+	var hx := PLATFORM.x * 0.5
+	var hz := PLATFORM.z * 0.5
+	_slab_between(top - Vector3(hx, PLATFORM.y, hz), top + Vector3(hx, 0.0, hz), dark)
+	var w := LIP.x
+	var h := LIP.y
+	_slab_between(top + Vector3(-hx, 0.0, -hz), top + Vector3(hx, h, -hz + w), dark)
+	_slab_between(top + Vector3(-hx, 0.0, hz - w), top + Vector3(hx, h, hz), dark)
+	_slab_between(top + Vector3(-hx, 0.0, -hz + w), top + Vector3(-hx + w, h, hz - w), dark)
+	_slab_between(top + Vector3(hx - w, 0.0, -hz + w), top + Vector3(hx, h, hz - w), dark)
 
 
 func _slab_between(lo: Vector3, hi: Vector3, mat: Material) -> void:
@@ -175,6 +193,10 @@ func _set_bounce(option: String) -> void:
 		_voxel_gi.position.y = ROOM * 0.5
 		add_child(_voxel_gi)
 		_voxel_gi.bake()
+
+
+func _exit_tree() -> void:
+	get_viewport().use_debanding = _debanding_was
 
 
 ## A black screen to fade through when a fall is caught.
