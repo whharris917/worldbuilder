@@ -42,6 +42,17 @@ extends Node3D
 ## and after 5 s blank begins again. A reflection probe the size of the
 ## room, photographed once, gives the metals something to reflect.
 ##
+## The east wall (to the right on arriving) shows the same ornament
+## through the engine's own StandardMaterial3D instead: colour, normal,
+## roughness-and-metal, height (its deep parallax) and glow pictures, each
+## 2048 square, painted from the same carving, frieze and vines
+## (ornament_maps.gdshader): the whole of each once, then only the moving
+## parts again (the column strips, the frieze band, the plaque while it is
+## written, the forest's stars) every third frame, the pictures keeping
+## what was painted before. Switches on the Walls panel turn the eye, the
+## custom-shader wall and the engine wall on and off; off, a wall is plain
+## grey.
+##
 ## One panel (BenchPanel; Esc frees the mouse), kept in
 ## user://shifting_room.json: dithering (on to begin; put back as found on
 ## leaving), the bulb's energy, and the bounce method:
@@ -75,6 +86,16 @@ const WRITE_TIME := 90.0
 const HOLD_TIME := 20.0
 const FADE_TIME := 5.0
 const BLANK_TIME := 5.0
+const MAP_PICTURE := 2048
+const MAP_EVERY := 3                    # frames between paintings of the moving parts
+# Parts of the wall (x0, y0, x1, y1 in metres, x across as seen, y up)
+# repainted by each map: 0 colour, 1 normal, 2 roughness and metal,
+# 3 height, 4 glow.
+const MOVING_COLUMNS: Array[Vector4] = [Vector4(0.98, 2.9, 2.22, 19.8), Vector4(4.58, 2.9, 5.82, 19.8),
+	Vector4(18.18, 2.9, 19.42, 19.8), Vector4(21.78, 2.9, 23.02, 19.8)]
+const MOVING_FRIEZE := Vector4(0.0, 9.7, 24.0, 11.5)
+const MOVING_PLAQUE := Vector4(7.0, 11.9, 17.0, 19.5)
+const MOVING_FOREST := Vector4(6.4, 3.2, 17.6, 9.4)
 
 var player: Player
 var _panel: BenchPanel
@@ -97,6 +118,20 @@ var _next_glance := 0.0
 var _rng := RandomNumberGenerator.new()
 var _ornament: ShaderMaterial
 var _frieze_mat: ShaderMaterial
+var _carving: SubViewport
+var _frieze: SubViewport
+var _rear_wall: MeshInstance3D
+var _east_wall: MeshInstance3D
+var _eye_patch: MeshInstance3D
+var _front_boxes: Array[BoxMesh] = []
+var _front_stone: ShaderMaterial
+var _plain: StandardMaterial3D
+var _probe: ReflectionProbe
+var _probe_frames := 0
+var _maps: Array[SubViewport] = []
+var _map_mats: Array[ShaderMaterial] = []
+var _map_whole: Array[ColorRect] = []    # each map's whole-wall painting, shown once
+var _map_frame := 0                     # frames since the room was built, for the maps
 
 
 func _ready() -> void:
@@ -110,12 +145,14 @@ func _ready() -> void:
 	_build_platform()
 	_build_eye()
 	_build_ornament()
+	_build_engine_wall()
 	_build_bulb()
 	_build_fade()
 	_build_panel()
 	get_viewport().use_debanding = true
 	_panel.restore()
 	_built = true
+	_set_walls()
 	_set_bounce(_picked("Bounce"))
 	MouseMode.capture()
 	if DisplayServer.get_name() == "headless":
@@ -135,6 +172,12 @@ func _build_panel() -> void:
 	_panel.choice(light, "Bounce", ["None", "SDFGI", "VoxelGI"], "SDFGI", func(o: String) -> void:
 		if _built:
 			_set_bounce(o))
+	var walls := _panel.panel("Walls")
+	var rewall := func(_v: bool) -> void: _set_walls()
+	_panel.switch(walls, "Front wall: the eye", true, rewall)
+	_panel.switch(walls, "Rear wall: custom shader", true, rewall)
+	_panel.switch(walls, "East wall: engine material", true, rewall)
+	_panel.note(walls, "The rear and east walls carry the same ornament drawn two ways: the rear by a shader written for it, the east by the engine's own material from five painted pictures. Off, a wall is plain grey; turn one off to see what the other costs in the frame rate at the top right.")
 	_panel.note(light, "Light reflected off the walls, which is all that reaches the top of the platform and the ceiling in its shadow. None: those are black. SDFGI: cells round wherever you stand, made as you move. VoxelGI: a box round the room divided into cells, made once when chosen (the screen pauses); it takes no light from a bulb whose light falls off with the square of the distance, as this one's does, so here it gives none.")
 
 
@@ -168,23 +211,26 @@ func _build_room() -> void:
 	var grey := StandardMaterial3D.new()
 	grey.albedo_color = Color(0.6, 0.6, 0.6)
 	grey.roughness = 0.9
+	_plain = grey
 	var h := ROOM * 0.5
 	_slab_between(Vector3(-h - WALL, -WALL, -h - WALL), Vector3(h + WALL, 0.0, h + WALL), grey)
 	_slab_between(Vector3(-h - WALL, ROOM, -h - WALL), Vector3(h + WALL, ROOM + WALL, h + WALL), grey)
-	_slab_between(Vector3(h, 0.0, -h), Vector3(h + WALL, ROOM, h), grey)
+	# The east wall stands a centimetre back, behind the engine's plane.
+	_slab_between(Vector3(h + 0.01, 0.0, -h), Vector3(h + WALL, ROOM, h), grey)
 	_slab_between(Vector3(-h - WALL, 0.0, -h), Vector3(-h, ROOM, h), grey)
 	# The rear wall stands a centimetre back, behind the ornamented plane.
 	_slab_between(Vector3(-h - WALL, 0.0, h + 0.01), Vector3(h + WALL, ROOM, h + WALL), grey)
 	# The front wall, stone, open where the eye's patch is and closed behind it.
 	var rock := ShaderMaterial.new()
 	rock.shader = load("res://world/rough_stone.gdshader") as Shader
+	_front_stone = rock
 	var e := EYE_PATCH * 0.5
 	var ey := EYE_CENTRE.y
-	_slab_between(Vector3(-h - WALL, 0.0, -h - WALL), Vector3(-e, ROOM, -h), rock)
-	_slab_between(Vector3(e, 0.0, -h - WALL), Vector3(h + WALL, ROOM, -h), rock)
-	_slab_between(Vector3(-e, 0.0, -h - WALL), Vector3(e, ey - e, -h), rock)
-	_slab_between(Vector3(-e, ey + e, -h - WALL), Vector3(e, ROOM, -h), rock)
-	_slab_between(Vector3(-e, ey - e, -h - WALL), Vector3(e, ey + e, -h - 0.01), rock)
+	_front_boxes.append(_slab_between(Vector3(-h - WALL, 0.0, -h - WALL), Vector3(-e, ROOM, -h), rock))
+	_front_boxes.append(_slab_between(Vector3(e, 0.0, -h - WALL), Vector3(h + WALL, ROOM, -h), rock))
+	_front_boxes.append(_slab_between(Vector3(-e, 0.0, -h - WALL), Vector3(e, ey - e, -h), rock))
+	_front_boxes.append(_slab_between(Vector3(-e, ey + e, -h - WALL), Vector3(e, ROOM, -h), rock))
+	_front_boxes.append(_slab_between(Vector3(-e, ey - e, -h - WALL), Vector3(e, ey + e, -h - 0.01), rock))
 
 
 ## The platform, plain darker grey, held up by nothing, and its lip: four
@@ -205,7 +251,7 @@ func _build_platform() -> void:
 	_slab_between(top + Vector3(hx - w, 0.0, -hz + w), top + Vector3(hx, h, hz - w), dark)
 
 
-func _slab_between(lo: Vector3, hi: Vector3, mat: Material) -> void:
+func _slab_between(lo: Vector3, hi: Vector3, mat: Material) -> BoxMesh:
 	var body := StaticBody3D.new()
 	body.position = (lo + hi) * 0.5
 	add_child(body)
@@ -220,6 +266,7 @@ func _slab_between(lo: Vector3, hi: Vector3, mat: Material) -> void:
 	var collide := CollisionShape3D.new()
 	collide.shape = shape
 	body.add_child(collide)
+	return box
 
 
 ## The bare bulb: an omni light with shadows and a small glowing ball,
@@ -296,6 +343,7 @@ func _build_eye() -> void:
 	# The moved surface stands up to about 1.5 m out of the plane.
 	patch.extra_cull_margin = 2.0
 	add_child(patch)
+	_eye_patch = patch
 	_rng.randomize()
 	_gaze_target = Vector3(0.0, EYE_CENTRE.y, 0.0)
 
@@ -308,6 +356,8 @@ func _build_ornament() -> void:
 	var carving := _picture(Vector2i(CARVING_PICTURE, CARVING_PICTURE), "res://world/ornament_static.gdshader",
 		SubViewport.UPDATE_ONCE)
 	var frieze := _picture(FRIEZE_PICTURE, "res://world/ornament_frieze.gdshader", SubViewport.UPDATE_ALWAYS)
+	_carving = carving
+	_frieze = frieze
 	_frieze_mat = (frieze.get_child(0) as ColorRect).material as ShaderMaterial
 	_ornament = ShaderMaterial.new()
 	_ornament.shader = load("res://world/ornament_wall.gdshader") as Shader
@@ -323,6 +373,7 @@ func _build_ornament() -> void:
 	wall.position = Vector3(0.0, ROOM * 0.5, ROOM * 0.5)
 	wall.rotation_degrees.x = -90.0
 	add_child(wall)
+	_rear_wall = wall
 	var probe := ReflectionProbe.new()
 	probe.size = Vector3.ONE * (ROOM + 0.4)
 	probe.position = Vector3(0.0, ROOM * 0.5, 0.0)
@@ -333,6 +384,121 @@ func _build_ornament() -> void:
 	probe.ambient_mode = ReflectionProbe.AMBIENT_DISABLED
 	probe.update_mode = ReflectionProbe.UPDATE_ONCE
 	add_child(probe)
+	_probe = probe
+
+
+## The east wall: a plane with a StandardMaterial3D drawing the ornament
+## from five pictures, each a SubViewport that keeps what it painted
+## before (never cleared). Each holds a rectangle painting the whole wall,
+## shown for the first painting only (two frames in, after the carving's
+## picture has been drawn), and rectangles over the moving parts that map
+## needs, painted again every MAP_EVERY frames.
+func _build_engine_wall() -> void:
+	var moving: Array = [
+		MOVING_COLUMNS + [MOVING_FRIEZE, MOVING_PLAQUE],
+		MOVING_COLUMNS + [MOVING_FRIEZE],
+		MOVING_COLUMNS + [MOVING_FRIEZE, MOVING_PLAQUE],
+		MOVING_COLUMNS + [MOVING_FRIEZE],
+		MOVING_COLUMNS + [MOVING_FOREST],
+	]
+	for map in 5:
+		var view := SubViewport.new()
+		view.size = Vector2i(MAP_PICTURE, MAP_PICTURE)
+		view.disable_3d = true
+		view.render_target_clear_mode = SubViewport.CLEAR_MODE_NEVER
+		view.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		add_child(view)
+		var mat := ShaderMaterial.new()
+		mat.shader = load("res://world/ornament_maps.gdshader") as Shader
+		mat.set_shader_parameter("map", map)
+		mat.set_shader_parameter("carving", _carving.get_texture())
+		mat.set_shader_parameter("carving_exact", _carving.get_texture())
+		mat.set_shader_parameter("frieze", _frieze.get_texture())
+		mat.set_shader_parameter("frieze_exact", _frieze.get_texture())
+		var whole := ColorRect.new()
+		whole.size = Vector2(MAP_PICTURE, MAP_PICTURE)
+		whole.material = mat
+		view.add_child(whole)
+		for part: Vector4 in moving[map]:
+			var rect := ColorRect.new()
+			var scale := MAP_PICTURE / ROOM
+			rect.position = Vector2(floorf(part.x * scale) - 2.0, floorf((ROOM - part.w) * scale) - 2.0)
+			rect.size = Vector2(ceilf((part.z - part.x) * scale) + 4.0, ceilf((part.w - part.y) * scale) + 4.0)
+			rect.material = mat
+			view.add_child(rect)
+		_maps.append(view)
+		_map_mats.append(mat)
+		_map_whole.append(whole)
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = _maps[0].get_texture()
+	m.normal_enabled = true
+	m.normal_texture = _maps[1].get_texture()
+	m.roughness = 1.0
+	m.roughness_texture = _maps[2].get_texture()
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	m.metallic = 1.0
+	m.metallic_texture = _maps[2].get_texture()
+	m.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
+	m.heightmap_enabled = true
+	m.heightmap_texture = _maps[3].get_texture()
+	# The engine's parallax depth is a share of the picture's width, in
+	# hundredths: the carving's 0.45 m over the wall's 24 m.
+	m.heightmap_scale = 0.45 / ROOM * 100.0
+	m.heightmap_deep_parallax = true
+	m.heightmap_min_layers = 8
+	m.heightmap_max_layers = 32
+	m.emission_enabled = true
+	m.emission = Color(0, 0, 0)
+	m.emission_texture = _maps[4].get_texture()
+	m.emission_energy_multiplier = 3.0
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(ROOM, ROOM)
+	plane.material = m
+	_east_wall = MeshInstance3D.new()
+	_east_wall.mesh = plane
+	# Its picture's across runs along +z (rightward to someone facing the
+	# wall), its rows down, and it faces west into the room.
+	_east_wall.transform = Transform3D(Basis(Vector3(0, 0, 1), Vector3(-1, 0, 0), Vector3(0, -1, 0)),
+		Vector3(ROOM * 0.5, ROOM * 0.5, 0.0))
+	add_child(_east_wall)
+
+
+## Each frame: the maps' first whole painting, then the moving parts every
+## MAP_EVERY frames, with this moment's time and writing.
+func _paint_maps(writing: Vector2) -> void:
+	_map_frame += 1
+	var whole := _map_frame == 3
+	if _map_frame == 5:
+		for rect in _map_whole:
+			rect.visible = false
+	if not whole and (_map_frame < 6 or _map_frame % MAP_EVERY != 0 or not _east_wall.visible):
+		return
+	for i in _maps.size():
+		_map_mats[i].set_shader_parameter("time_s", eye_clock)
+		_map_mats[i].set_shader_parameter("write_progress", writing.x)
+		_map_mats[i].set_shader_parameter("ink", writing.y)
+		_maps[i].render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
+## The walls' switches. Off, the front wall's stone turns plain grey and
+## the eye goes; the rear or east wall's ornamented plane goes, showing
+## the grey wall a centimetre behind it. The reflection probe photographs
+## the room again.
+func _set_walls() -> void:
+	if _panel == null:
+		return
+	var front := (_panel.switches["Front wall: the eye"] as CheckButton).button_pressed
+	var rear := (_panel.switches["Rear wall: custom shader"] as CheckButton).button_pressed
+	var east := (_panel.switches["East wall: engine material"] as CheckButton).button_pressed
+	_eye_patch.visible = front
+	for box in _front_boxes:
+		box.material = _front_stone if front else _plain
+	_rear_wall.visible = rear
+	_east_wall.visible = east
+	_frieze.render_target_update_mode = SubViewport.UPDATE_ALWAYS if rear or east else SubViewport.UPDATE_DISABLED
+	_probe.update_mode = ReflectionProbe.UPDATE_ALWAYS
+	_probe_frames = 4
 
 
 ## A SubViewport of `size` with a ColorRect drawn by `shader`, half-float,
@@ -403,6 +569,11 @@ func _process(delta: float) -> void:
 	var writing := _writing(eye_clock)
 	_ornament.set_shader_parameter("write_progress", writing.x)
 	_ornament.set_shader_parameter("ink", writing.y)
+	_paint_maps(writing)
+	if _probe_frames > 0:
+		_probe_frames -= 1
+		if _probe_frames == 0:
+			_probe.update_mode = ReflectionProbe.UPDATE_ONCE
 
 
 ## Where the eye looks: a new point every 1.2 to 3.5 s, anywhere in the
