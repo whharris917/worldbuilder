@@ -228,6 +228,10 @@ func _build_left(root: Control) -> Control:
 	_bulb_picker = _colour_row(column, ["Colour"], [_bulb.light_color])[0]
 	_bulb_picker.color_changed.connect(_set_bulb)
 	_note(column, "Colours the light and the glowing glass together.")
+	_bulb_box = _box(column)
+	_slider(_bulb_box, "Bulb energy", 0.0, 10.0, 0.01, 1.0, func(_v: float) -> void: _apply_units())
+	_defaults["Bulb energy"] = 1.0
+	_note(_bulb_box, "The bulb's strength, its light and its glowing glass together. Arbitrary units only; in physical units the Camera panel's lumens set it.")
 
 	_heading(column, "Ball")
 	_picker = _colour_row(column, ["Colour"], [_ball_mat.albedo_color])[0]
@@ -836,7 +840,7 @@ func _reset() -> void:
 	_apply_colour()
 	_picker.color = _ball_mat.albedo_color
 	for title: String in ["Albedo", "Roughness", "Metallic", "Specular", "Segments",
-			"Ambient energy", "Indirect energy"]:
+			"Ambient energy", "Indirect energy", "Bulb energy"]:
 		(_sliders[title] as HSlider).value = float(_defaults[title])
 	_ambient_picker.color = _defaults["ambient"] as Color
 	_env.ambient_light_color = _ambient_picker.color
@@ -1302,6 +1306,7 @@ var _wall_view: MeshInstance3D
 var _wall_shape: CollisionShape3D
 var _room_r := 15.0                     # the floor's radius and the wall's inner face
 var _probe: ReflectionProbe
+var _bulb_box: VBoxContainer
 var _probe_frames := 0                  # frames left of a re-photograph; 0, none
 var _ground_mat: ShaderMaterial
 var _terrain: BulbTerrain
@@ -1800,10 +1805,13 @@ func _apply_units() -> void:
 		# ellipse 8 by 10 cm), as Godot radiance.
 		_glass_mat.emission_energy_multiplier = candela / (PI * 0.04 * 0.05) * PI * LUX
 	else:
+		var level := float((_sliders["Bulb energy"] as HSlider).value)
 		_bulb.omni_attenuation = 1.0
 		_bulb.omni_range = 20.0
-		_bulb.light_energy = 1.0
-		_glass_mat.emission_energy_multiplier = 1.0
+		_bulb.light_energy = level
+		_glass_mat.emission_energy_multiplier = level
+	if _bulb_box != null:
+		_enable(_bulb_box, not _physical)
 	_place_sun()
 
 
