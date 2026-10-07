@@ -314,6 +314,15 @@ func _build_right(root: Control) -> Control:
 	_slider(_bounce_box, "Indirect energy", 0.0, 4.0, 0.01, _bulb.light_indirect_energy, func(v: float) -> void:
 		_bulb.light_indirect_energy = v)
 	_note(_bounce_box, "How much of the bulb's light enters the bounce.")
+	_switch(_bounce_box, "Earth in the bounce", func(on: bool) -> void:
+		_earth.gi_mode = GeometryInstance3D.GI_MODE_STATIC if on else GeometryInstance3D.GI_MODE_DISABLED
+		# SDFGI reads the scene's shapes when it starts: it is stopped for a
+		# few frames and started again so the change shows.
+		if _bounce == "SDFGI":
+			_env.sdfgi_enabled = false
+			_sdfgi_restart_in = 3)
+	(_switches["Earth in the bounce"] as CheckButton).button_pressed = true
+	_note(_bounce_box, "The unseen ground under the whole map, 20 m deep, which keeps a sun below the horizon from lighting anything. On, SDFGI counts it too, so a set sun's light does not reach the room through the bounce; off, SDFGI sees no ground beneath and a set sun floods the room with bounce light.")
 
 	_heading(column, "On screen, added to any of the above")
 	_switch(column, "SSIL", func(on: bool) -> void:
@@ -848,6 +857,7 @@ func _reset() -> void:
 	(_sliders["Swoosh level (dB)"] as HSlider).value = 0.0
 	for title in SOUND_ON:
 		(_switches[title] as CheckButton).button_pressed = true
+	(_switches["Earth in the bounce"] as CheckButton).button_pressed = true
 	(_choices["Exposure"]["Meter"] as CheckBox).button_pressed = true
 	(_sliders["Compensation (EV)"] as HSlider).value = 0.0
 	(_choices["Curve"]["Linear"] as CheckBox).button_pressed = true
@@ -891,6 +901,10 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
+	if _sdfgi_restart_in > 0:
+		_sdfgi_restart_in -= 1
+		if _sdfgi_restart_in == 0 and _bounce == "SDFGI":
+			_env.sdfgi_enabled = true
 	var fps := Engine.get_frames_per_second()
 	_fps.text = "%d fps  %.1f ms" % [fps, 1000.0 / maxf(fps, 1.0)]
 	if _save_in >= 0.0:
@@ -1287,6 +1301,8 @@ var _wall_view: MeshInstance3D
 var _wall_shape: CollisionShape3D
 var _room_r := 15.0                     # the floor's radius and the wall's inner face
 var _bulb_box: VBoxContainer
+var _earth: MeshInstance3D
+var _sdfgi_restart_in := 0              # frames until SDFGI starts again; 0, none
 var _ground_mat: ShaderMaterial
 var _terrain: BulbTerrain
 var _terrain_in := -1.0                 # seconds to a terrain rebuild; below 0, none due
@@ -1419,6 +1435,7 @@ func _build_ground() -> void:
 	slab.subdivide_width = EARTH_TILES
 	slab.subdivide_depth = EARTH_TILES
 	var earth := MeshInstance3D.new()
+	_earth = earth
 	earth.mesh = slab
 	earth.position.y = -10.0
 	earth.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
