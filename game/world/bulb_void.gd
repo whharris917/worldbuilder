@@ -1298,6 +1298,11 @@ const FILTERS := {"Nearest": BaseMaterial3D.TEXTURE_FILTER_NEAREST, "Bilinear": 
 const WALL_T := 0.2                     # the wall's thickness
 var _wall_h := 3.6                      # the wall's height, 0 to 36 m (Wall height slider)
 const DOOR_W := 0.9
+# The unseen earth slab's faces in tiles this many a side (40 m): Godot
+# squashes shadow casters beyond a cascade's depth range onto its near
+# edge corner by corner, which tilts a very large triangle's depth, and
+# the slab's shadow as two triangles a face came out wrong.
+const EARTH_TILES := 100
 const PLAIN := Color(0.5, 0.5, 0.5)
 
 var _floor_mat: StandardMaterial3D
@@ -1329,10 +1334,6 @@ func _build_floor() -> void:
 	_floor_mat = StandardMaterial3D.new()
 	_floor_mat.albedo_color = PLAIN
 	node.material_override = _floor_mat
-	# Its underside casts shadows too, so a sun below the horizon does not
-	# shine up through it: a one-sided surface blocks no light reaching it
-	# from behind, and the pebbles' bumps caught that light as glare.
-	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 	_shape_floor()
 
 
@@ -1454,6 +1455,22 @@ func _build_ground() -> void:
 	add_child(_terrain)
 	_terrain.flat_r = _room_r
 	_terrain.build()
+	# The Earth under the map: an unseen slab 2 m thick, its top a metre
+	# below the floor and the ground, wider than the terrain (1.5 km out),
+	# casting shadows only. A light from below the horizon then lights
+	# nothing above it, whatever its direction. It must be a solid: a flat
+	# sheet casts no shadow for light reaching its back, since Godot's
+	# shadow pass, like the camera, skips a one-sided surface's back.
+	var slab := BoxMesh.new()
+	slab.size = Vector3(4000.0, 2.0, 4000.0)
+	slab.subdivide_width = EARTH_TILES
+	slab.subdivide_depth = EARTH_TILES
+	var earth := MeshInstance3D.new()
+	earth.mesh = slab
+	earth.position.y = -2.0
+	earth.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	earth.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	add_child(earth)
 
 
 func _shape_ground() -> void:
