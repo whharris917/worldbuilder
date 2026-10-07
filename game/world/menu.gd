@@ -36,6 +36,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/projector_lab.tscn", "lab": true},
 	{"title": "THE SHIFTING ROOM", "note": "A platform floating in the middle of a great bare room, lit by one bulb beneath your feet.",
 		"scene": "res://world/shifting_room.tscn", "lab": true},
+	{"title": "WINDOWS", "note": "A great stone cathedral on open grass, its windows open to the sun.",
+		"scene": "res://world/windows.tscn", "lab": true},
 ]
 
 
