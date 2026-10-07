@@ -1324,6 +1324,10 @@ func _build_floor() -> void:
 	_floor_mat = StandardMaterial3D.new()
 	_floor_mat.albedo_color = PLAIN
 	node.material_override = _floor_mat
+	# Its underside casts shadows too, so a sun below the horizon does not
+	# shine up through it: a one-sided surface blocks no light reaching it
+	# from behind, and the pebbles' bumps caught that light as glare.
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 	_shape_floor()
 
 
