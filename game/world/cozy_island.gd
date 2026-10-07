@@ -26,14 +26,18 @@ extends Node3D
 ## - Haze: depth fog in a pale sky colour, so distance fades.
 ## - Soft focus: the distance out of focus (camera depth of field).
 ## - Storybook sky: the engine's procedural sky in soft colours with
-##   noise clouds, in place of its physical sky.
+##   noise clouds, in place of its physical sky; a larger moon with a
+##   crisp edge and fewer, sparkling stars.
 ## - Foam line: a crisp white band where the sea meets the beach, in
 ##   place of a soft one.
 ##
 ## The ground is one height field, cut along a wavy line into sand below
 ## and grass above; the sea is one disc whose vertex colours carry the
 ## water's depth (pale where shallow). Invisible walls keep the player
-## on land and on the dock. Controls (BenchPanel; Esc frees the mouse)
+## on land and on the dock. The sun and moon go anywhere in the sky,
+## below the horizon too, and the sky follows through dusk to night
+## (IslandSky); at dusk the cabin's windows and porch lamp come on.
+## Controls (BenchPanel; Esc frees the mouse)
 ## in two panels, kept in user://cozy_island.json.
 
 const STATE_PATH := "user://cozy_island.json"
@@ -47,17 +51,17 @@ const CABIN_SIZE := Vector3(4.0, 2.4, 5.0)
 const DOCK_X := 4.0
 const DOCK_W := 1.6
 const DOCK_Y := 0.6
+const NIGHT_SHADE := Color(0.22, 0.28, 0.6)
 const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", "Outlines",
 		"Gentle grade", "Glow", "Haze", "Soft focus", "Storybook sky", "Foam line"]
 
 var player: Player
-var sun: DirectionalLight3D
+var sky: IslandSky
 var _panel: BenchPanel
 var _env: Environment
 var _camera_look: CameraAttributesPractical
-var _physical_sky: PhysicalSkyMaterial
-var _story_sky: ProceduralSkyMaterial
-var _sky: Sky
+var _porch: OmniLight3D
+var _porch_mat: StandardMaterial3D
 var _surfaces: Array[Dictionary] = []
 var _sea: MeshInstance3D
 var _sea_mat: StandardMaterial3D
@@ -168,15 +172,20 @@ func _build_panels() -> void:
 
 	_panel.heading(steps, "Setting")
 	_panel.switch(steps, "Storybook sky", false, redraw)
-	_panel.note(steps, "Off, the engine's physical sky: the colour of air lit by the sun. On, its simpler sky drawn from a few chosen colours, with clouds made from noise.")
+	_panel.note(steps, "Off, the engine's physical sky: the colour of air lit by the sun. On, its simpler sky drawn from a few chosen colours that change through sunset and dusk to night, with clouds made from noise; the moon larger with a crisp edge, and only the brightest stars, as sparkles.")
 	_panel.switch(steps, "Foam line", false, redraw)
 	_panel.note(steps, "Where the sea meets the beach, a crisp white band in place of a soft one. Both rise and fall with the swell.")
 
-	var light := _panel.panel("Sun")
-	_panel.slider(light, "Sun height", 5.0, 85.0, 1.0, 38.0, redraw)
+	var light := _panel.panel("Sun and moon")
+	_panel.slider(light, "Sun height", -30.0, 85.0, 0.5, 38.0, redraw)
 	_panel.slider(light, "Sun direction", 0.0, 360.0, 1.0, 215.0, redraw)
-	_panel.note(light, "Direction is measured from north toward east; the cabin's door faces south.")
 	_panel.slider(light, "Sun brightness", 0.0, 3.0, 0.01, 1.4, redraw)
+	_panel.note(light, "Height is in degrees above the horizon, below it when negative; direction from north toward east. The cabin's door faces south. As the sun sinks its light crosses more air, which scatters blue away more than red, so it weakens and reddens; once it has set, only the sky's glow is left, until that fades too and the stars come out.")
+	_panel.switch(light, "Eyes adjust", true, redraw)
+	_panel.note(light, "The camera's automatic exposure: it measures how bright the picture is on average and slowly brightens or darkens it toward a middle grey, as the eye adjusts to dusk, up to a limit so night stays night. Off, the exposure is fixed for daylight, and sunset and night are as dark as the light really is against noon. The storybook sky is painted for each hour already, so with it the exposure stays fixed.")
+	_panel.slider(light, "Moon height", -30.0, 85.0, 0.5, 25.0, redraw)
+	_panel.slider(light, "Moon direction", 0.0, 360.0, 1.0, 120.0, redraw)
+	_panel.note(light, "The moon's phase follows from where it stands against the sun: opposite the sun it is full, beside it new. Its light on the island is as strong as its lit part is large, shown dimmer and bluer than daylight as films show night; the real moon is hundreds of thousands of times fainter than the sun.")
 
 
 func _set_all(on: bool) -> void:
@@ -195,6 +204,8 @@ func _on(title: String) -> bool:
 ## Every switch and slider applied to the materials, light and
 ## environment.
 func _apply() -> void:
+	sky.set_state(_value("Sun height"), _value("Sun direction"), _value("Sun brightness"),
+			_value("Moon height"), _value("Moon direction"), _on("Storybook sky"))
 	var flat := _on("Flat colours")
 	var toon := _on("Toon light")
 	var lines := _on("Outlines")
@@ -213,9 +224,11 @@ func _apply() -> void:
 		# The flat look gives no glossy reflections but on the water.
 		m.metallic_specular = 0.5 if water or not flat else 0.0
 		if s.has("glow"):
-			m.emission_enabled = flat
+			# Lit by day in the flat look; in both, brighter as night falls.
+			var lamp := maxf(0.8 if flat else 0.0, 2.5 * (1.0 - sky.daylight))
+			m.emission_enabled = lamp > 0.0
 			m.emission = s["glow"]
-			m.emission_energy_multiplier = 0.8
+			m.emission_energy_multiplier = lamp
 		if toon:
 			m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
 			m.specular_mode = BaseMaterial3D.SPECULAR_TOON if water else BaseMaterial3D.SPECULAR_DISABLED
@@ -229,20 +242,23 @@ func _apply() -> void:
 			line.grow_amount = width
 			line.albedo_color = (s["flat"] as Color).darkened(0.55)
 			m.next_pass = line if lines else null
+
 	_paint_sea(flat)
 
 	# Light and shade.
-	var height := deg_to_rad(_value("Sun height"))
-	var heading := deg_to_rad(_value("Sun direction"))
-	# Toward the sun: north is -z, east +x.
-	var to_sun := Vector3(sin(heading) * cos(height), sin(height), -cos(heading) * cos(height))
-	sun.look_at_from_position(Vector3.ZERO, -to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD)
-	sun.light_energy = _value("Sun brightness")
-	sun.light_angular_distance = _value("Sun size") if _on("Soft shadows") else 0.5
+	var size := _value("Sun size") if _on("Soft shadows") else 0.5
+	sky.sun.light_angular_distance = size
+	sky.moonlight.light_angular_distance = size
+	var night := 1.0 - sky.daylight
+	_porch.light_energy = 1.6 * night
+	_porch.visible = night > 0.01
+	_porch_mat.emission_energy_multiplier = 4.0 * night
 	if _on("Coloured shade"):
+		# The chosen shade by day, a deep blue at night.
+		var shade := (_panel.pickers["Shade colour"] as ColorPickerButton).color
 		_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		_env.ambient_light_color = (_panel.pickers["Shade colour"] as ColorPickerButton).color
-		_env.ambient_light_energy = _value("Shade brightness")
+		_env.ambient_light_color = shade.lerp(NIGHT_SHADE, night)
+		_env.ambient_light_energy = _value("Shade brightness") * lerpf(1.0, 0.35, night)
 	else:
 		_env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 		_env.ambient_light_energy = 1.0
@@ -255,51 +271,23 @@ func _apply() -> void:
 	_env.glow_intensity = _value("Glow strength")
 	_env.fog_enabled = _on("Haze")
 	_env.fog_density = _value("Haze thickness")
-	_camera_look.dof_blur_far_enabled = _on("Soft focus")
+	_env.fog_light_color = sky.haze_colour
+	# Soft focus would blur the stars away, so it fades out as night falls.
+	_camera_look.dof_blur_far_enabled = _on("Soft focus") and sky.daylight > 0.01
 	_camera_look.dof_blur_far_distance = _value("Sharp up to (m)")
-	_sky.sky_material = _story_sky if _on("Storybook sky") else _physical_sky
+	_camera_look.dof_blur_amount = 0.03 * sky.daylight
+	_camera_look.auto_exposure_enabled = _on("Eyes adjust") and not _on("Storybook sky")
 	_foam_mat.albedo_texture = _foam_crisp if _on("Foam line") else _foam_soft
 
 
 ## ---- the light and the air -------------------------------------------------
 
 func _build_environment() -> void:
-	_physical_sky = PhysicalSkyMaterial.new()
-	_physical_sky.ground_color = Color(0.1, 0.16, 0.2)
-	_physical_sky.energy_multiplier = 2.5
-	_story_sky = ProceduralSkyMaterial.new()
-	_story_sky.sky_top_color = Color(0.36, 0.6, 0.92)
-	_story_sky.sky_horizon_color = Color(0.82, 0.88, 0.95)
-	_story_sky.sky_curve = 0.12
-	_story_sky.ground_bottom_color = Color(0.3, 0.5, 0.62)
-	_story_sky.ground_horizon_color = Color(0.82, 0.88, 0.95)
-	_story_sky.sun_angle_max = 20.0
-	_story_sky.sun_curve = 0.1
-	# Clouds: noise mapped round the sky, white above a threshold and
-	# nothing below, added to the sky's colour.
-	var clouds := NoiseTexture2D.new()
-	clouds.width = 1024
-	clouds.height = 512
-	clouds.seamless = true
-	var cloud_noise := FastNoiseLite.new()
-	cloud_noise.seed = 3
-	cloud_noise.frequency = 0.012
-	cloud_noise.fractal_octaves = 3
-	clouds.noise = cloud_noise
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(0, 0, 0, 0))
-	ramp.set_offset(0, 0.62)
-	ramp.set_color(1, Color(1, 1, 1, 1))
-	ramp.set_offset(1, 0.72)
-	clouds.color_ramp = ramp
-	_story_sky.sky_cover = clouds
-	_story_sky.sky_cover_modulate = Color(1, 1, 1, 0.8)
-	_sky = Sky.new()
-	_sky.sky_material = _physical_sky
-
+	sky = IslandSky.new()
+	add_child(sky)
 	_env = Environment.new()
 	_env.background_mode = Environment.BG_SKY
-	_env.sky = _sky
+	_env.sky = sky.sky
 	_env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	_env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	_env.tonemap_mode = Environment.TONE_MAPPER_AGX
@@ -308,25 +296,20 @@ func _build_environment() -> void:
 	_env.glow_bloom = 0.15
 	_env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	_env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
-	_env.fog_light_color = Color(0.8, 0.86, 0.95)
 	_env.fog_sun_scatter = 0.1
 	_env.fog_sky_affect = 0.0
 	_env.fog_aerial_perspective = 0.4
 	_camera_look = CameraAttributesPractical.new()
 	_camera_look.dof_blur_far_transition = 80.0
-	_camera_look.dof_blur_amount = 0.03
+	_camera_look.auto_exposure_speed = 1.0
+	# The darkest the exposure meter takes the picture to be, which limits
+	# how far it brightens a night scene (chosen by eye: the moonlit beach
+	# readable, the sky still black).
+	_camera_look.auto_exposure_min_sensitivity = 40.0
 	var world_env := WorldEnvironment.new()
 	world_env.environment = _env
 	world_env.camera_attributes = _camera_look
 	add_child(world_env)
-
-	sun = DirectionalLight3D.new()
-	sun.light_color = Color(1.0, 0.95, 0.86)
-	sun.shadow_enabled = true
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 140.0
-	sun.shadow_blur = 1.0
-	add_child(sun)
 
 
 ## ---- materials -------------------------------------------------------------
@@ -599,10 +582,15 @@ func _build_sea() -> void:
 
 
 ## The sea's colours: from deep to shallow by the depth under each
-## point; dark and greenish as photographed, turquoise in the flat look.
+## point; dark and greenish as photographed, turquoise in the flat look,
+## where it darkens to inky blues at night (as photographed the sea's own
+## colour is dark enough, and the light alone dims it).
 func _paint_sea(flat: bool) -> void:
-	var deep := Color(0.16, 0.5, 0.78) if flat else Color(0.012, 0.05, 0.07)
-	var shallow := Color(0.5, 0.88, 0.82) if flat else Color(0.14, 0.26, 0.22)
+	var deep := Color(0.012, 0.05, 0.07)
+	var shallow := Color(0.14, 0.26, 0.22)
+	if flat:
+		deep = Color(0.04, 0.1, 0.22).lerp(Color(0.16, 0.5, 0.78), sky.daylight)
+		shallow = Color(0.1, 0.24, 0.32).lerp(Color(0.5, 0.88, 0.82), sky.daylight)
 	var mesh := _sea.mesh as ArrayMesh
 	var arrays := mesh.surface_get_arrays(0)
 	var colours := PackedColorArray()
@@ -694,6 +682,9 @@ func _process(delta: float) -> void:
 	var swell := sin(_clock * TAU / 10.0)
 	_foam.scale = Vector3(1.0 + 0.012 * swell, 1.0, 1.0 + 0.012 * swell)
 	_foam_mat.albedo_color.a = 0.85 + 0.15 * swell
+	var camera := get_viewport().get_camera_3d()
+	if camera != null:
+		sky.follow(camera.global_position)
 
 
 ## ---- the cabin and the dock ------------------------------------------------
@@ -751,6 +742,19 @@ func _build_cabin() -> void:
 		_solid(Vector3(0.05, 0.8, 0.7), c + Vector3(x * (hx + 0.01), 1.4, 0.4), glass, null, false)
 	_solid(Vector3(0.6, 0.8, 0.05), c + Vector3(1.2, 1.4, hz + 0.01), glass, null, false)
 	_solid(Vector3(0.6, 4.6, 0.6), c + Vector3(-hx + 0.6, 2.3, -hz + 0.9), stone)
+	# The porch lamp beside the door, lit from dusk.
+	_porch_mat = StandardMaterial3D.new()
+	_porch_mat.albedo_color = Color(1.0, 0.9, 0.7)
+	_porch_mat.emission_enabled = true
+	_porch_mat.emission = Color(1.0, 0.72, 0.4)
+	var lamp_at := c + Vector3(-0.75, 2.0, hz + 0.12)
+	var lantern := _solid(Vector3(0.14, 0.2, 0.14), lamp_at, _porch_mat, null, false)
+	lantern.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_porch = OmniLight3D.new()
+	_porch.light_color = Color(1.0, 0.72, 0.4)
+	_porch.omni_range = 9.0
+	_porch.position = lamp_at + Vector3(0, 0, 0.15)
+	add_child(_porch)
 
 
 ## A plank dock from the beach out over the shallows on the south side,
