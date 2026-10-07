@@ -903,7 +903,7 @@ func _process(delta: float) -> void:
 	if _terrain_in >= 0.0:
 		_terrain_in -= delta
 		if _terrain_in < 0.0:
-			_terrain.flat_r = _room_r
+			_terrain.flat_r = _room_r + WALL_T
 			_terrain.build()
 
 
@@ -1267,7 +1267,7 @@ const TEX_FILES := {"Albedo": "albedo", "Roughness": "roughness", "Normal": "nor
 const FILTERS := {"Nearest": BaseMaterial3D.TEXTURE_FILTER_NEAREST, "Bilinear": BaseMaterial3D.TEXTURE_FILTER_LINEAR,
 	"Mipmaps": BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS,
 	"Anisotropic": BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC}
-const WALL_T := 0.2                     # the wall's thickness
+const WALL_T := 2.0                     # the wall's thickness: thick enough that SDFGI's coarse cells do not carry the sunlit ground outside onto the inside of its foot
 # The floor is a solid disc this thick, its top at 0, reaching out under
 # the wall to its outer face; the wall stands from the floor's underside,
 # so the two overlap and no light finds a crack at the wall's foot.
@@ -1332,10 +1332,10 @@ func _shape_floor() -> void:
 			[Vector2(r * a0, 0), Vector2(r * a1, 0), Vector2(r * a1, FLOOR_T), Vector2(r * a0, FLOOR_T)])
 	st.generate_tangents()
 	($Floor/Mesh as MeshInstance3D).mesh = st.commit()
-	(($Floor/Collision as CollisionShape3D).shape as CylinderShape3D).radius = _room_r + 0.5
+	(($Floor/Collision as CollisionShape3D).shape as CylinderShape3D).radius = _room_r + WALL_T + 0.5
 
 
-## The ring wall, 20 cm thick and 3.6 m high over the floor, standing
+## The ring wall, WALL_T thick and 3.6 m high over the floor, standing
 ## from the floor's underside (FLOOR_T down), open in a doorway 0.9 m
 ## wide toward -z: inside and outside faces, its top, and the doorway's
 ## two sides. Texture coordinates are metres: round the wall and down
@@ -1399,7 +1399,7 @@ func _build_ground() -> void:
 	_ground_mat.shader = load("res://world/ground_tex.gdshader") as Shader
 	_terrain = BulbTerrain.new(_ground_mat)
 	add_child(_terrain)
-	_terrain.flat_r = _room_r
+	_terrain.flat_r = _room_r + WALL_T
 	_terrain.build()
 	# The Earth under the map: an unseen slab 2 m thick, its top level with
 	# the floor and the flat ground round the room (with a gap below the
