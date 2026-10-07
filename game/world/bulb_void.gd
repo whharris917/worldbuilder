@@ -30,20 +30,6 @@ extends Node3D
 ## combination are dimmed, and a line at the top says where the light on
 ## the surfaces is coming from.
 ##
-## A reflection probe (on to begin, a switch under them) photographs the
-## room from 1.6 m over its middle, wall and sky above together, and
-## glossy surfaces inside reflect that instead of the open sky, so the
-## wall hides what lies behind it (without it a low sun behind the wall
-## still shone in the wet floor). Its box is the room's: 2 r across and as
-## high as the wall, 20 cm larger each way (a surface exactly on the box's
-## face flickered in the light pool), box-projected, not interior (the
-## room is open to the sky), giving reflections only, no fill light. It is
-## photographed again a few frames after any setting changes; the swinging
-## ball and bulb and the player are caught where they were. The
-## photograph is lit without the bounce (probes are not given it), so the
-## wall in it is lit by the whole sky, and a faint sheen of that shows on
-## the wet floor toward the wall.
-##
 ## The ball and the bulb each hang on a rope from a hook 12 m up
 ## (Pendulum); each hook travels its own triangle across the room,
 ## waiting at each corner, at a speed and wait set in the Motion panel.
@@ -167,7 +153,6 @@ func _ready() -> void:
 	_build_swooshes()
 	_build_floor()
 	_build_wall()
-	_build_probe()
 	_build_ground()
 	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root), _build_motion(root),
 		_build_textures(root), _build_terrain(root), _build_camera(root), _build_sound(root)])
@@ -339,12 +324,6 @@ func _build_right(root: Control) -> Control:
 		_env.ssao_enabled = on
 		_refresh())
 	_note(column, "Darkens ambient and bounce light in corners, SSIL's light included; leaves the bulb's direct light alone.")
-	_heading(column, "What glossy surfaces reflect")
-	_switch(column, "Reflection probe", func(on: bool) -> void:
-		_probe.visible = on
-		_rephotograph())
-	(_switches["Reflection probe"] as CheckButton).button_pressed = true
-	_note(column, "A photograph of the room from its middle, wall and sky together, taken again whenever a setting changes. Glossy surfaces inside reflect it instead of the open sky, so the wall hides a low sun behind it. Off, they reflect the whole sky as if there were no wall. The bounce methods do not do this for smooth surfaces.")
 	return _panel_of(column)
 
 
@@ -869,7 +848,6 @@ func _reset() -> void:
 	(_sliders["Swoosh level (dB)"] as HSlider).value = 0.0
 	for title in SOUND_ON:
 		(_switches[title] as CheckButton).button_pressed = true
-	(_switches["Reflection probe"] as CheckButton).button_pressed = true
 	(_choices["Exposure"]["Meter"] as CheckBox).button_pressed = true
 	(_sliders["Compensation (EV)"] as HSlider).value = 0.0
 	(_choices["Curve"]["Linear"] as CheckBox).button_pressed = true
@@ -927,11 +905,6 @@ func _process(delta: float) -> void:
 		if _terrain_in < 0.0:
 			_terrain.flat_r = _room_r
 			_terrain.build()
-			_rephotograph()
-	if _probe_frames > 0:
-		_probe_frames -= 1
-		if _probe_frames == 0:
-			_probe.update_mode = ReflectionProbe.UPDATE_ONCE
 
 
 func _notification(what: int) -> void:
@@ -958,7 +931,6 @@ func _remembering() -> bool:
 
 
 func _changed() -> void:
-	_rephotograph()
 	if not _restoring and _remembering():
 		_save_in = 0.5
 
@@ -1310,9 +1282,7 @@ var _wall_mat: StandardMaterial3D
 var _wall_view: MeshInstance3D
 var _wall_shape: CollisionShape3D
 var _room_r := 15.0                     # the floor's radius and the wall's inner face
-var _probe: ReflectionProbe
 var _bulb_box: VBoxContainer
-var _probe_frames := 0                  # frames left of a re-photograph; 0, none
 var _ground_mat: ShaderMaterial
 var _terrain: BulbTerrain
 var _terrain_in := -1.0                 # seconds to a terrain rebuild; below 0, none due
@@ -1406,44 +1376,6 @@ func _shape_wall() -> void:
 	_wall_shape.disabled = _wall_h <= 0.01
 
 
-## The reflection probe: built here, fitted to the room by _fit_probe.
-func _build_probe() -> void:
-	_probe = ReflectionProbe.new()
-	_probe.box_projection = true
-	_probe.interior = false
-	_probe.blend_distance = 0.0
-	# Reflections only: left to give fill light too, it gave the room the
-	# sky's light as photographed, unblocked by the wall, tinting it red
-	# at sunset even with a bounce method on.
-	_probe.ambient_mode = ReflectionProbe.AMBIENT_DISABLED
-	_probe.update_mode = ReflectionProbe.UPDATE_ONCE
-	add_child(_probe)
-	_fit_probe()
-
-
-## The probe's box: the room, 2 r across and as high as the wall (3 m at
-## least), 20 cm larger each way; its photograph taken from 1.6 m over
-## the floor's middle.
-func _fit_probe() -> void:
-	if _probe == null:
-		return
-	var h := maxf(_wall_h, 3.0)
-	_probe.size = Vector3(2.0 * _room_r + 0.4, h + 0.4, 2.0 * _room_r + 0.4)
-	_probe.position = Vector3(0.0, h * 0.5, 0.0)
-	_probe.origin_offset = Vector3(0.0, 1.6 - h * 0.5, 0.0)
-	_rephotograph()
-
-
-## Take the probe's photograph again a few frames on, once a change has
-## reached the lighting: Godot has no call to retake a probe set to Once,
-## so it is set to Always for those frames and back.
-func _rephotograph() -> void:
-	if _probe == null or not _probe.visible:
-		return
-	_probe.update_mode = ReflectionProbe.UPDATE_ALWAYS
-	_probe_frames = 4
-
-
 ## The ground outside the room: procedural terrain (BulbTerrain), level
 ## by the room and rising into hills, textured by the ground shader. It
 ## is rebuilt a third of a second after its last change (a room radius
@@ -1485,7 +1417,6 @@ func _set_room(r: float) -> void:
 	_room_r = r
 	_shape_floor()
 	_shape_wall()
-	_fit_probe()
 	_shape_ground()
 	_ball_swing.corners = _corners(0.7 * r, [30.0, 150.0, 270.0])
 	_bulb_swing.corners = _corners(0.6 * r, [90.0, 210.0, 330.0])
@@ -2057,8 +1988,7 @@ func _build_motion(root: Control) -> Control:
 	_note(column, "Floor and wall rebuilt as you drag; the hooks' paths scale with it. A VoxelGI box is baked again when you let go.")
 	_slider(column, "Wall height (m)", 0.0, 36.0, 0.1, _wall_h, func(v: float) -> void:
 		_wall_h = v
-		_shape_wall()
-		_fit_probe())
+		_shape_wall())
 	(_sliders["Wall height (m)"] as HSlider).drag_ended.connect(func(_changed: bool) -> void:
 		if _bounce == "VoxelGI":
 			_set_voxel_gi(true))
