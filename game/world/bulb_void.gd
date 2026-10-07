@@ -1268,6 +1268,10 @@ const FILTERS := {"Nearest": BaseMaterial3D.TEXTURE_FILTER_NEAREST, "Bilinear": 
 	"Mipmaps": BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS,
 	"Anisotropic": BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC}
 const WALL_T := 0.2                     # the wall's thickness
+# The floor is a solid disc this thick, its top at 0, reaching out under
+# the wall to its outer face; the wall stands from the floor's underside,
+# so the two overlap and no light finds a crack at the wall's foot.
+const FLOOR_T := 0.3
 var _wall_h := 3.6                      # the wall's height, 0 to 36 m (Wall height slider)
 const DOOR_W := 0.9
 # The unseen earth slab's faces in tiles this many a side (40 m): Godot
@@ -1311,18 +1315,28 @@ func _shape_floor() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var n := 256
+	var r := _room_r + WALL_T
+	var down := Vector3(0, -FLOOR_T, 0)
 	for i in n:
 		var a0 := TAU * i / n
 		var a1 := TAU * (i + 1) / n
-		var p: Array = [Vector3.ZERO, Vector3(sin(a0), 0, cos(a0)) * _room_r, Vector3(sin(a1), 0, cos(a1)) * _room_r]
+		var e0 := Vector3(sin(a0), 0, cos(a0))
+		var e1 := Vector3(sin(a1), 0, cos(a1))
+		var p: Array = [Vector3.ZERO, e0 * r, e1 * r]
 		_tri(st, p, [Vector3.UP, Vector3.UP, Vector3.UP],
 			[Vector2(p[0].x, p[0].z), Vector2(p[1].x, p[1].z), Vector2(p[2].x, p[2].z)])
+		var q: Array = [down, e0 * r + down, e1 * r + down]
+		_tri(st, q, [Vector3.DOWN, Vector3.DOWN, Vector3.DOWN],
+			[Vector2(q[0].x, q[0].z), Vector2(q[1].x, q[1].z), Vector2(q[2].x, q[2].z)])
+		_quad(st, [e0 * r, e1 * r, e1 * r + down, e0 * r + down], [e0, e1, e1, e0],
+			[Vector2(r * a0, 0), Vector2(r * a1, 0), Vector2(r * a1, FLOOR_T), Vector2(r * a0, FLOOR_T)])
 	st.generate_tangents()
 	($Floor/Mesh as MeshInstance3D).mesh = st.commit()
 	(($Floor/Collision as CollisionShape3D).shape as CylinderShape3D).radius = _room_r + 0.5
 
 
-## The ring wall, 20 cm thick and 3.6 m high, open in a doorway 0.9 m
+## The ring wall, 20 cm thick and 3.6 m high over the floor, standing
+## from the floor's underside (FLOOR_T down), open in a doorway 0.9 m
 ## wide toward -z: inside and outside faces, its top, and the doorway's
 ## two sides. Texture coordinates are metres: round the wall and down
 ## from its top on the faces, x and z on the top.
@@ -1352,21 +1366,21 @@ func _shape_wall() -> void:
 		var a1 := half + (TAU - 2.0 * half) * (i + 1) / n
 		var in0 := Vector3(-sin(a0), 0, cos(a0))
 		var in1 := Vector3(-sin(a1), 0, cos(a1))
-		_quad(st, [_round(wall_in, a0, 0), _round(wall_in, a1, 0), _round(wall_in, a1, _wall_h), _round(wall_in, a0, _wall_h)],
+		_quad(st, [_round(wall_in, a0, -FLOOR_T), _round(wall_in, a1, -FLOOR_T), _round(wall_in, a1, _wall_h), _round(wall_in, a0, _wall_h)],
 			[in0, in1, in1, in0],
-			[Vector2(wall_in * a0, _wall_h), Vector2(wall_in * a1, _wall_h), Vector2(wall_in * a1, 0), Vector2(wall_in * a0, 0)])
-		_quad(st, [_round(wall_out, a0, 0), _round(wall_out, a1, 0), _round(wall_out, a1, _wall_h), _round(wall_out, a0, _wall_h)],
+			[Vector2(wall_in * a0, _wall_h + FLOOR_T), Vector2(wall_in * a1, _wall_h + FLOOR_T), Vector2(wall_in * a1, 0), Vector2(wall_in * a0, 0)])
+		_quad(st, [_round(wall_out, a0, -FLOOR_T), _round(wall_out, a1, -FLOOR_T), _round(wall_out, a1, _wall_h), _round(wall_out, a0, _wall_h)],
 			[-in0, -in1, -in1, -in0],
-			[Vector2(-wall_out * a0, _wall_h), Vector2(-wall_out * a1, _wall_h), Vector2(-wall_out * a1, 0), Vector2(-wall_out * a0, 0)])
+			[Vector2(-wall_out * a0, _wall_h + FLOOR_T), Vector2(-wall_out * a1, _wall_h + FLOOR_T), Vector2(-wall_out * a1, 0), Vector2(-wall_out * a0, 0)])
 		var top: Array = [_round(wall_in, a0, _wall_h), _round(wall_in, a1, _wall_h), _round(wall_out, a1, _wall_h), _round(wall_out, a0, _wall_h)]
 		_quad(st, top, [Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP],
 			[Vector2(top[0].x, top[0].z), Vector2(top[1].x, top[1].z), Vector2(top[2].x, top[2].z), Vector2(top[3].x, top[3].z)])
 	for side: float in [-1.0, 1.0]:
 		var a := half if side < 0.0 else TAU - half
 		var out := Vector3(cos(a), 0, sin(a)) * side
-		_quad(st, [_round(wall_in, a, 0), _round(wall_out, a, 0), _round(wall_out, a, _wall_h), _round(wall_in, a, _wall_h)],
+		_quad(st, [_round(wall_in, a, -FLOOR_T), _round(wall_out, a, -FLOOR_T), _round(wall_out, a, _wall_h), _round(wall_in, a, _wall_h)],
 			[out, out, out, out],
-			[Vector2(0, _wall_h), Vector2(wall_out - wall_in, _wall_h), Vector2(wall_out - wall_in, 0), Vector2(0, 0)])
+			[Vector2(0, _wall_h + FLOOR_T), Vector2(wall_out - wall_in, _wall_h + FLOOR_T), Vector2(wall_out - wall_in, 0), Vector2(0, 0)])
 	st.generate_tangents()
 	var mesh := st.commit()
 	_wall_view.mesh = mesh
