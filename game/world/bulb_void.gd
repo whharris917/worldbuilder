@@ -380,6 +380,9 @@ func _build_sun(root: Control) -> Control:
 	_note(_sun_box, "Light on a surface facing the sun at the room's centre, above the air.")
 	_switch(_sun_box, "Atmosphere dims and reddens the sun", func(_on: bool) -> void: _place_sun())
 	_note(_sun_box, "The beam loses light on its way through the atmosphere, blue most: Rayleigh scattering by the air and some by haze, over a path that grows from one air mass overhead to about 38 at the horizon. Overhead the sun keeps about three quarters of its light; low, it turns orange and red and fades.")
+	_switch(_sun_box, "No sun below the horizon", func(_on: bool) -> void: _place_sun())
+	(_switches["No sun below the horizon"] as CheckButton).set_pressed_no_signal(true)
+	_note(_sun_box, "With the atmosphere's dimming off, the sun keeps its full light at any angle, even after it has set. On, its light stops once it is below the horizon, as the Earth would block it. With the dimming on this changes nothing: a set sun already has no light left.")
 	_distance_box = _box(column)
 	_slider(_distance_box, "Distance (m)", 10.0, 150.0, 1.0, 60.0, func(_v: float) -> void: _place_sun())
 	(_sliders["Distance (m)"] as HSlider).exp_edit = true
@@ -452,6 +455,8 @@ func _place_sun() -> void:
 	var through := Color(1, 1, 1)
 	if (_switches["Atmosphere dims and reddens the sun"] as CheckButton).button_pressed:
 		through = _air_transmittance(float((_sliders["Polar angle"] as HSlider).value))
+	elif dir.y < 0.0 and (_switches["No sun below the horizon"] as CheckButton).button_pressed:
+		through = Color(0, 0, 0)
 	var lum := 0.2126 * through.r + 0.7152 * through.g + 0.0722 * through.b
 	var hue := Color(through.r / maxf(through.r, 1e-6), through.g / maxf(through.r, 1e-6), through.b / maxf(through.r, 1e-6))
 	var beam := hue.linear_to_srgb() if lum > 0.0 else Color.WHITE
@@ -858,6 +863,7 @@ func _reset() -> void:
 	for title in SOUND_ON:
 		(_switches[title] as CheckButton).button_pressed = true
 	(_switches["Earth in the bounce"] as CheckButton).button_pressed = true
+	(_switches["No sun below the horizon"] as CheckButton).button_pressed = true
 	(_choices["Exposure"]["Meter"] as CheckBox).button_pressed = true
 	(_sliders["Compensation (EV)"] as HSlider).value = 0.0
 	(_choices["Curve"]["Linear"] as CheckBox).button_pressed = true
