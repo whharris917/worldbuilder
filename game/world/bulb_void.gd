@@ -1401,23 +1401,28 @@ func _build_ground() -> void:
 	add_child(_terrain)
 	_terrain.flat_r = _room_r + WALL_T
 	_terrain.build()
-	# The Earth under the map: an unseen slab 2 m thick, its top level with
+	# The Earth under the map: an unseen slab 20 m thick, its top level with
 	# the floor and the flat ground round the room (with a gap below the
 	# wall's foot, a sun exactly on the horizon shone in under the wall:
 	# the shadow map's squares straddling the foot saw through it), wider than the terrain (1.5 km out),
 	# casting shadows only. A light from below the horizon then lights
 	# nothing above it, whatever its direction. It must be a solid: a flat
 	# sheet casts no shadow for light reaching its back, since Godot's
-	# shadow pass, like the camera, skips a one-sided surface's back.
+	# shadow pass, like the camera, skips a one-sided surface's back. It
+	# takes part in SDFGI too, which judges what blocks the sun from its
+	# own coarse model of the scene's shapes, not the shadow maps: left out,
+	# a set sun lit the floor's and ground's undersides there and its light
+	# spread into the room. 20 m deep gave the least of that (2 m let more
+	# through; 60 m broke the sun's shadows).
 	var slab := BoxMesh.new()
-	slab.size = Vector3(4000.0, 2.0, 4000.0)
+	slab.size = Vector3(4000.0, 20.0, 4000.0)
 	slab.subdivide_width = EARTH_TILES
 	slab.subdivide_depth = EARTH_TILES
 	var earth := MeshInstance3D.new()
 	earth.mesh = slab
-	earth.position.y = -1.0
+	earth.position.y = -10.0
 	earth.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
-	earth.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	earth.gi_mode = GeometryInstance3D.GI_MODE_STATIC
 	add_child(earth)
 
 
