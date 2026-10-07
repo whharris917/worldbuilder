@@ -147,7 +147,7 @@ func _build_panel() -> void:
 	_panel.note(sun, "Around the horizon from straight ahead at the start: 90 to the right, 180 behind.")
 	_panel.slider(sun, "Sun energy", 0.0, 4.0, 0.01, 1.0, place)
 	_panel.note(sun, "Light on a surface facing the sun, above the air.")
-	_panel.switch(sun, "Sun colour from the air", true, place)
+	_panel.switch(sun, "Atmosphere dims and reddens the sun", true, place)
 	_panel.note(sun, "The beam loses light on its way through the atmosphere, worked out from the Sky panel's air, haze and ozone, as the sky is: on Earth, overhead the sun keeps most of its light; low, it turns orange and red and fades; set, it gives none.")
 	_panel.slider(sun, "Shadow distance (m)", 100.0, 2000.0, 10.0, 1200.0, func(v: float) -> void:
 		_sun.directional_shadow_max_distance = v)
@@ -189,7 +189,7 @@ func _place_sun() -> void:
 		_acoustics.sun_dir = dir
 	_sky_mat.set_shader_parameter("sun_illuminance", energy)
 	var through := Color(1, 1, 1)
-	if (_panel.switches["Sun colour from the air"] as CheckButton).button_pressed:
+	if (_panel.switches["Atmosphere dims and reddens the sun"] as CheckButton).button_pressed:
 		through = _transmittance(dir)
 	var lum := 0.2126 * through.r + 0.7152 * through.g + 0.0722 * through.b
 	var top := maxf(maxf(through.r, through.g), maxf(through.b, 1e-6))

@@ -26,7 +26,7 @@ extends Node3D
 ##
 ## Panels (BenchPanel; Esc frees the mouse), kept in user://windows.json:
 ## Sun and Sky as in Movement (One Bulb's: the sun's polar angle and its
-## azimuth from north, its energy, its colour from the air, the shadow
+## azimuth from north, its energy, whether the atmosphere dims and reddens it, the shadow
 ## distance; the air's density, haze, ozone and haze forward); Light: the
 ## bounce (None or SDFGI; SDFGI to begin, which also shades the inside
 ## from the sky), the haze in the air (Godot's volumetric fog, lit by the
@@ -149,7 +149,7 @@ func _build_panel() -> void:
 	_panel.note(sun, "Round the horizon from north: 90 east, behind the altar; 180 south, the cathedral's right side as you look up the nave; 270 west, behind the doors.")
 	_panel.slider(sun, "Sun energy", 0.0, 4.0, 0.01, 1.0, place)
 	_panel.note(sun, "Light on a surface facing the sun, above the air.")
-	_panel.switch(sun, "Sun colour from the air", true, place)
+	_panel.switch(sun, "Atmosphere dims and reddens the sun", true, place)
 	_panel.note(sun, "The beam loses light on its way through the atmosphere, worked out from the Sky panel's air, haze and ozone, as the sky is: overhead the sun keeps most of its light; low, it turns orange and red and fades; set, it gives none.")
 	_panel.slider(sun, "Shadow distance (m)", 50.0, 600.0, 10.0, 250.0, func(v: float) -> void:
 		_sun.directional_shadow_max_distance = v)
@@ -210,7 +210,7 @@ func _place_sun() -> void:
 	_sky_mat.set_shader_parameter("sun_dir", dir)
 	_sky_mat.set_shader_parameter("sun_illuminance", energy)
 	var through := Color(1, 1, 1)
-	if (_panel.switches["Sun colour from the air"] as CheckButton).button_pressed:
+	if (_panel.switches["Atmosphere dims and reddens the sun"] as CheckButton).button_pressed:
 		through = _transmittance(dir)
 	var lum := 0.2126 * through.r + 0.7152 * through.g + 0.0722 * through.b
 	var top := maxf(maxf(through.r, through.g), maxf(through.b, 1e-6))

@@ -369,7 +369,7 @@ func _build_sun(root: Control) -> Control:
 	_note(_sun_box, "Around the horizon from the doorway: 45 toward the ball, 180 behind the start.")
 	_slider(_sun_box, "Sun energy", 0.0, 4.0, 0.01, 1.0, func(_v: float) -> void: _place_sun())
 	_note(_sun_box, "Light on a surface facing the sun at the room's centre, above the air.")
-	_switch(_sun_box, "Sun colour from the air", func(_on: bool) -> void: _place_sun())
+	_switch(_sun_box, "Atmosphere dims and reddens the sun", func(_on: bool) -> void: _place_sun())
 	_note(_sun_box, "The beam loses light on its way through the atmosphere, blue most: Rayleigh scattering by the air and some by haze, over a path that grows from one air mass overhead to about 38 at the horizon. Overhead the sun keeps about three quarters of its light; low, it turns orange and red and fades.")
 	_distance_box = _box(column)
 	_slider(_distance_box, "Distance (m)", 10.0, 150.0, 1.0, 60.0, func(_v: float) -> void: _place_sun())
@@ -441,7 +441,7 @@ func _place_sun() -> void:
 	# What reaches the ground: the sun's light less what the air scatters
 	# out of the beam on the way.
 	var through := Color(1, 1, 1)
-	if (_switches["Sun colour from the air"] as CheckButton).button_pressed:
+	if (_switches["Atmosphere dims and reddens the sun"] as CheckButton).button_pressed:
 		through = _air_transmittance(float((_sliders["Polar angle"] as HSlider).value))
 	var lum := 0.2126 * through.r + 0.7152 * through.g + 0.0722 * through.b
 	var hue := Color(through.r / maxf(through.r, 1e-6), through.g / maxf(through.r, 1e-6), through.b / maxf(through.r, 1e-6))
@@ -1781,7 +1781,7 @@ func _meter_ev() -> float:
 		var polar := float((_sliders["Polar angle"] as HSlider).value)
 		var top := SUN_LUX * float((_sliders["Sun energy"] as HSlider).value)
 		var through := 1.0
-		if (_switches["Sun colour from the air"] as CheckButton).button_pressed:
+		if (_switches["Atmosphere dims and reddens the sun"] as CheckButton).button_pressed:
 			var t := _air_transmittance(polar)
 			through = 0.2126 * t.r + 0.7152 * t.g + 0.0722 * t.b
 		e += top * through * maxf(cos(deg_to_rad(polar)), 0.0)
