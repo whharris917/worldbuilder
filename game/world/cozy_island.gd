@@ -69,6 +69,7 @@ var _porch_mat: StandardMaterial3D
 var _crowns: Array[Vector4] = []        # broad-leaved trees: crown centre, size
 var _lanterns: Array[HangingLantern] = []
 var _fire_at := Vector3.ZERO
+var _hovered: Node = null
 var _surfaces: Array[Dictionary] = []
 var _sea: MeshInstance3D
 var _sea_mat: StandardMaterial3D
@@ -114,6 +115,7 @@ func _ready() -> void:
 	_build_rocks()
 	_build_campfire()
 	_build_lanterns()
+	add_child(SaltWorks.new(self))
 	_build_bounds()
 	_build_panels()
 	# Soft shadows need the engine's shadow softening at least at Low,
@@ -130,7 +132,7 @@ func _ready() -> void:
 	MouseMode.capture()
 	if DisplayServer.get_name() == "headless":
 		print("[worldbuilder] cozy island: %d surfaces, coast at %.1f m, dock %.1f to %.1f m"
-				% [_surfaces.size(), _coast(PI * 0.5, 0.0), _dock_z0, _dock_z1])
+				% [_surfaces.size(), coast(PI * 0.5, 0.0), _dock_z0, _dock_z1])
 
 
 func _exit_tree() -> void:
@@ -335,7 +337,7 @@ func _build_environment() -> void:
 ## textures/ (or "" for none), `scale` its repeats a metre, `real` the
 ## tint over the photograph (or the colour where there is none), `flat`
 ## the flat look's colour. Extra keys pass through (water, glow, normal).
-func _surface(dir: String, scale: float, real: Color, rough: float, flat: Color,
+func surface(dir: String, scale: float, real: Color, rough: float, flat: Color,
 		extra: Dictionary = {}) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.uv1_triplanar = true
@@ -387,7 +389,7 @@ func _noise_bumps(seed_value: int, frequency: float, strength: float) -> NoiseTe
 ## Height of the ground at (x, z): a gentle cone that crosses the sea's
 ## level at the coast (its radius wavering with the bearing), a hill,
 ## low hummocks inland, and a flat seabed far out.
-func _height(x: float, z: float) -> float:
+func height(x: float, z: float) -> float:
 	var bearing := atan2(z, x)
 	var coast := R * (1.0 + 0.12 * _coast_noise.get_noise_2d(cos(bearing) * 1.3, sin(bearing) * 1.3))
 	var q := sqrt(x * x + z * z) / coast
@@ -399,7 +401,7 @@ func _height(x: float, z: float) -> float:
 
 func _normal(x: float, z: float) -> Vector3:
 	var e := 0.25
-	return Vector3(_height(x - e, z) - _height(x + e, z), 2.0 * e, _height(x, z - e) - _height(x, z + e)).normalized()
+	return Vector3(height(x - e, z) - height(x + e, z), 2.0 * e, height(x, z - e) - height(x, z + e)).normalized()
 
 
 ## Above zero, grass; below, sand. The line wanders about a metre above
@@ -409,16 +411,16 @@ func _grassiness(x: float, z: float, h: float) -> float:
 
 
 ## Where along a bearing the ground falls through `level`.
-func _coast(bearing: float, level: float) -> float:
+func coast(bearing: float, level: float) -> float:
 	var d := Vector2(cos(bearing), sin(bearing))
 	var r := EXTENT
-	while r > 0.0 and _height(d.x * r, d.y * r) < level:
+	while r > 0.0 and height(d.x * r, d.y * r) < level:
 		r -= 1.0
 	var lo := r
 	var hi := r + 1.0
 	for i in 14:
 		var mid := (lo + hi) * 0.5
-		if _height(d.x * mid, d.y * mid) >= level:
+		if height(d.x * mid, d.y * mid) >= level:
 			lo = mid
 		else:
 			hi = mid
@@ -434,7 +436,7 @@ func _build_ground() -> void:
 	heights.resize(n * n)
 	for j in n:
 		for i in n:
-			heights[j * n + i] = _height(-EXTENT + i * GRID, -EXTENT + j * GRID)
+			heights[j * n + i] = height(-EXTENT + i * GRID, -EXTENT + j * GRID)
 	var faces := PackedVector3Array()
 	for j in n - 1:
 		for i in n - 1:
@@ -452,8 +454,8 @@ func _build_ground() -> void:
 				faces.append_array(_upward(a, b, c3))
 				_split(tri)
 	var mesh := ArrayMesh.new()
-	var sand_mat := _surface("sand", 0.5, Color(1.0, 0.97, 0.92), 0.9, Color(0.98, 0.87, 0.64))
-	var grass_mat := _surface("grass", 0.7, Color(0.85, 0.92, 0.8), 0.95, Color(0.5, 0.78, 0.36))
+	var sand_mat := surface("sand", 0.5, Color(1.0, 0.97, 0.92), 0.9, Color(0.98, 0.87, 0.64))
+	var grass_mat := surface("grass", 0.7, Color(0.85, 0.92, 0.8), 0.95, Color(0.5, 0.78, 0.36))
 	for k in 2:
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
@@ -472,6 +474,11 @@ func _build_ground() -> void:
 	collide.shape = shape
 	body.add_child(collide)
 	add_child(body)
+
+
+## The sea's ripple bumps, shared with the salt works' water.
+func sea_ripples() -> Texture2D:
+	return _sea_mat.normal_texture
 
 
 ## A triangle in the order the engine draws as facing up.
@@ -537,7 +544,7 @@ func _build_sea() -> void:
 			var p := Vector3(cos(a) * radii[ring], 0.0, sin(a) * radii[ring])
 			points.append(p)
 			uvs.append(Vector2(p.x, p.z) / 9.0)
-			var depth := -_height(p.x, p.z) if radii[ring] < EXTENT else -FLOOR
+			var depth := -height(p.x, p.z) if radii[ring] < EXTENT else -FLOOR
 			_sea_depth.append(1.0 - smoothstep(0.0, 3.5, depth))
 	var index := PackedInt32Array()
 	for ring in radii.size() - 1:
@@ -584,7 +591,7 @@ func _build_sea() -> void:
 	ripple.as_normal_map = true
 	ripple.bump_strength = 4.0
 	ripple.noise = bumps
-	_sea_mat = _surface("", 1.0, Color.WHITE, 0.05, Color.WHITE, {"water": true, "bumps": ripple})
+	_sea_mat = surface("", 1.0, Color.WHITE, 0.05, Color.WHITE, {"water": true, "bumps": ripple})
 	_sea_mat.uv1_triplanar = false
 	_sea_mat.uv1_world_triplanar = false
 	_sea_mat.uv1_scale = Vector3.ONE
@@ -630,7 +637,7 @@ func _build_foam() -> void:
 	var uvs := PackedVector2Array()
 	for s in segments + 1:
 		var a := TAU * s / segments
-		var r := _coast(a, 0.0)
+		var r := coast(a, 0.0)
 		var d := Vector3(cos(a), 0.0, sin(a))
 		points.append(d * (r - 0.5) + Vector3.UP * 0.03)
 		points.append(d * (r + 2.5) + Vector3.UP * 0.03)
@@ -702,6 +709,14 @@ func _process(delta: float) -> void:
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:
 		sky.follow(camera.global_position)
+	# What the player looks at tells what it is (the salt works' parts).
+	var view: Node = player.look_view()
+	if view != _hovered:
+		if _hovered != null and is_instance_valid(_hovered) and _hovered.has_method("show_label"):
+			_hovered.call("show_label", false)
+		_hovered = view
+		if view != null and view.has_method("show_label"):
+			view.call("show_label", true)
 
 
 ## ---- the cabin and the dock ------------------------------------------------
@@ -736,18 +751,18 @@ func _build_cabin() -> void:
 	var hz := CABIN_SIZE.z * 0.5
 	var top := -INF
 	for c: Vector2 in [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz)]:
-		top = maxf(top, _height(CABIN.x + c.x, CABIN.z + c.y))
+		top = maxf(top, height(CABIN.x + c.x, CABIN.z + c.y))
 	var floor_y := top + 0.3
-	var walls := _surface("wood_floor", 0.6, Color(0.78, 0.72, 0.64), 0.8, Color(0.95, 0.87, 0.72))
-	var base := _surface("rough_rock", 0.5, Color(0.75, 0.75, 0.75), 0.9, Color(0.66, 0.64, 0.66))
-	var roof := _surface("", 1.0, Color(0.3, 0.12, 0.09), 0.75, Color(0.86, 0.42, 0.33),
+	var walls := surface("wood_floor", 0.6, Color(0.78, 0.72, 0.64), 0.8, Color(0.95, 0.87, 0.72))
+	var base := surface("rough_rock", 0.5, Color(0.75, 0.75, 0.75), 0.9, Color(0.66, 0.64, 0.66))
+	var roof := surface("", 1.0, Color(0.3, 0.12, 0.09), 0.75, Color(0.86, 0.42, 0.33),
 			{"bumps": _noise_bumps(17, 0.05, 3.0)})
-	var door := _surface("wood_floor", 0.6, Color(0.35, 0.27, 0.22), 0.7, Color(0.38, 0.6, 0.78))
-	var glass := _surface("", 1.0, Color(0.04, 0.05, 0.06), 0.08, Color(1.0, 0.86, 0.5),
+	var door := surface("wood_floor", 0.6, Color(0.35, 0.27, 0.22), 0.7, Color(0.38, 0.6, 0.78))
+	var glass := surface("", 1.0, Color(0.04, 0.05, 0.06), 0.08, Color(1.0, 0.86, 0.5),
 			{"glow": Color(1.0, 0.8, 0.45), "no_line": true})
-	var stone := _surface("old_stone_bricks", 1.0 / 1.8, Color(0.85, 0.85, 0.85), 0.9, Color(0.72, 0.66, 0.62))
+	var stone := surface("old_stone_bricks", 1.0 / 1.8, Color(0.85, 0.85, 0.85), 0.9, Color(0.72, 0.66, 0.62))
 	var c := Vector3(CABIN.x, floor_y, CABIN.z)
-	var depth := floor_y - minf(_height(CABIN.x - hx, CABIN.z + hz), _height(CABIN.x + hx, CABIN.z + hz)) + 0.6
+	var depth := floor_y - minf(height(CABIN.x - hx, CABIN.z + hz), height(CABIN.x + hx, CABIN.z + hz)) + 0.6
 	_solid(Vector3(CABIN_SIZE.x + 0.3, depth, CABIN_SIZE.z + 0.3), c + Vector3(0, -depth * 0.5, 0), base)
 	_solid(CABIN_SIZE, c + Vector3(0, CABIN_SIZE.y * 0.5, 0), walls)
 	var prism := PrismMesh.new()
@@ -777,10 +792,10 @@ func _build_cabin() -> void:
 ## A plank dock from the beach out over the shallows on the south side,
 ## on posts.
 func _build_dock() -> void:
-	var coast := _coast(PI * 0.5, 0.0)
+	var coast := coast(PI * 0.5, 0.0)
 	_dock_z0 = coast - 3.0
 	_dock_z1 = coast + 11.0
-	var wood := _surface("wood_floor", 0.6, Color(0.55, 0.5, 0.45), 0.85, Color(0.78, 0.6, 0.42))
+	var wood := surface("wood_floor", 0.6, Color(0.55, 0.5, 0.45), 0.85, Color(0.78, 0.6, 0.42))
 	var plank := 0.22
 	var z := _dock_z0
 	while z + plank <= _dock_z1:
@@ -801,7 +816,7 @@ func _build_dock() -> void:
 			post.top_radius = 0.09
 			post.bottom_radius = 0.09
 			var px := DOCK_X + side * (DOCK_W * 0.5 - 0.05)
-			var bottom := _height(px, pz) - 0.3
+			var bottom := height(px, pz) - 0.3
 			var top := DOCK_Y + 0.35
 			post.height = top - bottom
 			_solid(Vector3.ONE * 0.18, Vector3(px, (top + bottom) * 0.5, pz), wood, post, false)
@@ -810,22 +825,25 @@ func _build_dock() -> void:
 ## ---- trees and rocks -------------------------------------------------------
 
 func _build_trees() -> void:
-	var bark := _surface("bark", 1.0, Color(0.85, 0.85, 0.85), 0.9, Color(0.56, 0.41, 0.3))
-	var leaves := _surface("", 1.5, Color(0.11, 0.22, 0.06), 0.8, Color(0.42, 0.72, 0.34),
+	var bark := surface("bark", 1.0, Color(0.85, 0.85, 0.85), 0.9, Color(0.56, 0.41, 0.3))
+	var leaves := surface("", 1.5, Color(0.11, 0.22, 0.06), 0.8, Color(0.42, 0.72, 0.34),
 			{"bumps": _noise_bumps(29, 0.04, 6.0)})
-	var needles := _surface("", 2.0, Color(0.05, 0.13, 0.07), 0.85, Color(0.22, 0.55, 0.42),
+	var needles := surface("", 2.0, Color(0.05, 0.13, 0.07), 0.85, Color(0.22, 0.55, 0.42),
 			{"bumps": _noise_bumps(31, 0.06, 6.0)})
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1874
 	var placed: Array[Vector2] = []
+	var works := SaltWorks.centre(self)
 	var tries := 0
 	while placed.size() < 16 and tries < 600:
 		tries += 1
 		var p := Vector2(rng.randf_range(-R, R), rng.randf_range(-R, R))
-		var h := _height(p.x, p.y)
+		var h := height(p.x, p.y)
 		if _grassiness(p.x, p.y, h) < 0.4:
 			continue
 		if p.distance_to(Vector2(CABIN.x, CABIN.z)) < 7.0 or absf(p.x - DOCK_X) < 4.0 and p.y > 10.0:
+			continue
+		if p.distance_to(Vector2(works.x, works.z)) < 20.0:
 			continue
 		var crowded := false
 		for q: Vector2 in placed:
@@ -893,7 +911,7 @@ func _pine(base: Vector3, size: float, bark: Material, needles: Material) -> voi
 ## Boulders: balls with their surfaces pushed in and out by noise, on the
 ## beach and by the hill.
 func _build_rocks() -> void:
-	var rock := _surface("rough_rock", 0.4, Color(0.8, 0.78, 0.76), 0.9, Color(0.68, 0.68, 0.74))
+	var rock := surface("rough_rock", 0.4, Color(0.8, 0.78, 0.76), 0.9, Color(0.68, 0.68, 0.74))
 	var lumps := FastNoiseLite.new()
 	lumps.seed = 41
 	lumps.frequency = 0.9
@@ -903,7 +921,7 @@ func _build_rocks() -> void:
 		Vector4(110, -1.8, 0.7, 7)]
 	for s: Vector4 in spots:
 		var a := deg_to_rad(s.x)
-		var r := _coast(a, 0.0) + s.y
+		var r := coast(a, 0.0) + s.y
 		_boulder(Vector3(cos(a) * r, 0.0, sin(a) * r), s.z, int(s.w), rock, lumps)
 	for s: Vector3 in [Vector3(-16, -2, 1.6), Vector3(-6, -15, 1.1), Vector3(-19, -12, 0.9)]:
 		_boulder(Vector3(s.x, 0.0, s.y), s.z, 8 + int(s.x), rock, lumps)
@@ -916,12 +934,12 @@ func _build_rocks() -> void:
 ## them, and two logs to sit on.
 func _build_campfire() -> void:
 	var a := deg_to_rad(FIRE_BEARING)
-	var r := _coast(a, 0.0) - 6.0
+	var r := coast(a, 0.0) - 6.0
 	_fire_at = Vector3(cos(a) * r, 0.0, sin(a) * r)
-	_fire_at.y = _height(_fire_at.x, _fire_at.z)
-	var stone := _surface("rough_rock", 1.2, Color(0.7, 0.68, 0.66), 0.9, Color(0.6, 0.6, 0.66))
-	var charred := _surface("bark", 1.5, Color(0.22, 0.19, 0.17), 0.9, Color(0.36, 0.26, 0.22))
-	var seat := _surface("bark", 1.0, Color(0.8, 0.78, 0.74), 0.9, Color(0.62, 0.45, 0.32))
+	_fire_at.y = height(_fire_at.x, _fire_at.z)
+	var stone := surface("rough_rock", 1.2, Color(0.7, 0.68, 0.66), 0.9, Color(0.6, 0.6, 0.66))
+	var charred := surface("bark", 1.5, Color(0.22, 0.19, 0.17), 0.9, Color(0.36, 0.26, 0.22))
+	var seat := surface("bark", 1.0, Color(0.8, 0.78, 0.74), 0.9, Color(0.62, 0.45, 0.32))
 	var lumps := FastNoiseLite.new()
 	lumps.seed = 57
 	lumps.frequency = 0.9
@@ -943,7 +961,7 @@ func _build_campfire() -> void:
 	for side: float in [-1.0, 1.0]:
 		var t := a + side * 1.1 + PI
 		var at := _fire_at + Vector3(cos(t), 0.0, sin(t)) * 1.9
-		at.y = _height(at.x, at.z) + 0.14
+		at.y = height(at.x, at.z) + 0.14
 		var log := CylinderMesh.new()
 		log.top_radius = 0.17
 		log.bottom_radius = 0.19
@@ -968,8 +986,8 @@ func _build_campfire() -> void:
 ## Lanterns hung from the broad-leaved trees nearest the cabin, each from
 ## the underside of the crown on the side toward the cabin.
 func _build_lanterns() -> void:
-	var frame := _surface("", 1.0, Color(0.06, 0.06, 0.06), 0.45, Color(0.28, 0.24, 0.32), {"no_line": true})
-	var cord := _surface("", 1.0, Color(0.25, 0.2, 0.15), 0.9, Color(0.45, 0.34, 0.25), {"no_line": true})
+	var frame := surface("", 1.0, Color(0.06, 0.06, 0.06), 0.45, Color(0.28, 0.24, 0.32), {"no_line": true})
+	var cord := surface("", 1.0, Color(0.25, 0.2, 0.15), 0.9, Color(0.45, 0.34, 0.25), {"no_line": true})
 	var near := _crowns.duplicate()
 	near.sort_custom(func(p: Vector4, q: Vector4) -> bool:
 		return Vector2(p.x, p.z).distance_to(Vector2(CABIN.x, CABIN.z)) < Vector2(q.x, q.z).distance_to(Vector2(CABIN.x, CABIN.z)))
@@ -1007,7 +1025,7 @@ func _boulder(at: Vector3, size: float, seed_value: int, mat: Material, lumps: F
 	mesh.surface_set_material(0, mat)
 	var view := MeshInstance3D.new()
 	view.mesh = mesh
-	var ground := _height(at.x, at.z)
+	var ground := height(at.x, at.z)
 	view.position = Vector3(at.x, ground + size * 0.25, at.z)
 	view.rotation.y = seed_value * 1.3
 	add_child(view)
@@ -1032,7 +1050,7 @@ func _build_bounds() -> void:
 	var points: Array[Vector3] = []
 	for s in segments:
 		var a := TAU * s / segments
-		var r := _coast(a, -0.5)
+		var r := coast(a, -0.5)
 		points.append(Vector3(cos(a) * r, 0.0, sin(a) * r))
 	var hw := DOCK_W * 0.5
 	var gap: Array[Vector3] = []          # the ring's ends either side of the dock

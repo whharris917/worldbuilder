@@ -23,6 +23,7 @@ const LIGHT_ENERGY := 1.6
 var _light: OmniLight3D
 var _flicker := FastNoiseLite.new()
 var _clock := 0.0
+var _level := 1.0
 
 
 func _init() -> void:
@@ -133,8 +134,17 @@ func _soft_dot() -> GradientTexture2D:
 	return dot
 
 
+## How strongly it burns, 0 to 1: fewer flames and less light below 1.
+func set_level(level: float) -> void:
+	_level = clampf(level, 0.0, 1.0)
+	_light.visible = _level > 0.01
+	for p in get_children():
+		if p is GPUParticles3D:
+			(p as GPUParticles3D).amount_ratio = maxf(_level, 0.05)
+
+
 func _process(delta: float) -> void:
 	_clock += delta
 	var waver := _flicker.get_noise_1d(_clock * 9.0) * 0.12 + _flicker.get_noise_1d(_clock * 1.7 + 50.0) * 0.18
-	_light.light_energy = LIGHT_ENERGY * (1.0 + waver)
+	_light.light_energy = LIGHT_ENERGY * (1.0 + waver) * _level
 	_light.position = Vector3(_flicker.get_noise_1d(_clock * 5.0 + 20.0) * 0.06, 0.6, _flicker.get_noise_1d(_clock * 5.0 + 90.0) * 0.06)
