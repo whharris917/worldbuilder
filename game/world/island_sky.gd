@@ -62,6 +62,8 @@ var sun_height := 38.0                  # degrees
 var moon_height := 25.0                 # degrees
 var moon_lit := 1.0                     # the lit share of the moon's disc
 var haze_colour := Color.WHITE
+var _sun_energy := 0.0                  # the sun's light before the clouds
+var _sun_through := 1.0                 # the share the clouds let through
 
 var _physical := PhysicalSkyMaterial.new()
 var _story := ProceduralSkyMaterial.new()
@@ -299,6 +301,8 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 	self.sun_height = sun_height
 	var to_sun := direction(sun_height, sun_bearing)
 	_light(sun, to_sun, sun_height, sun_energy, Color.WHITE)
+	_sun_energy = sun.light_energy
+	shade_sun(_sun_through)
 	_moon_dir = direction(moon_height, moon_bearing)
 	_moon_sun.look_at_from_position(Vector3.ZERO, -to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD)
 	var lit := (1.0 - to_sun.dot(_moon_dir)) * 0.5
@@ -334,6 +338,14 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 		m.albedo_color = Color(1, 1, 1, stars)
 	_stars_real.visible = not story and stars > 0.0
 	_stars_story.visible = story and stars > 0.0
+
+
+## The sun's light at the ground dimmed by cloud: `through` the share
+## let through (IslandWeather), 1 a clear sky.
+func shade_sun(through: float) -> void:
+	_sun_through = through
+	sun.light_energy = _sun_energy * through
+	sun.visible = sun.light_energy > 0.0005
 
 
 ## Toward the moon, from anywhere on the island.

@@ -11,6 +11,10 @@ extends Node
 const VIEWS := [
 	["dock", 60.0, Vector3(4.0, 2.2, 56.0), Vector3(0.0, 3.0, 10.0), "dock"],
 	["beach", 60.0, Vector3(-28.0, 1.8, 32.0), Vector3(4.0, 2.0, 20.0), "cabin"],
+	["wx_bow", 75.0, Vector3(4.0, 1.7, 100.0), Vector3(0.0, 90.0, -250.0), "ground"],
+	["wx_squall", 70.0, Vector3(4.0, 1.7, 150.0), Vector3(0.0, 120.0, 2400.0), "ground"],
+	["wx_under", 70.0, Vector3(4.0, 1.7, 100.0), Vector3(-40.0, 8.0, 60.0), "ground"],
+	["wx_sky", 60.0, Vector3(4.0, 1.7, 100.0), Vector3(200.0, 300.0, -300.0), "ground"],
 	["island", 55.0, Vector3(60.0, 330.0, 420.0), Vector3(0.0, 0.0, -10.0), ""],
 	["meadow", 65.0, Vector3(30.0, 1.7, 60.0), Vector3(-40.0, 1.0, 0.0), "ground"],
 	["meadow_west", 65.0, Vector3(-60.0, 1.7, 90.0), Vector3(-90.0, 1.0, 20.0), "ground"],
@@ -95,6 +99,13 @@ func _run() -> void:
 				(panel.switches[kv[0]] as CheckButton).button_pressed = kv[1] == "1"
 			elif panel.sliders.has(kv[0]):
 				(panel.sliders[kv[0]] as HSlider).value = float(kv[1])
+	# WORLDBUILDER_ISLAND_WX=shower@x,z;squall@x,z;...: weather put in place.
+	var wx := OS.get_environment("WORLDBUILDER_ISLAND_WX")
+	if wx != "":
+		for item: String in wx.split(";"):
+			var kv := item.split("@")
+			var xz := kv[1].split_floats(",")
+			_world.weather.place(["fair", "shower", "squall", "mist"].find(kv[0]), Vector2(xz[0], xz[1]))
 	await get_tree().create_timer(1.0).timeout
 	for layer: Node in get_tree().root.find_children("*", "CanvasLayer", true, false):
 		(layer as CanvasLayer).visible = false
