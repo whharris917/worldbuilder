@@ -133,12 +133,8 @@ var _map_mats: Array[ShaderMaterial] = []
 var _map_whole: Array[ColorRect] = []    # each map's whole-wall painting, shown once
 var _map_frame := 0                     # frames since the room was built, for the maps
 
-var _was_resolution: Array = []
 
 func _ready() -> void:
-	# The resolution the graphics preset sets in the worlds, put back on
-	# leaving.
-	_was_resolution = GraphicsSettings.apply_saved_resolution(get_viewport())
 	player = $Player as Player
 	player.global_position = START
 	_debanding_was = get_viewport().use_debanding
@@ -154,6 +150,7 @@ func _ready() -> void:
 	_build_fade()
 	_build_panel()
 	get_viewport().use_debanding = true
+	LabGraphics.attach(self, _panel.panel("Graphics"))
 	_panel.restore()
 	_built = true
 	_set_walls()
@@ -605,7 +602,6 @@ func _look(delta: float, emerge: float) -> void:
 
 
 func _exit_tree() -> void:
-	GraphicsSettings.restore_resolution(get_viewport(), _was_resolution)
 	get_viewport().use_debanding = _debanding_was
 
 

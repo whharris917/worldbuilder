@@ -81,12 +81,8 @@ var _probe_frames := 0
 var _segments: Array[Array] = []        # [from, to, power] for each stretch
 var _was_debanding := false
 
-var _was_resolution: Array = []
 
 func _ready() -> void:
-	# The resolution the graphics preset sets in the worlds, put back on
-	# leaving.
-	_was_resolution = GraphicsSettings.apply_saved_resolution(get_viewport())
 	player = $Player as Player
 	player.global_position = START
 	var vp := get_viewport()
@@ -100,13 +96,13 @@ func _ready() -> void:
 	_build_beam()
 	_build_probe()
 	_build_panels()
+	LabGraphics.attach(self, _panel.panel("Graphics"))
 	_panel.restore()
 	_set_lamp()
 	MouseMode.capture()
 
 
 func _exit_tree() -> void:
-	GraphicsSettings.restore_resolution(get_viewport(), _was_resolution)
 	get_viewport().use_debanding = _was_debanding
 
 

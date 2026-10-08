@@ -169,40 +169,38 @@ static func _same(a: Variant, b: Variant) -> bool:
 	return a == b
 
 
-## The render resolution and its upscaler alone, from the settings the
-## worlds save, put into `vp`: for the lab scenes, which have no
-## graphics options of their own. Returns what it replaced, for
-## `restore_resolution` on leaving.
-static func apply_saved_resolution(vp: Viewport) -> Array:
-	var was := [vp.scaling_3d_mode, vp.scaling_3d_scale]
+## The settings as last saved by any world or lab (user://settings.json,
+## key "graphics"), or Medium when none are.
+static func load_saved() -> GraphicsSettings:
 	var g := GraphicsSettings.new()
-	if FileAccess.file_exists(WorldBase.SETTINGS_PATH):
-		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(WorldBase.SETTINGS_PATH))
-		if parsed is Dictionary and (parsed as Dictionary).get("graphics") is Dictionary:
-			g.from_dict(parsed["graphics"])
-	match str(g.values["upscaler"]):
-		"fsr1":
-			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR
-		"fsr2":
-			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2
-		_:
-			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-	vp.scaling_3d_scale = clampf(float(g.values["scale"]), 0.25, 1.0)
-	return was
+	var saved := _read_shared()
+	if saved.get("graphics") is Dictionary:
+		g.from_dict(saved["graphics"])
+	return g
 
 
-static func restore_resolution(vp: Viewport, was: Array) -> void:
-	vp.scaling_3d_mode = was[0]
-	vp.scaling_3d_scale = was[1]
+## These settings written back into the shared file, its other keys kept.
+func save_shared() -> void:
+	if MouseMode.probe or DisplayServer.get_name() == "headless":
+		return
+	var saved := _read_shared()
+	saved["graphics"] = to_dict()
+	var file := FileAccess.open(WorldBase.SETTINGS_PATH, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(saved))
 
 
-## Push the values into the engine. Everything here is what the GPU
-## pays for: the render resolution and how it is upscaled, the
-## anti-aliasing, the shadow map and its filter and reach, the
-## screen-space passes, global illumination and fog, whether the woods
-## cast shadows, and how the frame is presented and measured.
-func apply(world: WorldBase) -> void:
-	var vp := world.get_viewport()
+static func _read_shared() -> Dictionary:
+	if not FileAccess.file_exists(WorldBase.SETTINGS_PATH):
+		return {}
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(WorldBase.SETTINGS_PATH))
+	return parsed if parsed is Dictionary else {}
+
+
+## The parts that belong to the whole engine, not to one world's sun or
+## sky: the render resolution and its upscaler, anti-aliasing, the shadow
+## map's size and softening, and VSync.
+func apply_engine(vp: Viewport) -> void:
 	var fsr2 := str(values["upscaler"]) == "fsr2"
 	if vp != null:
 		match str(values["upscaler"]):
@@ -225,9 +223,26 @@ func apply(world: WorldBase) -> void:
 			else Viewport.SCREEN_SPACE_AA_DISABLED
 		vp.use_taa = aa == "taa" and not fsr2
 	RenderingServer.directional_shadow_atlas_set_size(int(values["shadow_size"]), true)
-	var quality := _filter_quality()
+	var quality := filter_quality()
 	RenderingServer.directional_soft_shadow_filter_set_quality(quality)
 	RenderingServer.positional_soft_shadow_filter_set_quality(quality)
+	if DisplayServer.get_name() != "headless":
+		match str(values["vsync"]):
+			"off":
+				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+			"on":
+				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+			_:
+				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_MAILBOX)
+
+
+## Push the values into the engine. Everything here is what the GPU
+## pays for: the render resolution and how it is upscaled, the
+## anti-aliasing, the shadow map and its filter and reach, the
+## screen-space passes, global illumination and fog, whether the woods
+## cast shadows, and how the frame is presented and measured.
+func apply(world: WorldBase) -> void:
+	apply_engine(world.get_viewport())
 	if world.sun != null:
 		world.sun.directional_shadow_max_distance = float(values["shadow_distance"])
 		# Every cascade draws every caster again: the count is a cost knob.
@@ -256,19 +271,11 @@ func apply(world: WorldBase) -> void:
 		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for node in world.get_tree().get_nodes_in_group("foliage_shadows"):
 		(node as GeometryInstance3D).cast_shadow = cast
-	if DisplayServer.get_name() != "headless":
-		match str(values["vsync"]):
-			"off":
-				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
-			"on":
-				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
-			_:
-				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_MAILBOX)
 	if world.hud != null:
 		world.hud.set_fps_overlay(bool(values["fps_overlay"]), summary())
 
 
-func _filter_quality() -> RenderingServer.ShadowQuality:
+func filter_quality() -> RenderingServer.ShadowQuality:
 	match str(values["shadow_filter"]):
 		"hard":
 			return RenderingServer.SHADOW_QUALITY_HARD

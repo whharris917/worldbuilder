@@ -112,12 +112,8 @@ var _tint := Color(1, 1, 1)            # linear, brightest channel 1
 var _albedo := 0.0                     # linear reflectance of the brightest channel
 var _defaults: Dictionary = {}         # what reset puts back
 
-var _was_resolution: Array = []
 
 func _ready() -> void:
-	# The resolution the graphics preset sets in the worlds, put back on
-	# leaving.
-	_was_resolution = GraphicsSettings.apply_saved_resolution(get_viewport())
 	player.global_position = START
 	for node in player.find_children("*", "GeometryInstance3D", true, false):
 		(node as GeometryInstance3D).gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
@@ -159,7 +155,8 @@ func _ready() -> void:
 	_build_wall()
 	_build_ground()
 	_build_tabs(root, [_build_left(root), _build_right(root), _build_sun(root), _build_motion(root),
-		_build_textures(root), _build_terrain(root), _build_camera(root), _build_sound(root)])
+		_build_textures(root), _build_terrain(root), _build_camera(root), _build_sound(root),
+		_build_graphics(root)])
 	_set_sun("Off")
 	_fps = Label.new()
 	_fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -190,7 +187,7 @@ func _build_tabs(root: Control, panels: Array) -> void:
 		panel.position = Vector2(16, 48)
 		panel.visible = false
 		var tab := Button.new()
-		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion", "Textures", "Terrain", "Camera", "Sound"][i]
+		tab.text = ["Bulb and ball", "Indirect light", "Sun", "Motion", "Textures", "Terrain", "Camera", "Sound", "Graphics"][i]
 		tab.toggle_mode = true
 		tab.button_group = group
 		tab.focus_mode = Control.FOCUS_NONE
@@ -649,6 +646,13 @@ func _column(root: Control) -> VBoxContainer:
 	return column
 
 
+## The graphics options shared with the worlds (LabGraphics).
+func _build_graphics(root: Control) -> Control:
+	var column := _column(root)
+	LabGraphics.attach(self, column)
+	return _panel_of(column)
+
+
 ## The panel a column stands on.
 func _panel_of(column: VBoxContainer) -> Control:
 	var node: Node = column
@@ -901,7 +905,6 @@ func _show_atlas() -> void:
 
 
 func _exit_tree() -> void:
-	GraphicsSettings.restore_resolution(get_viewport(), _was_resolution)
 	if _save_in >= 0.0:
 		_save_state()
 	_swooshes.clear()

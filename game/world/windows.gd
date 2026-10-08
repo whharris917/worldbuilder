@@ -69,12 +69,8 @@ var _csg: CSGCombiner3D
 var _debanding_was := false
 var _half_was := false
 
-var _was_resolution: Array = []
 
 func _ready() -> void:
-	# The resolution the graphics preset sets in the worlds, put back on
-	# leaving.
-	_was_resolution = GraphicsSettings.apply_saved_resolution(get_viewport())
 	player = $Player as Player
 	player.global_position = START
 	player.rotation.y = -PI / 2.0
@@ -89,6 +85,7 @@ func _ready() -> void:
 	_build_cathedral()
 	_build_floors()
 	_build_panel()
+	LabGraphics.attach(self, _panel.panel("Graphics"))
 	_panel.restore()
 	_apply_panel()
 	_place_sun()
@@ -98,7 +95,6 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	GraphicsSettings.restore_resolution(get_viewport(), _was_resolution)
 	get_viewport().use_debanding = _debanding_was
 	RenderingServer.gi_set_use_half_resolution(_half_was)
 

@@ -87,12 +87,8 @@ var _clock := 0.0
 var _was_debanding := false
 var _was_soft := 0
 
-var _was_resolution: Array = []
 
 func _ready() -> void:
-	# The resolution the graphics preset sets in the worlds, put back on
-	# leaving.
-	_was_resolution = GraphicsSettings.apply_saved_resolution(get_viewport())
 	player = $Player as Player
 	var vp := get_viewport()
 	_was_debanding = vp.use_debanding
@@ -120,6 +116,12 @@ func _ready() -> void:
 	_build_lanterns()
 	_build_bounds()
 	_build_panels()
+	# Soft shadows need the engine's shadow softening at least at Low,
+	# whatever the graphics preset says.
+	LabGraphics.attach(self, _panel.panel("Graphics"), func(g: GraphicsSettings) -> void:
+		var preset := g.filter_quality()
+		RenderingServer.directional_soft_shadow_filter_set_quality(
+				maxi(preset, RenderingServer.SHADOW_QUALITY_SOFT_LOW) as RenderingServer.ShadowQuality))
 	_panel.restore()
 	_apply()
 	# The player starts at the dock's end, looking back at the island.
@@ -132,7 +134,6 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	GraphicsSettings.restore_resolution(get_viewport(), _was_resolution)
 	get_viewport().use_debanding = _was_debanding
 	RenderingServer.directional_soft_shadow_filter_set_quality(_was_soft as RenderingServer.ShadowQuality)
 

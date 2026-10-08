@@ -213,12 +213,8 @@ var _bulb_size := BULB_SIZE
 var _bulb_mesh: SphereMesh
 var _rebake_in := -1.0                  # seconds to a VoxelGI re-bake; below 0, none due
 
-var _was_resolution: Array = []
 
 func _ready() -> void:
-	# The resolution the graphics preset sets in the worlds, put back on
-	# leaving.
-	_was_resolution = GraphicsSettings.apply_saved_resolution(get_viewport())
 	player.global_position = START
 	for node in player.find_children("*", "GeometryInstance3D", true, false):
 		(node as GeometryInstance3D).gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
@@ -241,6 +237,7 @@ func _ready() -> void:
 	RenderingServer.gi_set_use_half_resolution(true)
 	RenderingServer.voxel_gi_set_quality(RenderingServer.VOXEL_GI_QUALITY_LOW)
 	_set_bounce("VoxelGI")
+	LabGraphics.attach(self, _panel.panel("Graphics"))
 	var extra := _panel.restore()
 	_rephotograph()
 	var atlas := int(extra.get("atlas", vp.positional_shadow_atlas_size))
@@ -252,7 +249,6 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	GraphicsSettings.restore_resolution(get_viewport(), _was_resolution)
 	_caustics.free_device()
 	var vp := get_viewport()
 	vp.use_debanding = _was["debanding"]
