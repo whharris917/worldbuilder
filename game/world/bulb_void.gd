@@ -112,8 +112,12 @@ var _tint := Color(1, 1, 1)            # linear, brightest channel 1
 var _albedo := 0.0                     # linear reflectance of the brightest channel
 var _defaults: Dictionary = {}         # what reset puts back
 
+var _was_resolution: Array = []
 
 func _ready() -> void:
+	# The resolution the graphics preset sets in the worlds, put back on
+	# leaving.
+	_was_resolution = GraphicsSettings.apply_saved_resolution(get_viewport())
 	player.global_position = START
 	for node in player.find_children("*", "GeometryInstance3D", true, false):
 		(node as GeometryInstance3D).gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
@@ -897,6 +901,7 @@ func _show_atlas() -> void:
 
 
 func _exit_tree() -> void:
+	GraphicsSettings.restore_resolution(get_viewport(), _was_resolution)
 	if _save_in >= 0.0:
 		_save_state()
 	_swooshes.clear()

@@ -39,6 +39,7 @@ extends Node3D
 const MOON := 1 << 10                  # render layer of the moon's ball
 const STAR_R := 3600.0
 const MOON_D := 3000.0
+const SHADOW_REACH := 90.0             # metres from the eye that shadows reach
 const TAU_AIR := Vector3(0.12, 0.18, 0.32)
 const MOONLIGHT := 0.18                # its energy when full and high
 const MOON_COLOUR := Color(0.62, 0.72, 1.0)
@@ -83,10 +84,13 @@ func _init() -> void:
 	_story.sky_cover = _clouds()
 	sky.sky_material = _physical
 
+	# One shadow map each for the sun and the moon, over SHADOW_REACH:
+	# each map means drawing the whole scene again from the light, so two
+	# maps (sharp near, coarse far) cost twice as much.
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 140.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_max_distance = SHADOW_REACH
 	sun.shadow_blur = 1.0
 	sun.light_cull_mask = 0xFFFFF & ~MOON
 	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
@@ -96,8 +100,8 @@ func _init() -> void:
 	add_child(_sky_sun)
 	moonlight = DirectionalLight3D.new()
 	moonlight.shadow_enabled = true
-	moonlight.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	moonlight.directional_shadow_max_distance = 140.0
+	moonlight.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	moonlight.directional_shadow_max_distance = SHADOW_REACH
 	moonlight.light_cull_mask = 0xFFFFF & ~MOON
 	# The sky draws the sun's disc and lights the air from it; the moon's
 	# own ball stands for the moon in the sky.

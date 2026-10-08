@@ -87,8 +87,12 @@ var _clock := 0.0
 var _was_debanding := false
 var _was_soft := 0
 
+var _was_resolution: Array = []
 
 func _ready() -> void:
+	# The resolution the graphics preset sets in the worlds, put back on
+	# leaving.
+	_was_resolution = GraphicsSettings.apply_saved_resolution(get_viewport())
 	player = $Player as Player
 	var vp := get_viewport()
 	_was_debanding = vp.use_debanding
@@ -128,6 +132,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	GraphicsSettings.restore_resolution(get_viewport(), _was_resolution)
 	get_viewport().use_debanding = _was_debanding
 	RenderingServer.directional_soft_shadow_filter_set_quality(_was_soft as RenderingServer.ShadowQuality)
 

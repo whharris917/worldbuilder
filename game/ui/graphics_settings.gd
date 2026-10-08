@@ -169,6 +169,33 @@ static func _same(a: Variant, b: Variant) -> bool:
 	return a == b
 
 
+## The render resolution and its upscaler alone, from the settings the
+## worlds save, put into `vp`: for the lab scenes, which have no
+## graphics options of their own. Returns what it replaced, for
+## `restore_resolution` on leaving.
+static func apply_saved_resolution(vp: Viewport) -> Array:
+	var was := [vp.scaling_3d_mode, vp.scaling_3d_scale]
+	var g := GraphicsSettings.new()
+	if FileAccess.file_exists(WorldBase.SETTINGS_PATH):
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(WorldBase.SETTINGS_PATH))
+		if parsed is Dictionary and (parsed as Dictionary).get("graphics") is Dictionary:
+			g.from_dict(parsed["graphics"])
+	match str(g.values["upscaler"]):
+		"fsr1":
+			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR
+		"fsr2":
+			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2
+		_:
+			vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = clampf(float(g.values["scale"]), 0.25, 1.0)
+	return was
+
+
+static func restore_resolution(vp: Viewport, was: Array) -> void:
+	vp.scaling_3d_mode = was[0]
+	vp.scaling_3d_scale = was[1]
+
+
 ## Push the values into the engine. Everything here is what the GPU
 ## pays for: the render resolution and how it is upscaled, the
 ## anti-aliasing, the shadow map and its filter and reach, the

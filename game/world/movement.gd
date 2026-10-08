@@ -66,8 +66,12 @@ var _shells: Array[SpinningShell] = []
 var _acoustics: ShellAcoustics
 var _falling := -1.0                    # s since the fade out began; below 0, none
 
+var _was_resolution: Array = []
 
 func _ready() -> void:
+	# The resolution the graphics preset sets in the worlds, put back on
+	# leaving.
+	_was_resolution = GraphicsSettings.apply_saved_resolution(get_viewport())
 	var player := $Player as Player
 	player.global_position = START
 	var vp := get_viewport()
@@ -374,4 +378,5 @@ func _physics_process(delta: float) -> void:
 
 
 func _exit_tree() -> void:
+	GraphicsSettings.restore_resolution(get_viewport(), _was_resolution)
 	get_viewport().use_debanding = _debanding_was

@@ -98,8 +98,12 @@ var _dapple_turn := 0.0
 var _voxel_gi: VoxelGI
 var _built := false                     # the room is whole: the bounce may be made
 
+var _was_resolution: Array = []
 
 func _ready() -> void:
+	# The resolution the graphics preset sets in the worlds, put back on
+	# leaving.
+	_was_resolution = GraphicsSettings.apply_saved_resolution(get_viewport())
 	player = $Player as Player
 	player.global_position = START
 	var vp := get_viewport()
@@ -139,6 +143,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	GraphicsSettings.restore_resolution(get_viewport(), _was_resolution)
 	var vp := get_viewport()
 	vp.use_debanding = _was["debanding"]
 	vp.positional_shadow_atlas_size = _was["atlas"]
