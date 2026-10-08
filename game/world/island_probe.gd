@@ -9,36 +9,50 @@ extends Node
 
 ## name, fov, camera, target.
 const VIEWS := [
-	["dock", 60.0, Vector3(4.0, 2.2, 56.0), Vector3(0.0, 3.0, 10.0)],
-	["beach", 60.0, Vector3(-28.0, 1.8, 32.0), Vector3(4.0, 2.0, 20.0)],
-	["above", 50.0, Vector3(70.0, 35.0, 90.0), Vector3(0.0, 0.0, 5.0)],
-	["hill", 60.0, Vector3(-10.0, 12.0, -8.0), Vector3(4.0, 2.0, 30.0)],
-	["fire", 60.0, Vector3(-6.5, 1.7, 44.0), Vector3(-10.4, 0.6, 38.0)],
-	["flames", 50.0, Vector3(-9.0, 1.3, 40.6), Vector3(-10.4, 0.5, 38.0)],
-	["works", 60.0, Vector3(59.6, 9.0, -5.5), Vector3(37.2, 2.0, -12.0)],
-	["works_near", 70.0, Vector3(32.9, 3.0, -4.6), Vector3(40.3, 1.8, -11.8)],
-	["works_mill", 60.0, Vector3(44.9, 1.7, -14.0), Vector3(26.7, 5.0, -16.4)],
-	["colours", 60.0, Vector3(-30.0, 8.0, -49.8), Vector3(-23.8, 2.0, -32.2)],
-	["colours_near", 70.0, Vector3(-17.9, 3.8, -29.0), Vector3(-25.2, 2.5, -32.5)],
-	["colours_reactor", 70.0, Vector3(-21.5, 3.0, -30.7), Vector3(-25.2, 2.2, -32.5)],
-	["balloon", 60.0, Vector3(-58.7, 7.0, 12.4), Vector3(-41.4, 6.0, 7.3)],
-	["balloon_ground", 65.0, Vector3(-38.4, 2.2, 12.9), Vector3(-41.4, 14.0, 7.3)],
-	["balloon_sky", 70.0, Vector3(-38.4, 2.2, 12.9), Vector3(-60.0, 240.0, 0.0)],
-	["lagoon", 60.0, Vector3(29.5, 18.0, 0.9), Vector3(65.8, 0.0, 38.0)],
-	["wharf", 70.0, Vector3(46.7, 2.8, 27.0), Vector3(74.4, 1.5, 43.0)],
-	["pool", 65.0, Vector3(50.9, 2.6, 31.7), Vector3(47.4, 0.5, 33.85)],
-	["mills", 55.0, Vector3(95.0, 6.0, 52.0), Vector3(386.0, 20.0, 223.0)],
-	["cart", 60.0, Vector3(41.0, 3.4, 19.0), Vector3(40.0, 1.2, 25.0)],
-	["fish", 30.0, Vector3(10.0, 9.0, -68.0), Vector3(10.0, -0.5, -58.0)],
-	["north", 60.0, Vector3(45.0, 48.0, -15.0), Vector3(0.0, 0.0, -80.0)],
-	["bay", 65.0, Vector3(-2.0, 4.0, -50.0), Vector3(10.0, -0.5, -58.0)],
-	["bay_low", 60.0, Vector3(4.0, 1.6, -48.0), Vector3(9.0, -0.6, -55.0)],
-	["spit", 65.0, Vector3(-33.0, 2.1, -81.0), Vector3(-47.0, 0.0, -117.0)],
-	["crabs", 55.0, Vector3(1.0, 3.0, -71.0), Vector3(10.0, -0.4, -58.0)],
-	["works_yard", 70.0, Vector3(32.1, 2.7, -11.65), Vector3(37.2, 3.0, -12.0)],
-	["works_pan", 65.0, Vector3(37.8, 2.6, -7.8), Vector3(41.2, 1.3, -8.7)],
-	["lanterns", 65.0, Vector3(2.0, 2.2, 33.0), Vector3(4.0, 2.4, 20.0)],
+	["dock", 60.0, Vector3(4.0, 2.2, 56.0), Vector3(0.0, 3.0, 10.0), "dock"],
+	["beach", 60.0, Vector3(-28.0, 1.8, 32.0), Vector3(4.0, 2.0, 20.0), "cabin"],
+	["island", 55.0, Vector3(60.0, 330.0, 420.0), Vector3(0.0, 0.0, -10.0), ""],
+	["meadow", 65.0, Vector3(30.0, 1.7, 60.0), Vector3(-40.0, 1.0, 0.0), "ground"],
+	["meadow_west", 65.0, Vector3(-60.0, 1.7, 90.0), Vector3(-90.0, 1.0, 20.0), "ground"],
+	["woods", 60.0, Vector3(80.0, 1.7, -10.0), Vector3(20.0, 2.0, -40.0), "ground"],
+	["cabin_back", 60.0, Vector3(-20.0, 3.0, 85.0), Vector3(4.0, 2.0, 119.0), "ground"],
+	["above", 50.0, Vector3(70.0, 35.0, 90.0), Vector3(0.0, 0.0, 5.0), "scale"],
+	["hill", 60.0, Vector3(-32.0, 2.0, 8.0), Vector3(-32.0, 6.0, -25.0), "ground"],
+	["fire", 60.0, Vector3(-6.5, 1.7, 44.0), Vector3(-10.4, 0.6, 38.0), "fire"],
+	["flames", 50.0, Vector3(-9.0, 1.3, 40.6), Vector3(-10.4, 0.5, 38.0), "fire"],
+	["works", 60.0, Vector3(59.6, 9.0, -5.5), Vector3(37.2, 2.0, -12.0), "salt"],
+	["works_near", 70.0, Vector3(32.9, 3.0, -4.6), Vector3(40.3, 1.8, -11.8), "salt"],
+	["works_mill", 60.0, Vector3(44.9, 1.7, -14.0), Vector3(26.7, 5.0, -16.4), "salt"],
+	["colours", 60.0, Vector3(-30.0, 8.0, -49.8), Vector3(-23.8, 2.0, -32.2), "colour"],
+	["colours_near", 70.0, Vector3(-17.9, 3.8, -29.0), Vector3(-25.2, 2.5, -32.5), "colour"],
+	["colours_reactor", 70.0, Vector3(-21.5, 3.0, -30.7), Vector3(-25.2, 2.2, -32.5), "colour"],
+	["balloon", 60.0, Vector3(-58.7, 7.0, 12.4), Vector3(-41.4, 6.0, 7.3), "balloon"],
+	["balloon_ground", 65.0, Vector3(-38.4, 2.2, 12.9), Vector3(-41.4, 14.0, 7.3), "balloon"],
+	["balloon_sky", 70.0, Vector3(-38.4, 2.2, 12.9), Vector3(-60.0, 240.0, 0.0), "balloon"],
+	["lagoon", 60.0, Vector3(29.5, 18.0, 0.9), Vector3(65.8, 0.0, 38.0), "lagoon"],
+	["wharf", 70.0, Vector3(46.7, 2.8, 27.0), Vector3(74.4, 1.5, 43.0), "lagoon"],
+	["pool", 65.0, Vector3(50.9, 2.6, 31.7), Vector3(47.4, 0.5, 33.85), "lagoon"],
+	["mills", 55.0, Vector3(95.0, 6.0, 52.0), Vector3(386.0, 20.0, 223.0), "lagoon"],
+	["cart", 60.0, Vector3(41.0, 3.4, 19.0), Vector3(40.0, 1.2, 25.0), "lagoon"],
+	["fish", 30.0, Vector3(10.0, 9.0, -68.0), Vector3(10.0, -0.5, -58.0), "bay"],
+	["north", 60.0, Vector3(45.0, 48.0, -15.0), Vector3(0.0, 0.0, -80.0), "bay"],
+	["bay", 65.0, Vector3(-2.0, 4.0, -50.0), Vector3(10.0, -0.5, -58.0), "bay"],
+	["bay_low", 60.0, Vector3(4.0, 1.6, -48.0), Vector3(9.0, -0.6, -55.0), "bay"],
+	["spit", 65.0, Vector3(-33.0, 2.1, -81.0), Vector3(-47.0, 0.0, -117.0), "bay"],
+	["crabs", 55.0, Vector3(1.0, 3.0, -71.0), Vector3(10.0, -0.4, -58.0), "bay"],
+	["works_yard", 70.0, Vector3(32.1, 2.7, -11.65), Vector3(37.2, 3.0, -12.0), "salt"],
+	["works_pan", 65.0, Vector3(37.8, 2.6, -7.8), Vector3(41.2, 1.3, -8.7), "salt"],
+	["lanterns", 65.0, Vector3(2.0, 2.2, 33.0), Vector3(4.0, 2.4, 20.0), "cabin"],
 ]
+
+## Where each view's subject stood when the view was set, so a view
+## follows its subject when the island changes: [name, fov, eye, target,
+## anchor], the eye and target moved by the anchor's shift ("scale"
+## stretches them with the island instead).
+const ANCHORS_THEN := {"salt": Vector3(38.55, 0, -12.40), "colour": Vector3(-25.03, 0, -34.01),
+		"balloon": Vector3(-39.83, 0, 6.51), "lagoon": Vector3(29.85, 0, 17.23), "fire": Vector3(-10.22, 0, 38.15),
+		"dock": Vector3(4.0, 0, 56.33), "cabin": Vector3(4.0, 0, 20.0), "sky": Vector3(-10.0, 0, -8.0),
+		"bay": Vector3(10.0, 0, -58.0)}
 
 var _world: CozyIsland
 
@@ -48,6 +62,20 @@ func _ready() -> void:
 	_world = (load("res://world/cozy_island.tscn") as PackedScene).instantiate()
 	add_child(_world)
 	_run()
+
+
+func _anchor(name: String) -> Vector3:
+	match name:
+		"salt": return SaltWorks.centre(_world)
+		"colour": return ColourWorks.centre(_world)
+		"balloon": return BalloonWorks.centre(_world)
+		"lagoon": return LagoonWorks.centre(_world)
+		"fire": return _world.get("_fire_at")
+		"dock": return Vector3(CozyIsland.DOCK_X, 0.0, _world.get("_dock_z1"))
+		"cabin": return _world.cabin
+		"sky": return Vector3(CozyIsland.HILL.x, 0.0, CozyIsland.HILL.y)
+		"bay": return Vector3(CozyIsland.BAY.x, 0.0, CozyIsland.BAY.y)
+	return Vector3.ZERO
 
 
 func _run() -> void:
@@ -87,8 +115,26 @@ func _run() -> void:
 		if only != "" and not (str(v[0]) in only.split(",")):
 			continue
 		cam.fov = float(v[1])
-		cam.global_position = v[2]
-		cam.look_at(v[3])
+		var eye: Vector3 = v[2]
+		var target: Vector3 = v[3]
+		if v.size() > 4 and v[4] != "":
+			if v[4] == "ground":
+				# Heights given over the ground under the eye and the target.
+				eye.y += maxf(_world.height(eye.x, eye.z), 0.0)
+				target.y += maxf(_world.height(target.x, target.z), 0.0)
+			elif v[4] == "scale":
+				eye *= Vector3(3.17, 3.0, 3.17)
+				target *= Vector3(3.17, 3.0, 3.17)
+			else:
+				var shift: Vector3 = _anchor(str(v[4])) - (ANCHORS_THEN[v[4]] as Vector3)
+				shift.y = 0.0
+				eye += shift
+				target += shift
+				# Never below eye height over the ground there now.
+				var ground := maxf(_world.height(eye.x, eye.z), 0.0)
+				eye.y = maxf(eye.y, ground + 1.6)
+		cam.global_position = eye
+		cam.look_at(target)
 		await get_tree().create_timer(1.0).timeout
 		var frames := Engine.get_frames_drawn()
 		var t0 := Time.get_ticks_usec()

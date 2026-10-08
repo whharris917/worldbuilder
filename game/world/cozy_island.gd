@@ -1,7 +1,8 @@
 class_name CozyIsland
 extends Node3D
-## A small island in a calm sea under an afternoon sun: a beach all
-## round, grass above it, a hill, a cabin, a dock, trees and rocks. A
+## An island about 300 m across in a calm sea under an afternoon sun: a
+## beach all round, meadows above it with hills, woods, rocky outcrops
+## and wild flowers, dunes to the north, a cabin, a dock. A
 ## study in softening a photographic look into a cosy cartoon one, step
 ## by step, each step on its own switch. Every step is the engine's own
 ## rendering: material settings, the light, the environment and the
@@ -43,33 +44,37 @@ extends Node3D
 ## in two panels, kept in user://cozy_island.json.
 
 const STATE_PATH := "user://cozy_island.json"
-const R := 46.0                        # the coast's mean radius
-const HILL := Vector2(-10.0, -8.0)
-const EXTENT := 136.0                  # half the ground's square: out past the lagoon's sandbar
-const GRID := 1.0
+const R := 146.0                       # the coast's mean radius
+const HILL := Vector2(-32.0, -25.0)     # the highest hill, the sky works on its top
+# Lower hills: x, z, height, radius.
+const HILLS := [Vector4(-32.0, -25.0, 14.0, 42.0), Vector4(62.0, -58.0, 7.0, 32.0),
+		Vector4(-78.0, 52.0, 6.0, 34.0), Vector4(48.0, 52.0, 4.0, 26.0), Vector4(-20.0, -105.0, 5.0, 28.0)]
+const EXTENT := 300.0                  # half the ground's square: out past the spits and the lagoon's sandbar
+const GRID := 1.5
 const FLOOR := -4.0                    # the seabed's depth far out
-const CABIN := Vector3(4.0, 0.0, 20.0) # its floor's height worked out
+const CABIN_INLAND := 25.0             # the cabin's distance up from the south shore
 const CABIN_SIZE := Vector3(4.0, 2.4, 5.0)
 const DOCK_X := 4.0
 const DOCK_W := 1.6
 const DOCK_Y := 0.6
 const NIGHT_SHADE := Color(0.22, 0.28, 0.6)
 const LAGOON_BEARING := 30.0           # degrees round from +x toward +z
-const LAGOON_HALF := 18.0               # degrees either side, fading over 8 more
+const LAGOON_HALF := 11.0               # degrees either side, fading over 5 more
 const LAGOON_FLOOR := -1.1
-const SANDBAR := 122.0                  # the bar's crest, m from the centre
-# The north: a lobe of sand dunes reaching out to about 80 m, two sand
-# spits running on out to sea, and a sheltered round bay in the dunes
-# opening to the sea by one narrow inlet.
+const LAGOON_OUT := 76.0                # the sandbar's crest beyond the shore
+# The north: a lobe of sand dunes reaching 30% further out than the
+# shore elsewhere, two sand spits running on out to sea, and a sheltered
+# round bay in the dunes opening to the sea by one narrow inlet.
 const NORTH_BEARING := -90.0
 const NORTH_HALF := 20.0                # degrees either side, fading over 14 more
-const BAY := Vector2(10.0, -58.0)
+const NORTH_OUT := 0.3
+const BAY := Vector2(27.0, -152.6)
 const BAY_R := 13.0
 const INLET_DIR := Vector2(0.6, -0.8)
 const INLET_FROM := 10.0                # m from the bay's centre
-const INLET_TO := 33.0
+const INLET_TO := 47.0
 const INLET_HALF := 2.2
-const SPITS := [Vector3(-112.0, 70.0, 56.0), Vector3(-98.0, 73.0, 60.0)]   # bearing, start radius, length
+const SPITS := [Vector3(-112.0, 183.0, 70.0), Vector3(-98.0, 194.0, 80.0)]   # bearing, start radius, length
 const FIRE_BEARING := 105.0            # degrees round from +x toward +z
 const LANTERNS := 5
 const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", "Outlines",
@@ -98,6 +103,12 @@ var _coast_noise := FastNoiseLite.new()
 var _hump_noise := FastNoiseLite.new()
 var _edge_noise := FastNoiseLite.new()
 var _dune_noise := FastNoiseLite.new()
+var _roll_noise := FastNoiseLite.new()
+var _sandbar := 0.0                    # the lagoon's bar, m from the centre
+## The cabin, its floor's height worked out when built.
+var cabin := Vector3.ZERO
+var _grass_grid := PackedFloat32Array() # grassiness on the ground's grid
+var _normal_grid := PackedVector3Array()
 var _grid := PackedFloat32Array()       # the ground's heights on its grid, kept for the shorelines
 var _grid_n := 0
 var _works: Array[Node3D] = []
@@ -132,15 +143,21 @@ func _ready() -> void:
 	_edge_noise.seed = 23
 	_edge_noise.frequency = 0.09
 	_dune_noise.seed = 61
-	_dune_noise.frequency = 0.05
+	_dune_noise.frequency = 0.03
+	_roll_noise.seed = 19
+	_roll_noise.frequency = 0.012
+	_sandbar = shore_radius(deg_to_rad(LAGOON_BEARING)) + LAGOON_OUT
 	_build_environment()
 	_build_ground()
 	_build_sea()
 	_build_foam()
+	cabin = Vector3(DOCK_X, 0.0, coast(PI * 0.5, 0.0) - CABIN_INLAND)
 	_build_cabin()
 	_build_dock()
 	_build_trees()
 	_build_rocks()
+	_build_outcrops()
+	_build_flowers()
 	_build_campfire()
 	_build_lanterns()
 	_works.append_array([SaltWorks.new(self), ColourWorks.new(self), BalloonWorks.new(self),
@@ -236,7 +253,7 @@ func _build_panels() -> void:
 	_panel.slider(steps, "Haze thickness", 0.0, 0.02, 0.0005, 0.003, redraw)
 	_panel.note(steps, "Distance fades into a pale sky colour, so the far sea and the far side of the island stay quiet.")
 	_panel.switch(steps, "Soft focus", false, redraw)
-	_panel.slider(steps, "Sharp up to (m)", 5.0, 100.0, 1.0, 45.0, redraw)
+	_panel.slider(steps, "Sharp up to (m)", 5.0, 250.0, 1.0, 80.0, redraw)
 	_panel.note(steps, "The camera's depth of field: what is farther than this blurs gradually, which also makes the island read as small, like a model.")
 
 	_panel.heading(steps, "Setting")
@@ -442,34 +459,36 @@ func _noise_bumps(seed_value: int, frequency: float, strength: float) -> NoiseTe
 
 ## ---- the ground ------------------------------------------------------------
 
-## Height of the ground at (x, z): a gentle cone that crosses the sea's
-## level at the coast (its radius wavering with the bearing), a hill,
-## low hummocks inland, and a flat seabed far out.
+## Height of the ground at (x, z): rising from the shore (its distance
+## from the middle wavering with the bearing) at a beach's slope and
+## levelling off inland at about five metres, falling the same way under
+## the sea to a flat seabed; inland, hills, rolling meadows and hummocks.
 func height(x: float, z: float) -> float:
 	var bearing := atan2(z, x)
 	var north := north_weight(bearing)
-	var coast := R * (1.0 + 0.12 * _coast_noise.get_noise_2d(cos(bearing) * 1.3, sin(bearing) * 1.3)) * (1.0 + 0.75 * north)
-	var q := sqrt(x * x + z * z) / coast
-	var h := 4.0 * (1.0 - q)
-	h += 6.5 * exp(-((x - HILL.x) ** 2 + (z - HILL.y) ** 2) / (18.0 * 18.0))
-	h += 0.8 * smoothstep(1.0, 0.6, q) * _hump_noise.get_noise_2d(x, z)
+	var shore := shore_radius(bearing)
+	var r := sqrt(x * x + z * z)
+	var s := shore - r                  # metres inland of the shore
+	var h := 5.5 * tanh(s / 55.0)
+	var inland := smoothstep(0.0, 40.0, s)
+	for hill: Vector4 in HILLS:
+		h += hill.z * exp(-((x - hill.x) ** 2 + (z - hill.y) ** 2) / (hill.w * hill.w))
+	h += inland * (2.2 * _roll_noise.get_noise_2d(x, z) + 0.7 * _hump_noise.get_noise_2d(x, z))
 	# The lagoon: in its sector the seabed holds at a shallow sand floor
 	# out to a sandbar whose crest just breaks the surface.
 	var off := absf(angle_difference(bearing, deg_to_rad(LAGOON_BEARING)))
 	var inside := smoothstep(deg_to_rad(LAGOON_HALF + 8.0), deg_to_rad(LAGOON_HALF), off)
 	if inside > 0.0:
-		var r := sqrt(x * x + z * z)
 		var lagoon := h
-		if r < SANDBAR:
+		if r < _sandbar:
 			lagoon = maxf(h, LAGOON_FLOOR + 0.15 * _hump_noise.get_noise_2d(x * 2.0, z * 2.0))
-		var bar := 0.3 - pow((r - SANDBAR) / 7.0, 2.0) * 1.4
+		var bar := 0.3 - pow((r - _sandbar) / 7.0, 2.0) * 1.4
 		lagoon = maxf(lagoon, bar)
 		h = lerpf(h, lagoon, inside)
 	if north > 0.0:
-		# Dunes: long ridges across the wind, highest between the old
-		# shore and the new one.
+		# Dunes: long ridges across the wind, in a band up from the shore.
 		var ridge := 1.0 - absf(_dune_noise.get_noise_2d(x * 0.9, z * 2.2))
-		h += north * 3.2 * pow(ridge, 3.0) * smoothstep(0.5, 0.7, q) * smoothstep(1.0, 0.86, q)
+		h += north * 3.5 * pow(ridge, 3.0) * smoothstep(3.0, 12.0, s) * smoothstep(70.0, 45.0, s)
 	# The spits: low ridges of sand running out to sea, their crests just
 	# above the water, sinking toward their tips.
 	for spit: Vector3 in SPITS:
@@ -477,9 +496,9 @@ func height(x: float, z: float) -> float:
 		var p := Vector2(x, z) - d * spit.y
 		var t := p.dot(d) / spit.z
 		if t > -0.3 and t < 1.15:
-			var side := absf(p.dot(Vector2(-d.y, d.x)) - 4.0 * sin(clampf(t, 0.0, 1.0) * PI))
-			var crest := 0.45 - 0.75 * clampf(t, 0.0, 1.0) ** 2
-			h = maxf(h, crest - pow(side / 4.0, 2.0) * 1.3)
+			var side := absf(p.dot(Vector2(-d.y, d.x)) - 6.0 * sin(clampf(t, 0.0, 1.0) * PI))
+			var crest := 0.5 - 0.8 * clampf(t, 0.0, 1.0) ** 2
+			h = maxf(h, crest - pow(side / 5.0, 2.0) * 1.3)
 	# The bay and its inlet, carved down through the dunes.
 	var db := Vector2(x, z).distance_to(BAY)
 	if db < BAY_R + 6.0:
@@ -489,6 +508,12 @@ func height(x: float, z: float) -> float:
 	if inlet < INLET_HALF + 4.0:
 		h = minf(h, lerpf(-0.9, h, smoothstep(INLET_HALF, INLET_HALF + 3.5, inlet)))
 	return maxf(h, FLOOR)
+
+
+## The shore's distance from the middle along a bearing, before the
+## lagoon, spits and bay are shaped into it.
+func shore_radius(bearing: float) -> float:
+	return R * (1.0 + 0.12 * _coast_noise.get_noise_2d(cos(bearing) * 1.3, sin(bearing) * 1.3)) * (1.0 + NORTH_OUT * north_weight(bearing))
 
 
 ## How far into the north lobe a bearing lies, 0 outside to 1 inside.
@@ -518,9 +543,10 @@ func _normal(x: float, z: float) -> Vector3:
 ## Above zero, grass; below, sand. The line wanders about a metre above
 ## the sea.
 func _grassiness(x: float, z: float, h: float) -> float:
-	# The north's dunes are bare sand, the grass giving out where they begin.
-	var r := sqrt(x * x + z * z)
-	var sandy := north_weight(atan2(z, x)) * smoothstep(42.0, 52.0, r) * 6.0
+	# The north's dunes are bare sand, the grass giving out behind them.
+	var bearing := atan2(z, x)
+	var s := shore_radius(bearing) - sqrt(x * x + z * z)
+	var sandy := north_weight(bearing) * smoothstep(78.0, 64.0, s) * 6.0
 	return h - 0.9 - 0.35 * _edge_noise.get_noise_2d(x, z) - sandy
 
 
@@ -529,7 +555,7 @@ func coast(bearing: float, level: float) -> float:
 	# Out from the middle to the first fall below `level`: the island's
 	# own shore, not the lagoon's sandbar beyond it.
 	var d := Vector2(cos(bearing), sin(bearing))
-	var r := 4.0
+	var r := 0.6 * R
 	while r < EXTENT and height(d.x * r, d.y * r) >= level:
 		r += 1.0
 	var lo := r - 1.0
@@ -555,22 +581,41 @@ func _build_ground() -> void:
 			heights[j * n + i] = height(-EXTENT + i * GRID, -EXTENT + j * GRID)
 	_grid = heights
 	_grid_n = n
+	# Each grid point's slope and grassiness, worked out once.
+	_normal_grid.resize(n * n)
+	_grass_grid.resize(n * n)
+	for j in n:
+		for i in n:
+			var hl := heights[j * n + maxi(i - 1, 0)]
+			var hr := heights[j * n + mini(i + 1, n - 1)]
+			var hd := heights[maxi(j - 1, 0) * n + i]
+			var hu := heights[mini(j + 1, n - 1) * n + i]
+			_normal_grid[j * n + i] = Vector3(hl - hr, 4.0 * GRID, hd - hu).normalized()
+			var h := heights[j * n + i]
+			_grass_grid[j * n + i] = _grassiness(-EXTENT + i * GRID, -EXTENT + j * GRID, h) if h > -0.5 else -1.0
 	var faces := PackedVector3Array()
 	for j in n - 1:
 		for i in n - 1:
 			var p := [Vector3(), Vector3(), Vector3(), Vector3()]
+			var g := [0.0, 0.0, 0.0, 0.0]
+			var nm := [Vector3(), Vector3(), Vector3(), Vector3()]
 			var k := 0
 			for c: Vector2i in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
-				p[k] = Vector3(-EXTENT + (i + c.x) * GRID, heights[(j + c.y) * n + i + c.x], -EXTENT + (j + c.y) * GRID)
+				var at := (j + c.y) * n + i + c.x
+				p[k] = Vector3(-EXTENT + (i + c.x) * GRID, heights[at], -EXTENT + (j + c.y) * GRID)
+				g[k] = _grass_grid[at]
+				nm[k] = _normal_grid[at]
 				k += 1
-			for tri: Array in [[p[0], p[1], p[2]], [p[1], p[3], p[2]]]:
-				var a: Vector3 = tri[0]
-				var b: Vector3 = tri[1]
-				var c3: Vector3 = tri[2]
+			for tri: Array in [[0, 1, 2], [1, 3, 2]]:
+				var a: Vector3 = p[tri[0]]
+				var b: Vector3 = p[tri[1]]
+				var c3: Vector3 = p[tri[2]]
 				if a.y <= FLOOR + 0.01 and b.y <= FLOOR + 0.01 and c3.y <= FLOOR + 0.01:
 					continue
-				faces.append_array(_upward(a, b, c3))
-				_split(tri)
+				# Only ground the player can reach collides.
+				if maxf(a.y, maxf(b.y, c3.y)) > -1.5:
+					faces.append_array(_upward(a, b, c3))
+				_split([a, b, c3], [g[tri[0]], g[tri[1]], g[tri[2]]], [nm[tri[0]], nm[tri[1]], nm[tri[2]]])
 	var mesh := ArrayMesh.new()
 	var sand_mat := surface("sand", 0.5, Color(1.0, 0.97, 0.92), 0.9, Color(0.98, 0.87, 0.64))
 	var grass_mat := surface("grass", 0.7, Color(0.85, 0.92, 0.8), 0.95, Color(0.5, 0.78, 0.36))
@@ -609,34 +654,45 @@ func _upward(a: Vector3, b: Vector3, c: Vector3) -> PackedVector3Array:
 ## One triangle cut where the grassiness crosses zero: the part below
 ## goes to the sand's points and normals (`_ground` 0 and 1), the part
 ## above to the grass's (2 and 3), each fanned into triangles.
-func _split(tri: Array) -> void:
-	var g: Array[float] = []
-	for v: Vector3 in tri:
-		g.append(_grassiness(v.x, v.z, v.y))
+func _split(tri: Array, g: Array, nm: Array) -> void:
 	var lo: Array[Vector3] = []
 	var hi: Array[Vector3] = []
+	var lo_n: Array[Vector3] = []
+	var hi_n: Array[Vector3] = []
 	for i in 3:
 		var j := (i + 1) % 3
 		var vi: Vector3 = tri[i]
 		var vj: Vector3 = tri[j]
-		if g[i] < 0.0:
+		var gi: float = g[i]
+		var gj: float = g[j]
+		var ni: Vector3 = nm[i]
+		var nj: Vector3 = nm[j]
+		if gi < 0.0:
 			lo.append(vi)
+			lo_n.append(ni)
 		else:
 			hi.append(vi)
-		if (g[i] < 0.0) != (g[j] < 0.0):
-			var cut := vi.lerp(vj, g[i] / (g[i] - g[j]))
+			hi_n.append(ni)
+		if (gi < 0.0) != (gj < 0.0):
+			var t := gi / (gi - gj)
+			var cut := vi.lerp(vj, t)
+			var cn := ni.lerp(nj, t).normalized()
 			lo.append(cut)
 			hi.append(cut)
+			lo_n.append(cn)
+			hi_n.append(cn)
 	# Held as plain locals and written back: a packed array taken out of
 	# an Array is a copy.
 	for side in 2:
 		var poly: Array[Vector3] = lo if side == 0 else hi
+		var pn: Array[Vector3] = lo_n if side == 0 else hi_n
 		var points: PackedVector3Array = _ground[side * 2]
 		var normals: PackedVector3Array = _ground[side * 2 + 1]
 		for k in range(1, poly.size() - 1):
-			for v: Vector3 in _upward(poly[0], poly[k], poly[k + 1]):
-				points.append(v)
-				normals.append(_normal(v.x, v.z))
+			var flip := (poly[k + 1] - poly[0]).cross(poly[k] - poly[0]).y < 0.0
+			for m: int in ([0, k + 1, k] if flip else [0, k, k + 1]):
+				points.append(poly[m])
+				normals.append(pn[m])
 		_ground[side * 2] = points
 		_ground[side * 2 + 1] = normals
 
@@ -651,9 +707,9 @@ func _build_sea() -> void:
 	var radii: Array[float] = [0.0]
 	var r := 0.0
 	while r < 1500.0:
-		r += 2.0 if r < 110.0 else r * 0.12
+		r += 2.5 if r < EXTENT else r * 0.12
 		radii.append(minf(r, 1500.0))
-	var segments := 160
+	var segments := 360
 	var points := PackedVector3Array()
 	var uvs := PackedVector2Array()
 	for ring in radii.size():
@@ -881,7 +937,7 @@ func _build_cabin() -> void:
 	var hz := CABIN_SIZE.z * 0.5
 	var top := -INF
 	for c: Vector2 in [Vector2(-hx, -hz), Vector2(hx, -hz), Vector2(-hx, hz), Vector2(hx, hz)]:
-		top = maxf(top, height(CABIN.x + c.x, CABIN.z + c.y))
+		top = maxf(top, height(cabin.x + c.x, cabin.z + c.y))
 	var floor_y := top + 0.3
 	var walls := surface("wood_floor", 0.6, Color(0.78, 0.72, 0.64), 0.8, Color(0.95, 0.87, 0.72))
 	var base := surface("rough_rock", 0.5, Color(0.75, 0.75, 0.75), 0.9, Color(0.66, 0.64, 0.66))
@@ -891,8 +947,9 @@ func _build_cabin() -> void:
 	var glass := surface("", 1.0, Color(0.04, 0.05, 0.06), 0.08, Color(1.0, 0.86, 0.5),
 			{"glow": Color(1.0, 0.8, 0.45), "no_line": true})
 	var stone := surface("old_stone_bricks", 1.0 / 1.8, Color(0.85, 0.85, 0.85), 0.9, Color(0.72, 0.66, 0.62))
-	var c := Vector3(CABIN.x, floor_y, CABIN.z)
-	var depth := floor_y - minf(height(CABIN.x - hx, CABIN.z + hz), height(CABIN.x + hx, CABIN.z + hz)) + 0.6
+	cabin.y = floor_y
+	var c := cabin
+	var depth := floor_y - minf(height(cabin.x - hx, cabin.z + hz), height(cabin.x + hx, cabin.z + hz)) + 0.6
 	_solid(Vector3(CABIN_SIZE.x + 0.3, depth, CABIN_SIZE.z + 0.3), c + Vector3(0, -depth * 0.5, 0), base)
 	_solid(CABIN_SIZE, c + Vector3(0, CABIN_SIZE.y * 0.5, 0), walls)
 	var prism := PrismMesh.new()
@@ -963,36 +1020,69 @@ func _build_trees() -> void:
 			{"bumps": _noise_bumps(31, 0.06, 6.0)})
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1874
+	var keep_clear: Array[Vector3] = [   # x, z, radius
+		_flat(SaltWorks.centre(self), 26.0), _flat(ColourWorks.centre(self), 22.0),
+		_flat(BalloonWorks.centre(self), 20.0), _flat(LagoonWorks.centre(self), 18.0),
+		Vector3(HILL.x, HILL.y, 20.0), Vector3(cabin.x, cabin.z, 7.0), Vector3(BAY.x, BAY.y, BAY_R + 8.0)]
 	var placed: Array[Vector2] = []
-	var works := SaltWorks.centre(self)
-	var colours := ColourWorks.centre(self)
-	var balloon := BalloonWorks.centre(self)
-	var lagoon := LagoonWorks.centre(self)
-	var tries := 0
-	while placed.size() < 16 and tries < 600:
-		tries += 1
-		var p := Vector2(rng.randf_range(-R, R), rng.randf_range(-R, R))
+	var try_tree := func(p: Vector2, spacing: float, round_share: float) -> bool:
 		var h := height(p.x, p.y)
 		if _grassiness(p.x, p.y, h) < 0.4:
-			continue
-		if p.distance_to(Vector2(CABIN.x, CABIN.z)) < 7.0 or absf(p.x - DOCK_X) < 4.0 and p.y > 10.0:
-			continue
-		if p.distance_to(Vector2(works.x, works.z)) < 20.0 or p.distance_to(Vector2(colours.x, colours.z)) < 18.0 \
-				or p.distance_to(Vector2(balloon.x, balloon.z)) < 16.0 or p.distance_to(Vector2(lagoon.x, lagoon.z)) < 14.0 \
-				or p.distance_to(HILL) < 17.0:
-			continue
-		var crowded := false
+			return false
+		if absf(p.x - DOCK_X) < 4.0 and p.y > cabin.z:
+			return false
+		for c: Vector3 in keep_clear:
+			if p.distance_to(Vector2(c.x, c.y)) < c.z:
+				return false
 		for q: Vector2 in placed:
-			crowded = crowded or p.distance_to(q) < 6.0
-		if crowded:
-			continue
+			if p.distance_to(q) < spacing:
+				return false
 		placed.append(p)
-		var size := rng.randf_range(0.8, 1.25)
+		var size := rng.randf_range(0.8, 1.3)
 		var base := Vector3(p.x, h - 0.2, p.y)
-		if rng.randf() < 0.5:
+		if rng.randf() < round_share:
 			_round_tree(base, size, bark, leaves, rng)
 		else:
 			_pine(base, size, bark, needles)
+		return true
+	# Broad-leaved trees round the cabin, behind and beside it, for the
+	# lanterns.
+	var ring := 0
+	var ring_tries := 0
+	while ring < 7 and ring_tries < 200:
+		ring_tries += 1
+		var a := rng.randf_range(-PI, 0.15) if ring % 2 == 0 else rng.randf_range(PI - 0.15, TAU)
+		if try_tree.call(Vector2(cabin.x, cabin.z) + Vector2(cos(a), sin(a)) * rng.randf_range(9.0, 15.0), 5.0, 1.0):
+			ring += 1
+	# Woods: groves of a dozen or two, each mostly one kind.
+	var groves := 0
+	var tries := 0
+	while groves < 11 and tries < 400:
+		tries += 1
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(0.2, 0.75) * shore_radius(a)
+		var centre := Vector2(cos(a), sin(a)) * r
+		if _grassiness(centre.x, centre.y, height(centre.x, centre.y)) < 1.0:
+			continue
+		groves += 1
+		var round_share := 0.85 if rng.randf() < 0.5 else 0.2
+		var reach := rng.randf_range(12.0, 24.0)
+		for k in rng.randi_range(10, 22):
+			var off := Vector2(rng.randfn(0.0, reach * 0.5), rng.randfn(0.0, reach * 0.5))
+			try_tree.call(centre + off, 4.5, round_share)
+	# And a few standing alone in the meadows.
+	var singles := 0
+	tries = 0
+	while singles < 28 and tries < 800:
+		tries += 1
+		var a := rng.randf() * TAU
+		var p := Vector2(cos(a), sin(a)) * rng.randf_range(0.1, 0.85) * shore_radius(a)
+		if try_tree.call(p, 12.0, 0.6):
+			singles += 1
+
+
+static func _flat(p: Vector3, radius: float) -> Vector3:
+	return Vector3(p.x, p.z, radius)
 
 
 func _trunk(base: Vector3, height: float, radius: float, bark: Material) -> void:
@@ -1059,8 +1149,78 @@ func _build_rocks() -> void:
 		var a := deg_to_rad(s.x)
 		var r := coast(a, 0.0) + s.y
 		_boulder(Vector3(cos(a) * r, 0.0, sin(a) * r), s.z, int(s.w), rock, lumps)
-	for s: Vector3 in [Vector3(-16, -2, 1.6), Vector3(-6, -15, 1.1), Vector3(-19, -12, 0.9)]:
-		_boulder(Vector3(s.x, 0.0, s.y), s.z, 8 + int(s.x), rock, lumps)
+	for s: Vector3 in [Vector3(-15, 15, 1.6), Vector3(10, -17, 1.1), Vector3(-22, -10, 0.9)]:
+		_boulder(Vector3(HILL.x + s.x, 0.0, HILL.y + s.y), s.z, 8 + int(s.x), rock, lumps)
+
+
+## Rocky outcrops in the meadows: knots of boulders half sunk in the
+## grass, a big one and smaller ones leaning on it.
+func _build_outcrops() -> void:
+	var rock := surface("rough_rock", 0.4, Color(0.8, 0.78, 0.76), 0.9, Color(0.68, 0.68, 0.74))
+	var lumps := FastNoiseLite.new()
+	lumps.seed = 43
+	lumps.frequency = 0.9
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3131
+	var made := 0
+	var tries := 0
+	while made < 8 and tries < 300:
+		tries += 1
+		var a := rng.randf() * TAU
+		var c := Vector2(cos(a), sin(a)) * rng.randf_range(0.25, 0.8) * shore_radius(a)
+		var h := height(c.x, c.y)
+		if _grassiness(c.x, c.y, h) < 1.0 or c.distance_to(Vector2(cabin.x, cabin.z)) < 25.0 or c.distance_to(BAY) < 30.0:
+			continue
+		var clear := true
+		for p: Vector3 in [SaltWorks.centre(self), ColourWorks.centre(self), BalloonWorks.centre(self), LagoonWorks.centre(self)]:
+			clear = clear and c.distance_to(Vector2(p.x, p.z)) > 30.0
+		if not clear or c.distance_to(HILL) < 22.0:
+			continue
+		made += 1
+		var big := rng.randf_range(2.2, 3.4)
+		_boulder(Vector3(c.x, 0.0, c.y), big, 100 + made * 10, rock, lumps, -0.25)
+		for k in rng.randi_range(3, 6):
+			var b := rng.randf() * TAU
+			var at := c + Vector2(cos(b), sin(b)) * big * rng.randf_range(1.1, 2.0)
+			_boulder(Vector3(at.x, 0.0, at.y), big * rng.randf_range(0.25, 0.55), 101 + made * 10 + k, rock, lumps, -0.1)
+
+
+## Wild flowers in drifts across the meadows: a stem and a little head
+## each, built cozy-native, one mesh per patch of ground, the far ones
+## left out.
+func _build_flowers() -> void:
+	var colours := [Color(0.98, 0.95, 0.85), Color(0.98, 0.82, 0.25), Color(0.85, 0.55, 0.9),
+			Color(0.95, 0.45, 0.45), Color(0.55, 0.7, 0.98)]
+	var stem := Color(0.42, 0.62, 0.3)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2626
+	var tiles := {}
+	for d in 90:
+		var a := rng.randf() * TAU
+		var c := Vector2(cos(a), sin(a)) * rng.randf_range(0.05, 0.85) * shore_radius(a)
+		var colour: Color = colours[rng.randi() % colours.size()]
+		var reach := rng.randf_range(2.5, 5.5)
+		for k in rng.randi_range(70, 140):
+			var p := c + Vector2(rng.randfn(0.0, reach), rng.randfn(0.0, reach))
+			var h := height(p.x, p.y)
+			if _grassiness(p.x, p.y, h) < 0.5 or p.distance_to(Vector2(cabin.x, cabin.z)) < 4.0:
+				continue
+			var key := Vector2i(floori(p.x / 50.0), floori(p.y / 50.0))
+			if not tiles.has(key):
+				tiles[key] = CozyMesh.new()
+			var m: CozyMesh = tiles[key]
+			var tall := rng.randf_range(0.22, 0.42)
+			m.box(Vector3(0.02, tall, 0.02), CozyMesh.at(Vector3(p.x, h + tall * 0.5, p.y)), stem)
+			m.box(Vector3(0.13, 0.05, 0.13), CozyMesh.at(Vector3(p.x, h + tall, p.y), Basis(Vector3.UP, rng.randf() * TAU)), colour)
+	var mat := cozy_material(false)
+	for key: Vector2i in tiles:
+		var view := MeshInstance3D.new()
+		view.name = "Flowers"
+		view.mesh = (tiles[key] as CozyMesh).commit(mat)
+		view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		view.visibility_range_end = 70.0
+		view.visibility_range_end_margin = 10.0
+		add_child(view)
 
 
 ## ---- the campfire and the lanterns ---------------------------------------
@@ -1126,10 +1286,10 @@ func _build_lanterns() -> void:
 	var cord := surface("", 1.0, Color(0.25, 0.2, 0.15), 0.9, Color(0.45, 0.34, 0.25), {"no_line": true})
 	var near := _crowns.duplicate()
 	near.sort_custom(func(p: Vector4, q: Vector4) -> bool:
-		return Vector2(p.x, p.z).distance_to(Vector2(CABIN.x, CABIN.z)) < Vector2(q.x, q.z).distance_to(Vector2(CABIN.x, CABIN.z)))
+		return Vector2(p.x, p.z).distance_to(Vector2(cabin.x, cabin.z)) < Vector2(q.x, q.z).distance_to(Vector2(cabin.x, cabin.z)))
 	for k in mini(LANTERNS, near.size()):
 		var c: Vector4 = near[k]
-		var toward := Vector3(CABIN.x - c.x, 0.0, CABIN.z - c.z).normalized()
+		var toward := Vector3(cabin.x - c.x, 0.0, cabin.z - c.z).normalized()
 		# Where a line 1.5 sizes out from the trunk meets the main ball's
 		# underside (its radius 1.7 sizes).
 		var anchor := Vector3(c.x, c.y, c.z) + toward * 1.5 * c.w + Vector3.DOWN * 0.8 * c.w
@@ -1139,7 +1299,8 @@ func _build_lanterns() -> void:
 		_lanterns.append(lantern)
 
 
-func _boulder(at: Vector3, size: float, seed_value: int, mat: Material, lumps: FastNoiseLite) -> void:
+func _boulder(at: Vector3, size: float, seed_value: int, mat: Material, lumps: FastNoiseLite,
+		sink := 0.25) -> void:
 	var sphere := SphereMesh.new()
 	sphere.radial_segments = 24
 	sphere.rings = 12
@@ -1162,7 +1323,7 @@ func _boulder(at: Vector3, size: float, seed_value: int, mat: Material, lumps: F
 	var view := MeshInstance3D.new()
 	view.mesh = mesh
 	var ground := height(at.x, at.z)
-	view.position = Vector3(at.x, ground + size * 0.25, at.z)
+	view.position = Vector3(at.x, ground + size * sink, at.z)
 	view.rotation.y = seed_value * 1.3
 	add_child(view)
 	var body := StaticBody3D.new()
@@ -1321,10 +1482,10 @@ func _build_dune_grass() -> void:
 	var greens := [Color(0.62, 0.7, 0.36), Color(0.72, 0.74, 0.42), Color(0.55, 0.64, 0.33)]
 	var placed := 0
 	var tries := 0
-	while placed < 160 and tries < 4000:
+	while placed < 420 and tries < 9000:
 		tries += 1
 		var a := deg_to_rad(NORTH_BEARING) + rng.randf_range(-0.6, 0.6)
-		var r := rng.randf_range(44.0, 82.0)
+		var r := shore_radius(a) - rng.randf_range(2.0, 72.0)
 		var x := cos(a) * r
 		var z := sin(a) * r
 		var h := height(x, z)
@@ -1336,9 +1497,9 @@ func _build_dune_grass() -> void:
 			var lean := Basis(Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized(), rng.randf_range(0.1, 0.45))
 			var tall := rng.randf_range(0.4, 0.8)
 			m.cyl(0.0, 0.025, tall, 3, CozyMesh.at(Vector3(x + rng.randf_range(-0.2, 0.2), h + tall * 0.45, z + rng.randf_range(-0.2, 0.2)), lean), colour)
-	for k in 5:
+	for k in 9:
 		var a := deg_to_rad(NORTH_BEARING) + rng.randf_range(-0.45, 0.45)
-		var r := rng.randf_range(70.0, 78.0)
+		var r := shore_radius(a) - rng.randf_range(2.0, 8.0)
 		var p := Vector3(cos(a) * r, 0.0, sin(a) * r)
 		p.y = maxf(height(p.x, p.z), 0.0) + 0.1
 		var length_ := rng.randf_range(1.5, 3.2)
@@ -1350,15 +1511,20 @@ func _build_dune_grass() -> void:
 
 
 var _cozy_mat: StandardMaterial3D
+var _cozy_plain: StandardMaterial3D
 
 
 ## The island's own flat-painted material: white, taking vertex colours,
-## registered so the light and outline switches reach it.
-func cozy_material() -> StandardMaterial3D:
-	if _cozy_mat == null:
+## registered so the light and outline switches reach it; `lined` false
+## gives one without outlines, for small things.
+func cozy_material(lined := true) -> StandardMaterial3D:
+	if lined and _cozy_mat == null:
 		_cozy_mat = surface("", 1.0, Color.WHITE, 0.85, Color.WHITE, {"line_colour": Color(0.26, 0.2, 0.16)})
 		_cozy_mat.vertex_color_use_as_albedo = true
-	return _cozy_mat
+	if not lined and _cozy_plain == null:
+		_cozy_plain = surface("", 1.0, Color.WHITE, 0.85, Color.WHITE, {"no_line": true})
+		_cozy_plain.vertex_color_use_as_albedo = true
+	return _cozy_mat if lined else _cozy_plain
 
 
 func _wall(body: StaticBody3D, a: Vector3, b: Vector3) -> void:

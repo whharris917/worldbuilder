@@ -38,7 +38,7 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/shifting_room.tscn", "lab": true},
 	{"title": "WINDOWS", "note": "A great stone cathedral on open grass, its windows open to the sun.",
 		"scene": "res://world/windows.tscn", "lab": true},
-	{"title": "COZY ISLAND", "note": "A small island with a cabin and a dock in a calm sea, to be turned step by step from a photograph's look into a storybook's.",
+	{"title": "COZY ISLAND", "note": "An island with a cabin and a dock in a calm sea, to be turned step by step from a photograph's look into a storybook's.",
 		"scene": "res://world/cozy_island.tscn", "lab": true},
 ]
 
