@@ -165,17 +165,23 @@ static func _level(p: AudioStreamPlayer3D, level: float, top_db := 0.0) -> void:
 
 ## ---- the circuit -----------------------------------------------------------
 
-func _part(kind: LumenPart.Kind, title: String, u: float, v: float, y: float, delay := 0.0) -> LumenPart:
-	var p := LumenPart.new(kind, title, at(u, v, y), ground(u, v), _wood, _brass, delay)
+const NO_BASE := -1000.0
+
+
+## A part at (u, v) at height y, its post down to the ground (or to
+## `base`, a deck's height, when given).
+func _part(kind: LumenPart.Kind, title: String, u: float, v: float, y: float, delay := 0.0, base := NO_BASE) -> LumenPart:
+	var p := LumenPart.new(kind, title, at(u, v, y), ground(u, v) if base == NO_BASE else base, _wood, _brass, delay)
 	_site.add_child(p)
 	parts.append(p)
 	return p
 
 
 ## A column of lanterns on one post at (u, v), from `y0` above the
-## ground up by `dy`, each post standing on the lantern below.
-func _lantern_column(u: float, v: float, titles: Array, y0: float, dy := 0.38) -> Array[LumenPart]:
-	var g := ground(u, v)
+## ground (or above `base`, a deck's height, when given) up by `dy`, each
+## post standing on the lantern below.
+func _lantern_column(u: float, v: float, titles: Array, y0: float, dy := 0.38, base := NO_BASE) -> Array[LumenPart]:
+	var g := ground(u, v) if base == NO_BASE else base
 	var out: Array[LumenPart] = []
 	for i in titles.size():
 		var y := g + y0 + dy * i

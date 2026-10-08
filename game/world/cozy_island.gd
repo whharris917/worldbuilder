@@ -45,7 +45,7 @@ extends Node3D
 const STATE_PATH := "user://cozy_island.json"
 const R := 46.0                        # the coast's mean radius
 const HILL := Vector2(-10.0, -8.0)
-const EXTENT := 100.0                  # half the ground's square
+const EXTENT := 136.0                  # half the ground's square: out past the lagoon's sandbar
 const GRID := 1.0
 const FLOOR := -4.0                    # the seabed's depth far out
 const CABIN := Vector3(4.0, 0.0, 20.0) # its floor's height worked out
@@ -54,6 +54,10 @@ const DOCK_X := 4.0
 const DOCK_W := 1.6
 const DOCK_Y := 0.6
 const NIGHT_SHADE := Color(0.22, 0.28, 0.6)
+const LAGOON_BEARING := 30.0           # degrees round from +x toward +z
+const LAGOON_HALF := 18.0               # degrees either side, fading over 8 more
+const LAGOON_FLOOR := -1.1
+const SANDBAR := 122.0                  # the bar's crest, m from the centre
 const FIRE_BEARING := 105.0            # degrees round from +x toward +z
 const LANTERNS := 5
 const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", "Outlines",
@@ -82,6 +86,10 @@ var _coast_noise := FastNoiseLite.new()
 var _hump_noise := FastNoiseLite.new()
 var _edge_noise := FastNoiseLite.new()
 var _ground := [PackedVector3Array(), PackedVector3Array(), PackedVector3Array(), PackedVector3Array()]
+## Walkways out over the water, as [shore point, far point, half width]:
+## the invisible walls keeping the player on land open for each and run
+## along its sides.
+var piers: Array = []
 var _dock_z0 := 0.0
 var _dock_z1 := 0.0
 var _clock := 0.0
@@ -118,6 +126,8 @@ func _ready() -> void:
 	add_child(SaltWorks.new(self))
 	add_child(ColourWorks.new(self))
 	add_child(BalloonWorks.new(self))
+	add_child(LagoonWorks.new(self))
+	piers.append(LagoonWorks.pier(self))
 	_build_bounds()
 	_build_panels()
 	# Soft shadows need the engine's shadow softening at least at Low,
@@ -398,6 +408,18 @@ func height(x: float, z: float) -> float:
 	var h := 4.0 * (1.0 - q)
 	h += 6.5 * exp(-((x - HILL.x) ** 2 + (z - HILL.y) ** 2) / (18.0 * 18.0))
 	h += 0.8 * smoothstep(1.0, 0.6, q) * _hump_noise.get_noise_2d(x, z)
+	# The lagoon: in its sector the seabed holds at a shallow sand floor
+	# out to a sandbar whose crest just breaks the surface.
+	var off := absf(angle_difference(bearing, deg_to_rad(LAGOON_BEARING)))
+	var inside := smoothstep(deg_to_rad(LAGOON_HALF + 8.0), deg_to_rad(LAGOON_HALF), off)
+	if inside > 0.0:
+		var r := sqrt(x * x + z * z)
+		var lagoon := h
+		if r < SANDBAR:
+			lagoon = maxf(h, LAGOON_FLOOR + 0.15 * _hump_noise.get_noise_2d(x * 2.0, z * 2.0))
+		var bar := 0.3 - pow((r - SANDBAR) / 7.0, 2.0) * 1.4
+		lagoon = maxf(lagoon, bar)
+		h = lerpf(h, lagoon, inside)
 	return maxf(h, FLOOR)
 
 
@@ -414,12 +436,14 @@ func _grassiness(x: float, z: float, h: float) -> float:
 
 ## Where along a bearing the ground falls through `level`.
 func coast(bearing: float, level: float) -> float:
+	# Out from the middle to the first fall below `level`: the island's
+	# own shore, not the lagoon's sandbar beyond it.
 	var d := Vector2(cos(bearing), sin(bearing))
-	var r := EXTENT
-	while r > 0.0 and height(d.x * r, d.y * r) < level:
-		r -= 1.0
-	var lo := r
-	var hi := r + 1.0
+	var r := 4.0
+	while r < EXTENT and height(d.x * r, d.y * r) >= level:
+		r += 1.0
+	var lo := r - 1.0
+	var hi := r
 	for i in 14:
 		var mid := (lo + hi) * 0.5
 		if height(d.x * mid, d.y * mid) >= level:
@@ -804,6 +828,7 @@ func _build_dock() -> void:
 		_solid(Vector3(DOCK_W, 0.06, plank), Vector3(DOCK_X, DOCK_Y, z + plank * 0.5), wood, null, false)
 		z += plank + 0.03
 	var length := _dock_z1 - _dock_z0
+	piers.append([Vector3(DOCK_X, 0, coast(PI * 0.5, -0.5) - 2.0), Vector3(DOCK_X, 0, _dock_z1), DOCK_W * 0.5])
 	var body := StaticBody3D.new()
 	body.position = Vector3(DOCK_X, DOCK_Y, (_dock_z0 + _dock_z1) * 0.5)
 	var shape := BoxShape3D.new()
@@ -838,6 +863,7 @@ func _build_trees() -> void:
 	var works := SaltWorks.centre(self)
 	var colours := ColourWorks.centre(self)
 	var balloon := BalloonWorks.centre(self)
+	var lagoon := LagoonWorks.centre(self)
 	var tries := 0
 	while placed.size() < 16 and tries < 600:
 		tries += 1
@@ -848,7 +874,7 @@ func _build_trees() -> void:
 		if p.distance_to(Vector2(CABIN.x, CABIN.z)) < 7.0 or absf(p.x - DOCK_X) < 4.0 and p.y > 10.0:
 			continue
 		if p.distance_to(Vector2(works.x, works.z)) < 20.0 or p.distance_to(Vector2(colours.x, colours.z)) < 18.0 \
-				or p.distance_to(Vector2(balloon.x, balloon.z)) < 16.0:
+				or p.distance_to(Vector2(balloon.x, balloon.z)) < 16.0 or p.distance_to(Vector2(lagoon.x, lagoon.z)) < 14.0:
 			continue
 		var crowded := false
 		for q: Vector2 in placed:
@@ -1057,23 +1083,52 @@ func _build_bounds() -> void:
 		var a := TAU * s / segments
 		var r := coast(a, -0.5)
 		points.append(Vector3(cos(a) * r, 0.0, sin(a) * r))
-	var hw := DOCK_W * 0.5
-	var gap: Array[Vector3] = []          # the ring's ends either side of the dock
+	var gaps: Array = []                  # per pier, the ring's ends either side of it
+	for pier in piers:
+		gaps.append([])
 	for s in segments:
 		var a := points[s]
 		var b := points[(s + 1) % segments]
-		if a.z > 0.0 and maxf(a.x, b.x) > DOCK_X - hw - 0.3 and minf(a.x, b.x) < DOCK_X + hw + 0.3:
-			if gap.is_empty():
-				gap = [a, b]
-			gap[1] = b
+		var crossed := -1
+		for i in piers.size():
+			if _crosses(piers[i], a, b):
+				crossed = i
+		if crossed < 0:
+			_wall(body, a, b)
 			continue
-		_wall(body, a, b)
-	# The ring's ends joined to the dock's sides, which run out to its end.
-	for end: Vector3 in gap:
-		var x := DOCK_X - hw if end.x < DOCK_X else DOCK_X + hw
-		_wall(body, end, Vector3(x, 0, end.z))
-		_wall(body, Vector3(x, 0, end.z), Vector3(x, 0, _dock_z1))
-	_wall(body, Vector3(DOCK_X - hw, 0, _dock_z1), Vector3(DOCK_X + hw, 0, _dock_z1))
+		var gap: Array = gaps[crossed]
+		if gap.is_empty():
+			gap.append_array([a, b])
+		gap[1] = b
+	# Each gap's ends joined to its pier's sides, which run out to its end.
+	for i in piers.size():
+		var pier: Array = piers[i]
+		var from: Vector3 = pier[0]
+		var to: Vector3 = pier[1]
+		var half: float = pier[2]
+		var along := (to - from).normalized()
+		var side := Vector3(along.z, 0.0, -along.x)
+		for end: Vector3 in gaps[i]:
+			var s := signf((end - from).dot(side))
+			var at := from + along * (end - from).dot(along) + side * s * half
+			_wall(body, end, at)
+			_wall(body, at, to + side * s * half)
+		_wall(body, to - side * half, to + side * half)
+
+
+## Whether the ring's segment a-b crosses a pier's walkway.
+static func _crosses(pier: Array, a: Vector3, b: Vector3) -> bool:
+	var from: Vector3 = pier[0]
+	var to: Vector3 = pier[1]
+	var half: float = pier[2]
+	var along := (to - from).normalized()
+	var side := Vector3(along.z, 0.0, -along.x)
+	for t: float in [0.0, 0.25, 0.5, 0.75, 1.0]:
+		var p := a.lerp(b, t) - from
+		var u := p.dot(along)
+		if absf(p.dot(side)) < half + 0.3 and u > -2.0 and u < (to - from).length():
+			return true
+	return false
 
 
 func _wall(body: StaticBody3D, a: Vector3, b: Vector3) -> void:
