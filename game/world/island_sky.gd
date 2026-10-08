@@ -59,6 +59,8 @@ var moonlight: DirectionalLight3D
 var sky := Sky.new()
 var daylight := 1.0                    # 1 by day, 0 at night, through twilight
 var sun_height := 38.0                  # degrees
+var moon_height := 25.0                 # degrees
+var moon_lit := 1.0                     # the lit share of the moon's disc
 var haze_colour := Color.WHITE
 
 var _physical := PhysicalSkyMaterial.new()
@@ -300,6 +302,8 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 	_moon_dir = direction(moon_height, moon_bearing)
 	_moon_sun.look_at_from_position(Vector3.ZERO, -to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD)
 	var lit := (1.0 - to_sun.dot(_moon_dir)) * 0.5
+	self.moon_height = moon_height
+	moon_lit = lit
 	_light(moonlight, _moon_dir, moon_height, MOONLIGHT * lit, MOON_COLOUR)
 	# While the sun is up the moon's light is lost in it; its shadows would
 	# only cost.
@@ -330,6 +334,11 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 		m.albedo_color = Color(1, 1, 1, stars)
 	_stars_real.visible = not story and stars > 0.0
 	_stars_story.visible = story and stars > 0.0
+
+
+## Toward the moon, from anywhere on the island.
+func moon_direction() -> Vector3:
+	return _moon_dir
 
 
 ## The storybook colours at a sun height, blended between the keys.

@@ -127,6 +127,7 @@ func _ready() -> void:
 	add_child(ColourWorks.new(self))
 	add_child(BalloonWorks.new(self))
 	add_child(LagoonWorks.new(self))
+	add_child(SkyWorks.new(self))
 	piers.append(LagoonWorks.pier(self))
 	_build_bounds()
 	_lighten()
@@ -285,7 +286,7 @@ func _apply() -> void:
 		var line: StandardMaterial3D = s.get("line")
 		if line != null:
 			line.grow_amount = width
-			line.albedo_color = (s["flat"] as Color).darkened(0.55)
+			line.albedo_color = s.get("line_colour", (s["flat"] as Color).darkened(0.55))
 			m.next_pass = line if lines else null
 
 	_paint_sea(flat)
@@ -890,7 +891,8 @@ func _build_trees() -> void:
 		if p.distance_to(Vector2(CABIN.x, CABIN.z)) < 7.0 or absf(p.x - DOCK_X) < 4.0 and p.y > 10.0:
 			continue
 		if p.distance_to(Vector2(works.x, works.z)) < 20.0 or p.distance_to(Vector2(colours.x, colours.z)) < 18.0 \
-				or p.distance_to(Vector2(balloon.x, balloon.z)) < 16.0 or p.distance_to(Vector2(lagoon.x, lagoon.z)) < 14.0:
+				or p.distance_to(Vector2(balloon.x, balloon.z)) < 16.0 or p.distance_to(Vector2(lagoon.x, lagoon.z)) < 14.0 \
+				or p.distance_to(HILL) < 17.0:
 			continue
 		var crowded := false
 		for q: Vector2 in placed:

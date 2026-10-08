@@ -163,6 +163,28 @@ static func _level(p: AudioStreamPlayer3D, level: float, top_db := 0.0) -> void:
 	p.volume_db = linear_to_db(clampf(level, 0.0001, 1.0)) + top_db
 
 
+## A soft cloud puff picture: a round falloff roughened by noise, its
+## alpha ragged at the edge, paler at the top and greyer underneath.
+static func cloud_puff() -> ImageTexture:
+	var n := 128
+	var noise := FastNoiseLite.new()
+	noise.seed = 31
+	noise.frequency = 0.045
+	noise.fractal_octaves = 4
+	var img := Image.create(n, n, true, Image.FORMAT_RGBA8)
+	for y in n:
+		for x in n:
+			var u := (x + 0.5) / n * 2.0 - 1.0
+			var v := (y + 0.5) / n * 2.0 - 1.0
+			var round := clampf(1.0 - (u * u + v * v), 0.0, 1.0)
+			var rough := 0.5 + 0.5 * noise.get_noise_2d(x, y)
+			var alpha := clampf((round * (0.45 + 0.9 * rough) - 0.18) * 1.6, 0.0, 1.0)
+			var shade := lerpf(1.0, 0.78, (v + 1.0) * 0.5)
+			img.set_pixel(x, y, Color(shade, shade, shade * 1.02, alpha * 0.85))
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
 ## ---- the circuit -----------------------------------------------------------
 
 const NO_BASE := -1000.0

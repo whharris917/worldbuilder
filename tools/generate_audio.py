@@ -54,6 +54,7 @@ Writes to game/audio/:
   flare_loop.wav  6 s seamless roar of a gas flare, flickering
   ratchet.wav     a sequencer drum's pawl dropping into its ratchet
   whistle.wav     a three-chamber steam whistle's chord
+  crackle.wav     lightning caught by a rod: a snap and dying sparks
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -1429,6 +1430,33 @@ def make_colour_works() -> None:
     make_whistle()
 
 
+def make_crackle() -> None:
+    """Lightning caught by a rod: a sharp snap, then a fizzing crackle of
+    sparks dying away over half a second; the energy kept between 1 and
+    6 kHz, as sparks sound."""
+    r = random.Random(20261015)
+    dur = 0.9
+    n = int(SR * dur)
+    white = _noise_r(r, n + SR)
+    fizz = _band(white, 1000.0, 6000.0)[SR:]
+    out = [0.0] * n
+    for i in range(n):
+        t = i / SR
+        out[i] = fizz[i] * 0.5 * math.exp(-t / 0.25)
+    # Sparks: short bright clicks, thinning out as the charge settles.
+    for _ in range(60):
+        at = int(SR * r.random() ** 2 * 0.7)
+        amp = r.uniform(0.3, 1.0) * math.exp(-at / SR / 0.3)
+        f = r.uniform(1500.0, 4500.0)
+        for j in range(int(SR * 0.006)):
+            if at + j < n:
+                out[at + j] += amp * math.exp(-j / (SR * 0.0015)) * math.sin(2.0 * math.pi * f * j / SR)
+    # The snap.
+    for j in range(int(SR * 0.02)):
+        out[j] += 1.5 * math.exp(-j / (SR * 0.003)) * (r.random() * 2.0 - 1.0)
+    write_wav(OUT_DIR / "crackle.wav", [out], normalize_to=0.6)
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -1459,6 +1487,7 @@ def main() -> None:
     make_shell_drone()
     make_shell_light()
     make_colour_works()
+    make_crackle()
     print("done")
 
 
