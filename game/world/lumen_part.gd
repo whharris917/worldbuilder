@@ -25,6 +25,15 @@ extends StaticBody3D
 ##
 ## Looking at a part shows its name and what it does (`describe`, a
 ## hover label).
+##
+## Its look, optional (`look`): "post" false leaves out its own post and
+## cradle, for a part held by some other mounting; "design" cuts its
+## crystal another way (point, the six-sided double point; octa, orb,
+## cluster, gem, obelisk, prism, tablet), and an on-delay given a design
+## is a crystal rather than an hourglass; "setting" holds the crystal
+## (prongs, cage, cup, coil, collar, hook) in "metal"; "lamp" is the
+## lantern's body (box, or drum: a round drum with a round shutter);
+## "colour" is its light's colour in place of its kind's.
 
 enum Kind { LANTERN, AND, OR, NOT, LATCH, TON, TOF, RISE, FALL, RADIOMETER }
 
@@ -62,15 +71,17 @@ var _sand_top: MeshInstance3D
 var _sand_bottom: MeshInstance3D
 var _label: Label3D
 var _head := Node3D.new()
+var _look := {}
 
 
 ## A part of `kind` at `at` (the head's centre), its post down to
 ## `ground`. `wood` and `brass` are the post's and fittings' materials.
 func _init(part_kind: Kind, part_title: String, at: Vector3, ground: float,
-		wood: Material, brass: Material, part_delay := 0.0) -> void:
+		wood: Material, brass: Material, part_delay := 0.0, look := {}) -> void:
 	kind = part_kind
 	title = part_title
 	delay = part_delay
+	_look = look
 	# An off-delay starts long since run out, dark until its beam first
 	# lights.
 	if kind == Kind.TOF:
@@ -79,50 +90,32 @@ func _init(part_kind: Kind, part_title: String, at: Vector3, ground: float,
 	position = at
 	set_meta("view", self)
 	add_child(_head)
-	var post := CylinderMesh.new()
-	post.top_radius = 0.045
-	post.bottom_radius = 0.06
-	post.height = maxf(at.y - ground - 0.12, 0.1)
-	post.material = wood
-	var post_view := MeshInstance3D.new()
-	post_view.mesh = post
-	post_view.position.y = -0.12 - post.height * 0.5
-	add_child(post_view)
-	var cradle := CylinderMesh.new()
-	cradle.top_radius = 0.09
-	cradle.bottom_radius = 0.06
-	cradle.height = 0.06
-	cradle.material = brass
-	var cradle_view := MeshInstance3D.new()
-	cradle_view.mesh = cradle
-	cradle_view.position.y = -0.12
-	add_child(cradle_view)
+	if look.get("post", true):
+		_build_post(at.y - ground, wood, brass)
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = Vector3(0.36, 0.42, 0.36)
 	shape.shape = box
 	add_child(shape)
-	var post_shape := CollisionShape3D.new()
-	var rod := CylinderShape3D.new()
-	rod.radius = 0.06
-	rod.height = post.height
-	post_shape.shape = rod
-	post_shape.position.y = post_view.position.y
-	add_child(post_shape)
 	_glow = StandardMaterial3D.new()
-	_glow.albedo_color = (COLOURS[kind] as Color).darkened(0.35)
+	_glow.albedo_color = colour().darkened(0.35)
 	_glow.roughness = 0.15
 	_glow.emission_enabled = true
-	_glow.emission = COLOURS[kind]
+	_glow.emission = colour()
+	var metal: Material = look.get("metal", brass)
 	match kind:
 		Kind.LANTERN:
-			_build_lantern(brass)
-		Kind.TON:
+			if look.get("lamp", "box") == "drum":
+				_build_drum(metal)
+			else:
+				_build_lantern(brass)
+		Kind.TON when not look.has("design"):
 			_build_hourglass(brass)
 		Kind.RADIOMETER:
 			_build_radiometer()
 		_:
-			_build_crystal()
+			_build_crystal(look.get("design", "point"))
+			_build_setting(look.get("setting", ""), metal)
 	_label = Label3D.new()
 	_label.text = describe()
 	_label.font_size = 26
@@ -137,8 +130,38 @@ func _init(part_kind: Kind, part_title: String, at: Vector3, ground: float,
 	add_child(_label)
 
 
+## Its own wooden post down `drop` metres to the ground, a brass cradle
+## under the head.
+func _build_post(drop: float, wood: Material, brass: Material) -> void:
+	var post := CylinderMesh.new()
+	post.top_radius = 0.045
+	post.bottom_radius = 0.06
+	post.height = maxf(drop - 0.12, 0.1)
+	post.material = wood
+	var post_view := MeshInstance3D.new()
+	post_view.mesh = post
+	post_view.position.y = -0.12 - post.height * 0.5
+	add_child(post_view)
+	var cradle := CylinderMesh.new()
+	cradle.top_radius = 0.09
+	cradle.bottom_radius = 0.06
+	cradle.height = 0.06
+	cradle.material = brass
+	var cradle_view := MeshInstance3D.new()
+	cradle_view.mesh = cradle
+	cradle_view.position.y = -0.12
+	add_child(cradle_view)
+	var post_shape := CollisionShape3D.new()
+	var rod := CylinderShape3D.new()
+	rod.radius = 0.06
+	rod.height = post.height
+	post_shape.shape = rod
+	post_shape.position.y = post_view.position.y
+	add_child(post_shape)
+
+
 func colour() -> Color:
-	return COLOURS[kind]
+	return _look.get("colour", COLOURS[kind])
 
 
 ## Where beams leave and arrive: the head's centre.
@@ -233,9 +256,10 @@ func _process(delta: float) -> void:
 			_shutter.rotation.x = lerp_angle(_shutter.rotation.x, -1.4 if out else 0.0, 1.0 - exp(-10.0 * delta))
 			_glow.emission_energy_multiplier = 3.0 if out else 0.0
 		Kind.TON:
-			var run := _acc / maxf(delay, 0.01)
-			_sand_top.scale = Vector3.ONE * maxf(1.0 - run, 0.01)
-			_sand_bottom.scale = Vector3.ONE * maxf(run, 0.01)
+			if _sand_top != null:
+				var run := _acc / maxf(delay, 0.01)
+				_sand_top.scale = Vector3.ONE * maxf(1.0 - run, 0.01)
+				_sand_bottom.scale = Vector3.ONE * maxf(run, 0.01)
 			_glow.emission_energy_multiplier = 2.5 if out else 0.1
 		Kind.TOF:
 			var after := 1.0 if (out and _acc == 0.0) else clampf(1.0 - _acc / maxf(delay, 0.01), 0.0, 1.0)
@@ -279,9 +303,101 @@ func _build_lantern(brass: Material) -> void:
 	_shutter.add_child(flap)
 
 
-## A crystal: a six-sided double point, its tip up or down for an edge
-## trigger; a latch wears a brass ring.
-func _build_crystal() -> void:
+## A crystal cut as `design`. The point is a six-sided double point, its
+## tip up or down for an edge trigger, a latch's wearing a brass ring.
+func _build_crystal(design: String) -> void:
+	match design:
+		"octa":
+			var m := SphereMesh.new()
+			m.radial_segments = 4
+			m.rings = 2
+			m.radius = 0.1
+			m.height = 0.3
+			m.material = _glow
+			_add(m, Vector3.ZERO).rotation.y = PI * 0.25
+			return
+		"orb":
+			var m := SphereMesh.new()
+			m.radial_segments = 12
+			m.rings = 6
+			m.radius = 0.085
+			m.height = 0.17
+			m.material = _glow
+			_add(m, Vector3.ZERO)
+			return
+		"cluster":
+			for k in 5:
+				var c := CylinderMesh.new()
+				c.radial_segments = 6
+				c.rings = 1
+				c.top_radius = 0.0
+				c.bottom_radius = 0.04 if k > 0 else 0.05
+				c.height = 0.17 if k > 0 else 0.26
+				c.material = _glow
+				var lean := Basis.IDENTITY
+				if k > 0:
+					var a := TAU * k / 4.0
+					lean = Basis(Vector3(cos(a), 0, sin(a)).cross(Vector3.UP).normalized(), -0.55)
+				var view := _add(c, Vector3.ZERO)
+				view.basis = lean
+				view.position = lean * Vector3(0, c.height * 0.5 - 0.06, 0)
+			return
+		"gem":
+			var crown := CylinderMesh.new()
+			crown.radial_segments = 8
+			crown.rings = 1
+			crown.top_radius = 0.06
+			crown.bottom_radius = 0.1
+			crown.height = 0.05
+			crown.material = _glow
+			_add(crown, Vector3(0, 0.025, 0))
+			var pavilion := CylinderMesh.new()
+			pavilion.radial_segments = 8
+			pavilion.rings = 1
+			pavilion.top_radius = 0.1
+			pavilion.bottom_radius = 0.0
+			pavilion.height = 0.11
+			pavilion.material = _glow
+			_add(pavilion, Vector3(0, -0.055, 0))
+			return
+		"obelisk":
+			var shaft := CylinderMesh.new()
+			shaft.radial_segments = 4
+			shaft.rings = 1
+			shaft.top_radius = 0.04
+			shaft.bottom_radius = 0.055
+			shaft.height = 0.24
+			shaft.material = _glow
+			_add(shaft, Vector3(0, -0.02, 0)).rotation.y = PI * 0.25
+			var tip := CylinderMesh.new()
+			tip.radial_segments = 4
+			tip.rings = 1
+			tip.top_radius = 0.0
+			tip.bottom_radius = 0.04
+			tip.height = 0.07
+			tip.material = _glow
+			_add(tip, Vector3(0, 0.135, 0)).rotation.y = PI * 0.25
+			return
+		"prism":
+			var m := CylinderMesh.new()
+			m.radial_segments = 3
+			m.rings = 1
+			m.top_radius = 0.075
+			m.bottom_radius = 0.075
+			m.height = 0.22
+			m.material = _glow
+			_add(m, Vector3.ZERO)
+			return
+		"tablet":
+			var m := CylinderMesh.new()
+			m.radial_segments = 6
+			m.rings = 1
+			m.top_radius = 0.11
+			m.bottom_radius = 0.11
+			m.height = 0.035
+			m.material = _glow
+			_add(m, Vector3.ZERO).rotation.x = PI * 0.5
+			return
 	var tall := 0.2
 	for up: float in [1.0, -1.0]:
 		var half := CylinderMesh.new()
@@ -304,6 +420,130 @@ func _build_crystal() -> void:
 		brass.roughness = 0.35
 		ring.material = brass
 		_add(ring, Vector3.ZERO)
+
+
+## What holds a crystal, in `metal`: prongs (four claws from below),
+## cage (two crossed rings round it), cup (a cup under it), coil (wire
+## wound round its lower half), collar (a band round its middle), hook (a
+## loop over it to hang by).
+func _build_setting(setting: String, metal: Material) -> void:
+	match setting:
+		"prongs":
+			var foot := CylinderMesh.new()
+			foot.top_radius = 0.03
+			foot.bottom_radius = 0.05
+			foot.height = 0.04
+			foot.material = metal
+			_add(foot, Vector3(0, -0.17, 0))
+			for k in 4:
+				var a := TAU * k / 4.0 + PI * 0.25
+				var claw := CylinderMesh.new()
+				claw.top_radius = 0.008
+				claw.bottom_radius = 0.012
+				claw.height = 0.16
+				claw.radial_segments = 6
+				claw.material = metal
+				var out_dir := Vector3(cos(a), 0, sin(a))
+				var view := _add(claw, out_dir * 0.05 + Vector3(0, -0.09, 0))
+				view.basis = Basis(out_dir.cross(Vector3.UP).normalized(), -0.45)
+		"cage":
+			for k in 2:
+				var ring := TorusMesh.new()
+				ring.inner_radius = 0.125
+				ring.outer_radius = 0.14
+				ring.rings = 24
+				ring.ring_segments = 6
+				ring.material = metal
+				var view := _add(ring, Vector3.ZERO)
+				view.rotation = Vector3(PI * 0.5, PI * 0.5 * k, 0)
+			var cap := SphereMesh.new()
+			cap.radius = 0.025
+			cap.height = 0.05
+			cap.material = metal
+			_add(cap, Vector3(0, 0.14, 0))
+			_add(cap, Vector3(0, -0.14, 0))
+		"cup":
+			var cup := CylinderMesh.new()
+			cup.top_radius = 0.085
+			cup.bottom_radius = 0.045
+			cup.height = 0.07
+			cup.material = metal
+			_add(cup, Vector3(0, -0.1, 0))
+			var stem := CylinderMesh.new()
+			stem.top_radius = 0.015
+			stem.bottom_radius = 0.03
+			stem.height = 0.06
+			stem.material = metal
+			_add(stem, Vector3(0, -0.165, 0))
+		"coil":
+			for k in 4:
+				var turn := TorusMesh.new()
+				turn.inner_radius = 0.085 - k * 0.008
+				turn.outer_radius = 0.097 - k * 0.008
+				turn.rings = 20
+				turn.ring_segments = 5
+				turn.material = metal
+				_add(turn, Vector3(0, -0.11 + k * 0.03, 0)).rotation.z = 0.08
+		"collar":
+			var band := CylinderMesh.new()
+			band.top_radius = 0.105
+			band.bottom_radius = 0.105
+			band.height = 0.035
+			band.radial_segments = 12
+			band.material = metal
+			_add(band, Vector3.ZERO)
+		"hook":
+			var cap := CylinderMesh.new()
+			cap.top_radius = 0.02
+			cap.bottom_radius = 0.06
+			cap.height = 0.05
+			cap.material = metal
+			_add(cap, Vector3(0, 0.15, 0))
+			var loop := TorusMesh.new()
+			loop.inner_radius = 0.022
+			loop.outer_radius = 0.034
+			loop.rings = 12
+			loop.ring_segments = 5
+			loop.material = metal
+			_add(loop, Vector3(0, 0.205, 0)).rotation.x = PI * 0.5
+
+
+## A drum lantern: a round metal drum lying on its side, a lens in its
+## face, a round shutter hinged over it, a little dome on top.
+func _build_drum(metal: Material) -> void:
+	var drum := CylinderMesh.new()
+	drum.top_radius = 0.11
+	drum.bottom_radius = 0.11
+	drum.height = 0.18
+	drum.radial_segments = 16
+	drum.material = metal
+	_add(drum, Vector3.ZERO).rotation.x = PI * 0.5
+	var lens := CylinderMesh.new()
+	lens.top_radius = 0.075
+	lens.bottom_radius = 0.075
+	lens.height = 0.02
+	lens.material = _glow
+	_add(lens, Vector3(0, 0, -0.095)).rotation.x = PI * 0.5
+	var dome := SphereMesh.new()
+	dome.radius = 0.05
+	dome.height = 0.05
+	dome.is_hemisphere = true
+	dome.material = metal
+	_add(dome, Vector3(0, 0.1, 0))
+	_shutter = Node3D.new()
+	_shutter.set_meta(StaticMerge.MOVES, true)
+	_shutter.position = Vector3(0, 0.08, -0.11)
+	_head.add_child(_shutter)
+	var flap := MeshInstance3D.new()
+	var flap_mesh := CylinderMesh.new()
+	flap_mesh.top_radius = 0.085
+	flap_mesh.bottom_radius = 0.085
+	flap_mesh.height = 0.008
+	flap_mesh.material = metal
+	flap.mesh = flap_mesh
+	flap.rotation.x = PI * 0.5
+	flap.position = Vector3(0, -0.08, 0)
+	_shutter.add_child(flap)
 
 
 ## An hourglass in a brass frame: the sand in its upper and lower bulbs

@@ -13,6 +13,16 @@ const VIEWS := [
 	["beach", 60.0, Vector3(-28.0, 1.8, 32.0), Vector3(4.0, 2.0, 20.0), "cabin"],
 	["clouds", 70.0, Vector3(30.0, 1.7, 60.0), Vector3(-200.0, 260.0, -700.0), "ground"],
 	["clouds_sea", 70.0, Vector3(4.0, 1.7, 150.0), Vector3(200.0, 200.0, 1500.0), "ground"],
+	["booth0", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth0"],
+	["booth1", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth1"],
+	["booth2", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth2"],
+	["booth3", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth3"],
+	["booth4", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth4"],
+	["booth5", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth5"],
+	["booth6", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth6"],
+	["booth7", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth7"],
+	["expo", 60.0, Vector3(-6.0, 7.0, -22.0), Vector3(14.0, 1.0, 0.0), "booth2"],
+	["expo_walk", 66.0, Vector3(-4.0, 1.6, -10.5), Vector3(20.0, 1.6, -3.0), "booth3"],
 	["island", 55.0, Vector3(60.0, 330.0, 420.0), Vector3(0.0, 0.0, -10.0), ""],
 	["meadow", 65.0, Vector3(30.0, 1.7, 60.0), Vector3(-40.0, 1.0, 0.0), "ground"],
 	["meadow_west", 65.0, Vector3(-60.0, 1.7, 90.0), Vector3(-90.0, 1.0, 20.0), "ground"],
@@ -120,7 +130,14 @@ func _run() -> void:
 		var eye: Vector3 = v[2]
 		var target: Vector3 = v[3]
 		if v.size() > 4 and v[4] != "":
-			if v[4] == "ground":
+			if str(v[4]).begins_with("booth"):
+				# Given in the exposition booth's own frame (x along the
+				# shore, z inland).
+				var expo := _world.find_children("*", "CrystalExpo", true, false)[0] as CrystalExpo
+				var booth: Node3D = expo.get("_booths")[int(str(v[4]).substr(5))]
+				eye = booth.to_global(eye)
+				target = booth.to_global(target)
+			elif v[4] == "ground":
 				# Heights given over the ground under the eye and the target.
 				eye.y += maxf(_world.height(eye.x, eye.z), 0.0)
 				target.y += maxf(_world.height(target.x, target.z), 0.0)

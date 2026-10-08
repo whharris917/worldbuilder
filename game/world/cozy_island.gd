@@ -76,6 +76,12 @@ const INLET_FROM := 10.0                # m from the bay's centre
 const INLET_TO := 47.0
 const INLET_HALF := 2.2
 const SPITS := [Vector3(-112.0, 183.0, 70.0), Vector3(-98.0, 194.0, 80.0)]   # bearing, start radius, length
+# The west beach between the balloon works and the colour works runs
+# wide: a flat of sand WIDE_BEACH metres deep before the land rises, for
+# the exposition (CrystalExpo).
+const WIDE_BEARING := 203.0
+const WIDE_HALF := 17.0                 # degrees either side, fading over 8 more
+const WIDE_BEACH := 30.0
 const FIRE_BEARING := 105.0            # degrees round from +x toward +z
 const LANTERNS := 5
 const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", "Outlines",
@@ -164,7 +170,7 @@ func _ready() -> void:
 	_build_campfire()
 	_build_lanterns()
 	_works.append_array([SaltWorks.new(self), ColourWorks.new(self), BalloonWorks.new(self),
-			LagoonWorks.new(self), SkyWorks.new(self)])
+			LagoonWorks.new(self), SkyWorks.new(self), CrystalExpo.new(self)])
 	for works in _works:
 		add_child(works)
 	var wharf := LagoonWorks.pier(self)
@@ -273,7 +279,7 @@ func _build_panels() -> void:
 
 	var isle := _panel.panel("Island")
 	_panel.switch(isle, "Works and machines", true, func(v: bool) -> void: _set_works(v))
-	_panel.note(isle, "All five works, their machines, beams, sounds and storms. Off, the island is left to itself: the beaches, the dunes and the bay, the cabin, the campfire and the lanterns.")
+	_panel.note(isle, "All the works and the exposition, their machines, beams and sounds. Off, the island is left to itself: the beaches, the dunes and the bay, the cabin, the campfire and the lanterns.")
 
 	var wx := _panel.panel("Weather")
 	_panel.slider(wx, "Clouds", 0.0, 1.0, 0.05, 0.4, func(v: float) -> void: clouds.amount = v)
@@ -483,7 +489,13 @@ func height(x: float, z: float) -> float:
 	var r := sqrt(x * x + z * z)
 	var s := shore - r                  # metres inland of the shore
 	var h := 5.5 * tanh(s / 55.0)
-	var inland := smoothstep(0.0, 40.0, s)
+	# The wide beach: a gentle rise of 4 cm a metre across the flat, then
+	# the land's usual rise behind it.
+	var wide := wide_weight(bearing)
+	if wide > 0.0 and s > 0.0:
+		var flat := 0.04 * minf(s, WIDE_BEACH) + 4.4 * tanh(maxf(s - WIDE_BEACH, 0.0) / 55.0)
+		h = lerpf(h, flat, wide)
+	var inland := smoothstep(WIDE_BEACH * wide, 40.0 + WIDE_BEACH * wide, s)
 	for hill: Vector4 in HILLS:
 		h += hill.z * exp(-((x - hill.x) ** 2 + (z - hill.y) ** 2) / (hill.w * hill.w))
 	h += inland * (2.2 * _roll_noise.get_noise_2d(x, z) + 0.7 * _hump_noise.get_noise_2d(x, z))
@@ -529,6 +541,12 @@ func shore_radius(bearing: float) -> float:
 	return R * (1.0 + 0.12 * _coast_noise.get_noise_2d(cos(bearing) * 1.3, sin(bearing) * 1.3)) * (1.0 + NORTH_OUT * north_weight(bearing))
 
 
+## How far into the wide west beach a bearing lies, 0 outside to 1 inside.
+static func wide_weight(bearing: float) -> float:
+	var off := absf(angle_difference(bearing, deg_to_rad(WIDE_BEARING)))
+	return smoothstep(deg_to_rad(WIDE_HALF + 8.0), deg_to_rad(WIDE_HALF), off)
+
+
 ## How far into the north lobe a bearing lies, 0 outside to 1 inside.
 static func north_weight(bearing: float) -> float:
 	var off := absf(angle_difference(bearing, deg_to_rad(NORTH_BEARING)))
@@ -560,6 +578,8 @@ func _grassiness(x: float, z: float, h: float) -> float:
 	var bearing := atan2(z, x)
 	var s := shore_radius(bearing) - sqrt(x * x + z * z)
 	var sandy := north_weight(bearing) * smoothstep(78.0, 64.0, s) * 6.0
+	# The wide beach is sand all across its flat.
+	sandy += wide_weight(bearing) * smoothstep(WIDE_BEACH + 4.0, WIDE_BEACH - 3.0, s) * 3.0
 	return h - 0.9 - 0.35 * _edge_noise.get_noise_2d(x, z) - sandy
 
 
