@@ -58,6 +58,18 @@ const LAGOON_BEARING := 30.0           # degrees round from +x toward +z
 const LAGOON_HALF := 18.0               # degrees either side, fading over 8 more
 const LAGOON_FLOOR := -1.1
 const SANDBAR := 122.0                  # the bar's crest, m from the centre
+# The north: a lobe of sand dunes reaching out to about 80 m, two sand
+# spits running on out to sea, and a sheltered round bay in the dunes
+# opening to the sea by one narrow inlet.
+const NORTH_BEARING := -90.0
+const NORTH_HALF := 20.0                # degrees either side, fading over 14 more
+const BAY := Vector2(10.0, -58.0)
+const BAY_R := 13.0
+const INLET_DIR := Vector2(0.6, -0.8)
+const INLET_FROM := 10.0                # m from the bay's centre
+const INLET_TO := 33.0
+const INLET_HALF := 2.2
+const SPITS := [Vector3(-112.0, 70.0, 56.0), Vector3(-98.0, 73.0, 60.0)]   # bearing, start radius, length
 const FIRE_BEARING := 105.0            # degrees round from +x toward +z
 const LANTERNS := 5
 const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", "Outlines",
@@ -85,6 +97,12 @@ var _foam_crisp: GradientTexture1D
 var _coast_noise := FastNoiseLite.new()
 var _hump_noise := FastNoiseLite.new()
 var _edge_noise := FastNoiseLite.new()
+var _dune_noise := FastNoiseLite.new()
+var _grid := PackedFloat32Array()       # the ground's heights on its grid, kept for the shorelines
+var _grid_n := 0
+var _works: Array[Node3D] = []
+var _works_gap: Array[CollisionShape3D] = []    # closes the shore where a works' pier was
+var _works_pier: Array[CollisionShape3D] = []   # a works' pier's side walls
 var _ground := [PackedVector3Array(), PackedVector3Array(), PackedVector3Array(), PackedVector3Array()]
 ## Walkways out over the water, as [shore point, far point, half width]:
 ## the invisible walls keeping the player on land open for each and run
@@ -113,6 +131,8 @@ func _ready() -> void:
 	_hump_noise.frequency = 0.04
 	_edge_noise.seed = 23
 	_edge_noise.frequency = 0.09
+	_dune_noise.seed = 61
+	_dune_noise.frequency = 0.05
 	_build_environment()
 	_build_ground()
 	_build_sea()
@@ -123,12 +143,15 @@ func _ready() -> void:
 	_build_rocks()
 	_build_campfire()
 	_build_lanterns()
-	add_child(SaltWorks.new(self))
-	add_child(ColourWorks.new(self))
-	add_child(BalloonWorks.new(self))
-	add_child(LagoonWorks.new(self))
-	add_child(SkyWorks.new(self))
-	piers.append(LagoonWorks.pier(self))
+	_works.append_array([SaltWorks.new(self), ColourWorks.new(self), BalloonWorks.new(self),
+			LagoonWorks.new(self), SkyWorks.new(self)])
+	for works in _works:
+		add_child(works)
+	var wharf := LagoonWorks.pier(self)
+	wharf.append(true)
+	piers.append(wharf)
+	_build_dune_grass()
+	add_child(InnerBay.new(self))
 	_build_bounds()
 	_lighten()
 	_build_panels()
@@ -221,6 +244,10 @@ func _build_panels() -> void:
 	_panel.note(steps, "Off, the engine's physical sky: the colour of air lit by the sun. On, its simpler sky drawn from a few chosen colours that change through sunset and dusk to night, with clouds made from noise; the moon larger with a crisp edge, and only the brightest stars, as sparkles.")
 	_panel.switch(steps, "Foam line", false, redraw)
 	_panel.note(steps, "Where the sea meets the beach, a crisp white band in place of a soft one. Both rise and fall with the swell.")
+
+	var isle := _panel.panel("Island")
+	_panel.switch(isle, "Works and machines", true, func(v: bool) -> void: _set_works(v))
+	_panel.note(isle, "All five works, their machines, beams, sounds and storms. Off, the island is left to itself: the beaches, the dunes and the bay, the cabin, the campfire and the lanterns.")
 
 	var light := _panel.panel("Sun and moon")
 	_panel.slider(light, "Sun height", -30.0, 85.0, 0.5, 38.0, redraw)
@@ -420,7 +447,8 @@ func _noise_bumps(seed_value: int, frequency: float, strength: float) -> NoiseTe
 ## low hummocks inland, and a flat seabed far out.
 func height(x: float, z: float) -> float:
 	var bearing := atan2(z, x)
-	var coast := R * (1.0 + 0.12 * _coast_noise.get_noise_2d(cos(bearing) * 1.3, sin(bearing) * 1.3))
+	var north := north_weight(bearing)
+	var coast := R * (1.0 + 0.12 * _coast_noise.get_noise_2d(cos(bearing) * 1.3, sin(bearing) * 1.3)) * (1.0 + 0.75 * north)
 	var q := sqrt(x * x + z * z) / coast
 	var h := 4.0 * (1.0 - q)
 	h += 6.5 * exp(-((x - HILL.x) ** 2 + (z - HILL.y) ** 2) / (18.0 * 18.0))
@@ -437,7 +465,49 @@ func height(x: float, z: float) -> float:
 		var bar := 0.3 - pow((r - SANDBAR) / 7.0, 2.0) * 1.4
 		lagoon = maxf(lagoon, bar)
 		h = lerpf(h, lagoon, inside)
+	if north > 0.0:
+		# Dunes: long ridges across the wind, highest between the old
+		# shore and the new one.
+		var ridge := 1.0 - absf(_dune_noise.get_noise_2d(x * 0.9, z * 2.2))
+		h += north * 3.2 * pow(ridge, 3.0) * smoothstep(0.5, 0.7, q) * smoothstep(1.0, 0.86, q)
+	# The spits: low ridges of sand running out to sea, their crests just
+	# above the water, sinking toward their tips.
+	for spit: Vector3 in SPITS:
+		var d := Vector2(cos(deg_to_rad(spit.x)), sin(deg_to_rad(spit.x)))
+		var p := Vector2(x, z) - d * spit.y
+		var t := p.dot(d) / spit.z
+		if t > -0.3 and t < 1.15:
+			var side := absf(p.dot(Vector2(-d.y, d.x)) - 4.0 * sin(clampf(t, 0.0, 1.0) * PI))
+			var crest := 0.45 - 0.75 * clampf(t, 0.0, 1.0) ** 2
+			h = maxf(h, crest - pow(side / 4.0, 2.0) * 1.3)
+	# The bay and its inlet, carved down through the dunes.
+	var db := Vector2(x, z).distance_to(BAY)
+	if db < BAY_R + 6.0:
+		var bed := -1.15 + 0.5 * (db / BAY_R) ** 2 + 0.08 * _hump_noise.get_noise_2d(x * 3.0, z * 3.0)
+		h = minf(h, lerpf(bed, h, smoothstep(BAY_R - 1.5, BAY_R + 4.0, db)))
+	var inlet := _inlet_distance(Vector2(x, z))
+	if inlet < INLET_HALF + 4.0:
+		h = minf(h, lerpf(-0.9, h, smoothstep(INLET_HALF, INLET_HALF + 3.5, inlet)))
 	return maxf(h, FLOOR)
+
+
+## How far into the north lobe a bearing lies, 0 outside to 1 inside.
+static func north_weight(bearing: float) -> float:
+	var off := absf(angle_difference(bearing, deg_to_rad(NORTH_BEARING)))
+	return smoothstep(deg_to_rad(NORTH_HALF + 14.0), deg_to_rad(NORTH_HALF), off)
+
+
+## Distance from a point to the inlet's middle line.
+static func _inlet_distance(p: Vector2) -> float:
+	var a := BAY + INLET_DIR.normalized() * INLET_FROM
+	var b := BAY + INLET_DIR.normalized() * INLET_TO
+	var t := clampf((p - a).dot(b - a) / (b - a).length_squared(), 0.0, 1.0)
+	return p.distance_to(a.lerp(b, t))
+
+
+## Whether a point lies in the bay or its inlet (calm water: no surf).
+static func in_bay(p: Vector2, margin: float) -> bool:
+	return p.distance_to(BAY) < BAY_R + margin or _inlet_distance(p) < INLET_HALF + margin
 
 
 func _normal(x: float, z: float) -> Vector3:
@@ -448,7 +518,10 @@ func _normal(x: float, z: float) -> Vector3:
 ## Above zero, grass; below, sand. The line wanders about a metre above
 ## the sea.
 func _grassiness(x: float, z: float, h: float) -> float:
-	return h - 0.9 - 0.35 * _edge_noise.get_noise_2d(x, z)
+	# The north's dunes are bare sand, the grass giving out where they begin.
+	var r := sqrt(x * x + z * z)
+	var sandy := north_weight(atan2(z, x)) * smoothstep(42.0, 52.0, r) * 6.0
+	return h - 0.9 - 0.35 * _edge_noise.get_noise_2d(x, z) - sandy
 
 
 ## Where along a bearing the ground falls through `level`.
@@ -480,6 +553,8 @@ func _build_ground() -> void:
 	for j in n:
 		for i in n:
 			heights[j * n + i] = height(-EXTENT + i * GRID, -EXTENT + j * GRID)
+	_grid = heights
+	_grid_n = n
 	var faces := PackedVector3Array()
 	for j in n - 1:
 		for i in n - 1:
@@ -596,6 +671,10 @@ func _build_sea() -> void:
 			var b := ring * segments + (s + 1) % segments
 			var c := a + segments
 			var d := b + segments
+			# The bay has its own calm, clear water; no sea under it.
+			var mid := (points[a] + points[d]) * 0.5
+			if Vector2(mid.x, mid.z).distance_to(BAY) < BAY_R + 1.5:
+				continue
 			index.append_array([a, b, c, b, d, c])
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
@@ -675,22 +754,30 @@ func _paint_sea(flat: bool) -> void:
 ## picture: soft, or crisp-edged in the flat look. It swells and sinks
 ## with a slow swell (`_process`).
 func _build_foam() -> void:
-	var segments := 256
+	# A short band across every stretch of the waterline (the height
+	# field's 0 contour), from half a metre up the sand to two and a half
+	# out, turned toward the water by the slope; none in the calm bay.
 	var points := PackedVector3Array()
 	var uvs := PackedVector2Array()
-	for s in segments + 1:
-		var a := TAU * s / segments
-		var r := coast(a, 0.0)
-		var d := Vector3(cos(a), 0.0, sin(a))
-		points.append(d * (r - 0.5) + Vector3.UP * 0.03)
-		points.append(d * (r + 2.5) + Vector3.UP * 0.03)
-		uvs.append(Vector2(0.0, 0.0))
-		uvs.append(Vector2(1.0, 0.0))
-	var index := PackedInt32Array()
-	for s in segments:
-		var a := s * 2
-		index.append_array(_upward_index(points, [a, a + 1, a + 2]))
-		index.append_array(_upward_index(points, [a + 1, a + 3, a + 2]))
+	for seg: Array in contour(0.0):
+		var a: Vector2 = seg[0]
+		var b: Vector2 = seg[1]
+		var mid := (a + b) * 0.5
+		if in_bay(mid, 2.0):
+			continue
+		var e := 0.5
+		var down := Vector2(height(mid.x - e, mid.y) - height(mid.x + e, mid.y), height(mid.x, mid.y - e) - height(mid.x, mid.y + e)).normalized()
+		var quad := [Vector3(a.x - down.x * 0.5, 0.03, a.y - down.y * 0.5), Vector3(b.x - down.x * 0.5, 0.03, b.y - down.y * 0.5),
+				Vector3(b.x + down.x * 2.5, 0.03, b.y + down.y * 2.5), Vector3(a.x + down.x * 2.5, 0.03, a.y + down.y * 2.5)]
+		var quv := [0.0, 0.0, 1.0, 1.0]
+		for tri: Array in [[0, 1, 2], [0, 2, 3]]:
+			var p0: Vector3 = quad[tri[0]]
+			var p1: Vector3 = quad[tri[1]]
+			var p2: Vector3 = quad[tri[2]]
+			var order: Array = tri if (p2 - p0).cross(p1 - p0).y >= 0.0 else [tri[0], tri[2], tri[1]]
+			for k: int in order:
+				points.append(quad[k])
+				uvs.append(Vector2(quv[k], 0.0))
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = points
@@ -699,7 +786,6 @@ func _build_foam() -> void:
 	normals.resize(points.size())
 	normals.fill(Vector3.UP)
 	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_INDEX] = index
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	_foam_soft = _foam_band(Gradient.GRADIENT_INTERPOLATE_LINEAR,
@@ -747,7 +833,8 @@ func _process(delta: float) -> void:
 	# Ripples drift with the breeze; the foam swells over ten seconds.
 	_sea_mat.uv1_offset = Vector3(_clock * 0.012, _clock * 0.007, 0.0)
 	var swell := sin(_clock * TAU / 10.0)
-	_foam.scale = Vector3(1.0 + 0.012 * swell, 1.0, 1.0 + 0.012 * swell)
+	# The swash: the band's picture slid up and down the beach.
+	_foam_mat.uv1_offset = Vector3(0.06 * swell, 0.0, 0.0)
 	_foam_mat.albedo_color.a = 0.85 + 0.15 * swell
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:
@@ -1092,61 +1179,186 @@ func _boulder(at: Vector3, size: float, seed_value: int, mat: Material, lumps: F
 
 ## Invisible walls where the sea is knee-deep, open where the dock leaves
 ## the shore, and along the dock's sides and end.
+## The walls that keep the player on land: a fence along the line where
+## the sea is half a metre deep (the height field's -0.5 contour, cell by
+## cell, so it follows spits and inlets exactly), open where a pier,
+## dock or bridge leaves the land, whose sides it runs along instead. A
+## pier is [shore point, far point, half width, belongs to a works,
+## open at the far end].
 func _build_bounds() -> void:
 	var body := StaticBody3D.new()
 	add_child(body)
-	var segments := 96
-	var points: Array[Vector3] = []
-	for s in segments:
-		var a := TAU * s / segments
-		var r := coast(a, -0.5)
-		points.append(Vector3(cos(a) * r, 0.0, sin(a) * r))
-	var gaps: Array = []                  # per pier, the ring's ends either side of it
-	for pier in piers:
-		gaps.append([])
-	for s in segments:
-		var a := points[s]
-		var b := points[(s + 1) % segments]
+	var faces := PackedVector3Array()
+	var gap_faces := PackedVector3Array()
+	for seg: Array in contour(-0.5):
+		var a: Vector2 = seg[0]
+		var b: Vector2 = seg[1]
+		var mid := (a + b) * 0.5
 		var crossed := -1
 		for i in piers.size():
-			if _crosses(piers[i], a, b):
+			if _on_pier(piers[i], mid):
 				crossed = i
-		if crossed < 0:
-			_wall(body, a, b)
+		var quad := [Vector3(a.x, -6.0, a.y), Vector3(b.x, -6.0, b.y), Vector3(b.x, 6.0, b.y), Vector3(a.x, 6.0, a.y)]
+		var into := faces
+		if crossed >= 0:
+			if not _pier_flag(piers[crossed], 3):
+				continue
+			into = gap_faces
+		for k: int in [0, 1, 2, 0, 2, 3]:
+			into.append(quad[k])
+	for list: Array in [[faces, false], [gap_faces, true]]:
+		var f: PackedVector3Array = list[0]
+		if f.is_empty():
 			continue
-		var gap: Array = gaps[crossed]
-		if gap.is_empty():
-			gap.append_array([a, b])
-		gap[1] = b
-	# Each gap's ends joined to its pier's sides, which run out to its end.
-	for i in piers.size():
-		var pier: Array = piers[i]
+		var shape := ConcavePolygonShape3D.new()
+		shape.backface_collision = true
+		shape.set_faces(f)
+		var c := CollisionShape3D.new()
+		c.shape = shape
+		body.add_child(c)
+		if list[1]:
+			c.disabled = true
+			_works_gap.append(c)
+	# Each pier's sides, and its far end unless open.
+	for pier: Array in piers:
 		var from: Vector3 = pier[0]
 		var to: Vector3 = pier[1]
 		var half: float = pier[2]
 		var along := (to - from).normalized()
 		var side := Vector3(along.z, 0.0, -along.x)
-		for end: Vector3 in gaps[i]:
-			var s := signf((end - from).dot(side))
-			var at := from + along * (end - from).dot(along) + side * s * half
-			_wall(body, end, at)
-			_wall(body, at, to + side * s * half)
-		_wall(body, to - side * half, to + side * half)
+		var start := from - along * 2.0
+		var before := body.get_child_count()
+		for s in [-1.0, 1.0]:
+			_wall(body, start + side * s * half, to + side * s * half)
+		if not _pier_flag(pier, 4):
+			_wall(body, to - side * half, to + side * half)
+		if _pier_flag(pier, 3):
+			for k in range(before, body.get_child_count()):
+				_works_pier.append(body.get_child(k) as CollisionShape3D)
 
 
-## Whether the ring's segment a-b crosses a pier's walkway.
-static func _crosses(pier: Array, a: Vector3, b: Vector3) -> bool:
+static func _pier_flag(pier: Array, i: int) -> bool:
+	return pier.size() > i and bool(pier[i])
+
+
+## Whether a point of the shore lies across a pier's walkway.
+static func _on_pier(pier: Array, p: Vector2) -> bool:
 	var from: Vector3 = pier[0]
 	var to: Vector3 = pier[1]
 	var half: float = pier[2]
-	var along := (to - from).normalized()
-	var side := Vector3(along.z, 0.0, -along.x)
-	for t: float in [0.0, 0.25, 0.5, 0.75, 1.0]:
-		var p := a.lerp(b, t) - from
-		var u := p.dot(along)
-		if absf(p.dot(side)) < half + 0.3 and u > -2.0 and u < (to - from).length():
-			return true
-	return false
+	var a := Vector2(from.x, from.z)
+	var b := Vector2(to.x, to.z)
+	var along := (b - a).normalized()
+	var u := (p - a).dot(along)
+	return absf((p - a).dot(Vector2(-along.y, along.x))) < half + 0.4 and u > -2.5 and u < a.distance_to(b) + 1.0
+
+
+## The line where the ground crosses `level`, as segments [a, b] (x, z),
+## found cell by cell over the ground's grid (marching squares).
+func contour(level: float) -> Array:
+	var out: Array = []
+	var n := _grid_n
+	for j in n - 1:
+		for i in n - 1:
+			var v := [_grid[j * n + i], _grid[j * n + i + 1], _grid[(j + 1) * n + i + 1], _grid[(j + 1) * n + i]]
+			var case := 0
+			for k in 4:
+				if float(v[k]) >= level:
+					case |= 1 << k
+			if case == 0 or case == 15:
+				continue
+			var x0 := -EXTENT + i * GRID
+			var z0 := -EXTENT + j * GRID
+			var corners := [Vector2(x0, z0), Vector2(x0 + GRID, z0), Vector2(x0 + GRID, z0 + GRID), Vector2(x0, z0 + GRID)]
+			var cut := func(e: int) -> Vector2:
+				var p0: Vector2 = corners[e]
+				var p1: Vector2 = corners[(e + 1) % 4]
+				var h0: float = v[e]
+				var h1: float = v[(e + 1) % 4]
+				return p0.lerp(p1, clampf((level - h0) / (h1 - h0), 0.0, 1.0))
+			var pairs: Array = []
+			match case:
+				1, 14: pairs = [[3, 0]]
+				2, 13: pairs = [[0, 1]]
+				3, 12: pairs = [[3, 1]]
+				4, 11: pairs = [[1, 2]]
+				6, 9: pairs = [[0, 2]]
+				7, 8: pairs = [[3, 2]]
+				5, 10:
+					var centre := (float(v[0]) + float(v[1]) + float(v[2]) + float(v[3])) * 0.25
+					if (centre >= level) == (case == 5):
+						pairs = [[3, 2], [0, 1]]
+					else:
+						pairs = [[3, 0], [1, 2]]
+			for pr: Array in pairs:
+				out.append([cut.call(pr[0]), cut.call(pr[1])])
+	return out
+
+
+## Works shown and running, or gone: hidden, paused, silent; the shore
+## closed where the wharf was.
+func _set_works(on: bool) -> void:
+	for works in _works:
+		works.visible = on
+		works.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
+		for n in works.find_children("*", "", true, false):
+			if n is AudioStreamPlayer3D:
+				(n as AudioStreamPlayer3D).stream_paused = not on
+			elif n is AudioStreamPlayer:
+				(n as AudioStreamPlayer).stream_paused = not on
+	for c in _works_gap:
+		c.disabled = on
+	for c in _works_pier:
+		c.disabled = not on
+
+
+## Tufts of marram grass on the dunes, and a little driftwood: built
+## cozy-native, one mesh in flat colours.
+func _build_dune_grass() -> void:
+	var m := CozyMesh.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7070
+	var greens := [Color(0.62, 0.7, 0.36), Color(0.72, 0.74, 0.42), Color(0.55, 0.64, 0.33)]
+	var placed := 0
+	var tries := 0
+	while placed < 160 and tries < 4000:
+		tries += 1
+		var a := deg_to_rad(NORTH_BEARING) + rng.randf_range(-0.6, 0.6)
+		var r := rng.randf_range(44.0, 82.0)
+		var x := cos(a) * r
+		var z := sin(a) * r
+		var h := height(x, z)
+		if h < 0.6 or north_weight(atan2(z, x)) < 0.5 or in_bay(Vector2(x, z), 2.5):
+			continue
+		placed += 1
+		var colour: Color = greens[rng.randi() % 3]
+		for k in 7:
+			var lean := Basis(Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized(), rng.randf_range(0.1, 0.45))
+			var tall := rng.randf_range(0.4, 0.8)
+			m.cyl(0.0, 0.025, tall, 3, CozyMesh.at(Vector3(x + rng.randf_range(-0.2, 0.2), h + tall * 0.45, z + rng.randf_range(-0.2, 0.2)), lean), colour)
+	for k in 5:
+		var a := deg_to_rad(NORTH_BEARING) + rng.randf_range(-0.45, 0.45)
+		var r := rng.randf_range(70.0, 78.0)
+		var p := Vector3(cos(a) * r, 0.0, sin(a) * r)
+		p.y = maxf(height(p.x, p.z), 0.0) + 0.1
+		var length_ := rng.randf_range(1.5, 3.2)
+		m.cyl(0.09, 0.12, length_, 7, CozyMesh.at(p, Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, PI * 0.5)), Color(0.66, 0.6, 0.52))
+	var view := MeshInstance3D.new()
+	view.name = "DuneGrass"
+	view.mesh = m.commit(cozy_material())
+	add_child(view)
+
+
+var _cozy_mat: StandardMaterial3D
+
+
+## The island's own flat-painted material: white, taking vertex colours,
+## registered so the light and outline switches reach it.
+func cozy_material() -> StandardMaterial3D:
+	if _cozy_mat == null:
+		_cozy_mat = surface("", 1.0, Color.WHITE, 0.85, Color.WHITE, {"line_colour": Color(0.26, 0.2, 0.16)})
+		_cozy_mat.vertex_color_use_as_albedo = true
+	return _cozy_mat
 
 
 func _wall(body: StaticBody3D, a: Vector3, b: Vector3) -> void:
