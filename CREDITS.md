@@ -37,6 +37,7 @@ All from [ambientCG](https://ambientcg.com/), CC0 1.0, 1K. Each folder's `SOURCE
 | [Bricks066](https://ambientcg.com/view?id=Bricks066) | `stone_wall` |
 | [Travertine009](https://ambientcg.com/view?id=Travertine009) | `travertine` |
 | [WoodFloor051](https://ambientcg.com/view?id=WoodFloor051) | `wood_floor` |
+| [Wood059](https://ambientcg.com/view?id=Wood059) | `weathered_wood` |
 | [Ground080](https://ambientcg.com/view?id=Ground080) | `sand` |
 | [Bark012](https://ambientcg.com/view?id=Bark012) | `bark` |
 

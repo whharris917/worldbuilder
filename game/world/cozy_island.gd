@@ -44,6 +44,7 @@ extends Node3D
 ## in two panels, kept in user://cozy_island.json.
 
 const STATE_PATH := "user://cozy_island.json"
+const PLACE_PATH := "user://cozy_island_place.json"   # where the player stood on leaving
 const R := 146.0                       # the coast's mean radius
 const HILL := Vector2(-32.0, -25.0)     # the highest hill, the sky works on its top
 # Lower hills: x, z, height, radius.
@@ -125,6 +126,7 @@ var _dock_z1 := 0.0
 var _clock := 0.0
 var _was_debanding := false
 var _was_soft := 0
+var _place_left := 3.0
 
 
 func _ready() -> void:
@@ -183,9 +185,12 @@ func _ready() -> void:
 				maxi(preset, RenderingServer.SHADOW_QUALITY_SOFT_LOW) as RenderingServer.ShadowQuality))
 	_panel.restore()
 	_apply()
-	# The player starts at the dock's end, looking back at the island.
+	# The player starts where they stood when they last left, or the
+	# first time at the dock's end, looking back at the island.
 	player.global_position = Vector3(DOCK_X, DOCK_Y + 0.05, _dock_z1 - 1.0)
 	player.rotation.y = 0.0
+	if not MouseMode.probe:
+		_load_place()
 	MouseMode.capture()
 	if DisplayServer.get_name() == "headless":
 		print("[worldbuilder] cozy island: %d surfaces, coast at %.1f m, dock %.1f to %.1f m"
@@ -193,6 +198,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	_save_place()
 	get_viewport().use_debanding = _was_debanding
 	RenderingServer.directional_soft_shadow_filter_set_quality(_was_soft as RenderingServer.ShadowQuality)
 
@@ -893,6 +899,12 @@ func _foam_band(mode: Gradient.InterpolationMode, offsets: Array, alphas: Array)
 
 func _process(delta: float) -> void:
 	_clock += delta
+	# Where the player stands, written every few seconds as well as on
+	# leaving, so a closed window or a crash keeps it too.
+	_place_left -= delta
+	if _place_left <= 0.0:
+		_place_left = 3.0
+		_save_place()
 	# Ripples drift with the breeze; the foam swells over ten seconds.
 	_sea_mat.uv1_offset = Vector3(_clock * 0.012, _clock * 0.007, 0.0)
 	var swell := sin(_clock * TAU / 10.0)
@@ -910,6 +922,37 @@ func _process(delta: float) -> void:
 		_hovered = view
 		if view != null and view.has_method("show_label"):
 			view.call("show_label", true)
+
+
+## ---- where the player stands -------------------------------------------
+
+func _save_place() -> void:
+	# Not for the probes, which park the player out of sight; nor from
+	# under the world.
+	if MouseMode.probe or player == null or player.position.y < -3.0:
+		return
+	var file := FileAccess.open(PLACE_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	var p := player.position
+	file.store_string(JSON.stringify({"player": [p.x, p.y, p.z, player.rotation.y]}))
+
+
+func _load_place() -> void:
+	if not FileAccess.file_exists(PLACE_PATH):
+		return
+	var file := FileAccess.open(PLACE_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	if not parsed is Dictionary or not (parsed as Dictionary).get("player") is Array:
+		return
+	var at: Array = parsed["player"]
+	if at.size() < 4:
+		return
+	# A little above where they stood, to settle onto the ground.
+	player.global_position = Vector3(float(at[0]), float(at[1]) + 0.2, float(at[2]))
+	player.rotation.y = float(at[3])
 
 
 ## ---- the cabin and the dock ------------------------------------------------

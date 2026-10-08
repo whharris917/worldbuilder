@@ -100,6 +100,7 @@ var _snd_crane: AudioStreamPlayer3D
 var _snd_clanks: Array[AudioStreamPlayer3D] = []
 
 var _plank: StandardMaterial3D
+var _deck: StandardMaterial3D
 var _iron: StandardMaterial3D
 var _copper: StandardMaterial3D
 var _stone: StandardMaterial3D
@@ -139,8 +140,16 @@ func _ready() -> void:
 
 
 func _materials() -> void:
-	_wood = island.surface("wood_floor", 0.6, Color(0.55, 0.45, 0.36), 0.85, Color(0.72, 0.54, 0.38))
-	_plank = island.surface("wood_floor", 0.5, Color(0.5, 0.42, 0.34), 0.85, Color(0.74, 0.57, 0.4))
+	_wood = island.surface("weathered_wood", 0.8, Color(0.9, 0.88, 0.86), 0.9, Color(0.66, 0.56, 0.46))
+	_plank = island.surface("weathered_wood", 0.8, Color(0.95, 0.93, 0.9), 0.9, Color(0.8, 0.68, 0.54))
+	# The deck's boards carry their own picture coordinates (a board's
+	# grain runs along it) and each its own tone in its vertex colours.
+	_deck = island.surface("weathered_wood", 1.0, Color(1.0, 1.0, 1.0), 0.9, Color(1.0, 0.9, 0.76),
+			{"line_colour": Color(0.3, 0.24, 0.2)})
+	_deck.uv1_triplanar = false
+	_deck.uv1_world_triplanar = false
+	_deck.uv1_scale = Vector3.ONE
+	_deck.vertex_color_use_as_albedo = true
 	_stone = island.surface("rough_rock", 0.5, Color(0.7, 0.68, 0.66), 0.9, Color(0.62, 0.6, 0.66))
 	_stone_inside = island.surface("rough_rock", 0.5, Color(0.6, 0.58, 0.56), 0.9, Color(0.55, 0.53, 0.6), {"no_line": true})
 	_stone_inside.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -162,13 +171,21 @@ func _materials() -> void:
 ## ---- the wharf -------------------------------------------------------------
 
 func _build_wharf() -> void:
-	# Decking in 4 m bays, each with its own solid, and piles at the bays'
-	# corners down to the lagoon's floor.
+	# The deck in 4 m bays, each a solid to walk on, with piles at the
+	# bays' corners down to the lagoon's floor; the boards are drawn over
+	# them (_build_boards).
 	var v := WHARF_V0
 	while v > WHARF_V1 + 0.01:
 		var v2 := maxf(v - 4.0, WHARF_V1)
 		var mid := (v + v2) * 0.5
-		_box(Vector3(HALF * 2.0, 0.12, v - v2 - 0.04), at(0, mid, DECK - 0.06), _plank, true)
+		var solid := StaticBody3D.new()
+		solid.position = at(0, mid, DECK - 0.06)
+		var box := BoxShape3D.new()
+		box.size = Vector3(HALF * 2.0, 0.12, v - v2)
+		var held := CollisionShape3D.new()
+		held.shape = box
+		solid.add_child(held)
+		_site.add_child(solid)
 		for u: float in [-HALF + 0.15, HALF - 0.15]:
 			var floor_y := ground(u, v2)
 			_rod(at(u, v2, floor_y - 0.4), at(u, v2, DECK - 0.12), 0.13, _wood, 8)
@@ -178,16 +195,19 @@ func _build_wharf() -> void:
 	var g := ground(0, WHARF_V0 + 4.0)
 	var ramp_from := at(0, WHARF_V0, DECK - 0.06)
 	var ramp_to := at(0, WHARF_V0 + 4.0, g + 0.02)
-	var ramp := _box(Vector3(HALF * 2.0, 0.12, ramp_from.distance_to(ramp_to)), (ramp_from + ramp_to) * 0.5, _plank, false)
-	ramp.basis = Basis(Vector3.RIGHT, -atan2(ramp_to.y - ramp_from.y, ramp_to.z - ramp_from.z) + 0.0)
+	var ramp := Transform3D(Basis(Vector3.RIGHT, -atan2(ramp_to.y - ramp_from.y, ramp_to.z - ramp_from.z)), (ramp_from + ramp_to) * 0.5)
 	var body := StaticBody3D.new()
-	body.transform = ramp.transform
+	body.transform = ramp
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(HALF * 2.0, 0.12, ramp_from.distance_to(ramp_to))
 	var c := CollisionShape3D.new()
 	c.shape = shape
 	body.add_child(c)
 	_site.add_child(body)
+	# Stringers along under the boards, between the beams.
+	for u: float in [-HALF + 0.15, -1.0, 1.0, HALF - 0.15]:
+		_box(Vector3(0.14, 0.18, WHARF_V0 - WHARF_V1), at(u, (WHARF_V0 + WHARF_V1) * 0.5, DECK - 0.16), _wood)
+	_build_boards(ramp, ramp_from.distance_to(ramp_to))
 	# Railings: posts every 2 m and two rails.
 	for side: float in [-1.0, 1.0]:
 		var u := side * (HALF - 0.08)
@@ -205,6 +225,85 @@ func _build_wharf() -> void:
 	while rv2 > POOL_V[5] - 3.0:
 		_box(Vector3(1.5, 0.05, 0.16), at(0, rv2, DECK + 0.005), _wood)
 		rv2 -= 0.8
+
+
+## The deck's boards: laid across the wharf 20 cm wide with a gap of a
+## little over a centimetre, each running the width in two lengths that
+## butt over a stringer at a point chosen board by board; each board its
+## own weathered tone (silver-grey, driftwood, honey, warm brown, now and
+## then a dark one) and its own stretch of the grain picture, set a hair
+## higher or lower than its neighbours. The ramp from the beach is boarded
+## the same way along its slope. One mesh.
+func _build_boards(ramp: Transform3D, ramp_length: float) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3030
+	var tones := [Color(0.82, 0.8, 0.76), Color(0.9, 0.85, 0.76), Color(0.95, 0.86, 0.7),
+			Color(0.86, 0.76, 0.64), Color(0.9, 0.82, 0.72)]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var pitch := 0.212
+	var width := 0.2
+	var thick := 0.07
+	var rows := int((WHARF_V0 - WHARF_V1) / pitch)
+	var lay := func(centre: Vector3, basis: Basis, length: float) -> void:
+		var tone: Color = tones[rng.randi() % tones.size()]
+		if rng.randf() < 0.08:
+			tone = tone.darkened(0.2)
+		tone = tone.lightened(rng.randf_range(-0.06, 0.06))
+		var lift := rng.randf_range(-0.006, 0.006)
+		_board(st, centre + basis.y * lift, basis, Vector3(length, thick, width), tone,
+				Vector2(rng.randf() * 8.0, rng.randf() * 8.0), rng.randf() < 0.5)
+	for row in rows:
+		var v := WHARF_V0 - pitch * (row + 0.5)
+		var joint: float = [-1.0, 1.0, -HALF + 0.15, HALF - 0.15][rng.randi() % 4]
+		for piece: Vector2 in [Vector2(-HALF, joint), Vector2(joint, HALF)]:
+			var length := piece.y - piece.x - 0.006
+			lay.call(at((piece.x + piece.y) * 0.5, v, DECK - thick * 0.5), Basis.IDENTITY, length)
+	var ramp_rows := int(ramp_length / pitch)
+	for row in ramp_rows:
+		var along := -ramp_length * 0.5 + pitch * (row + 0.5)
+		lay.call(ramp * Vector3(0.0, 0.06 - thick * 0.5, along), ramp.basis, HALF * 2.0 - 0.006)
+	st.generate_tangents()
+	var view := MeshInstance3D.new()
+	view.name = "Deck"
+	view.mesh = st.commit()
+	view.mesh.surface_set_material(0, _deck)
+	_site.add_child(view)
+
+
+## One board as a box: `size` x along it, y up, z across; its grain
+## picture runs along it (1.2 m to the picture), shifted by `grain`,
+## flipped end for end when `flip`.
+func _board(st: SurfaceTool, centre: Vector3, basis: Basis, size: Vector3, tone: Color, grain: Vector2, flip: bool) -> void:
+	var h := size * 0.5
+	var colour := tone.srgb_to_linear()
+	# Each face: its normal, and two axes across it (the first along the
+	# grain where the face has one).
+	var faces := [[Vector3.UP, Vector3.RIGHT, Vector3.BACK], [Vector3.DOWN, Vector3.RIGHT, Vector3.FORWARD],
+			[Vector3.BACK, Vector3.RIGHT, Vector3.DOWN], [Vector3.FORWARD, Vector3.RIGHT, Vector3.UP],
+			[Vector3.RIGHT, Vector3.BACK, Vector3.UP], [Vector3.LEFT, Vector3.FORWARD, Vector3.UP]]
+	for f: Array in faces:
+		var n: Vector3 = f[0]
+		var a: Vector3 = f[1]
+		var b: Vector3 = f[2]
+		var corners: Array[Vector3] = []
+		var uvs: Array[Vector2] = []
+		for k: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+			var p := n * h * n.abs() + a * k.x * (h * a.abs()).length() + b * k.y * (h * b.abs()).length()
+			corners.append(centre + basis * p)
+			var along := p.x if absf(a.x) > 0.5 else p.z
+			var across := p.z if absf(b.z) > 0.5 and absf(a.x) > 0.5 else p.y
+			uvs.append(Vector2((-along if flip else along) / 1.2, across / 1.2) + grain)
+		var normal := (basis * n).normalized()
+		# Wound so the face looks out along its normal.
+		var order := [0, 1, 2, 0, 2, 3]
+		if (corners[1] - corners[0]).cross(corners[2] - corners[0]).dot(normal) > 0.0:
+			order = [0, 2, 1, 0, 3, 2]
+		for i: int in order:
+			st.set_normal(normal)
+			st.set_color(colour)
+			st.set_uv(uvs[i])
+			st.add_vertex(corners[i])
 
 
 ## ---- the pools -------------------------------------------------------------
