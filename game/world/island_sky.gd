@@ -58,6 +58,7 @@ var sun: DirectionalLight3D
 var moonlight: DirectionalLight3D
 var sky := Sky.new()
 var daylight := 1.0                    # 1 by day, 0 at night, through twilight
+var sun_height := 38.0                  # degrees
 var haze_colour := Color.WHITE
 
 var _physical := PhysicalSkyMaterial.new()
@@ -196,6 +197,9 @@ func _star_field(data: PackedByteArray, turn: Basis, limit: float, size: float,
 	mat.albedo_texture = tex
 	mat.disable_fog = true
 	mat.disable_receive_shadows = true
+	# Drawn before every other see-through thing: the sky's farthest
+	# layer, behind clouds whatever their sorting by distance says.
+	mat.render_priority = -2
 	_star_mats.append(mat)
 	var quad := QuadMesh.new()
 	quad.size = Vector2(size, size)
@@ -290,6 +294,7 @@ static func _light(light: DirectionalLight3D, to_body: Vector3, height: float, e
 ## Everything set for the sun and moon where they stand.
 func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_height: float,
 		moon_bearing: float, story: bool) -> void:
+	self.sun_height = sun_height
 	var to_sun := direction(sun_height, sun_bearing)
 	_light(sun, to_sun, sun_height, sun_energy, Color.WHITE)
 	_moon_dir = direction(moon_height, moon_bearing)

@@ -71,6 +71,10 @@ func _init(part_kind: Kind, part_title: String, at: Vector3, ground: float,
 	kind = part_kind
 	title = part_title
 	delay = part_delay
+	# An off-delay starts long since run out, dark until its beam first
+	# lights.
+	if kind == Kind.TOF:
+		_acc = delay
 	name = Kind.keys()[kind].capitalize() + "Part"
 	position = at
 	set_meta("view", self)

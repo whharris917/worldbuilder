@@ -172,6 +172,20 @@ func _part(kind: LumenPart.Kind, title: String, u: float, v: float, y: float, de
 	return p
 
 
+## A column of lanterns on one post at (u, v), from `y0` above the
+## ground up by `dy`, each post standing on the lantern below.
+func _lantern_column(u: float, v: float, titles: Array, y0: float, dy := 0.38) -> Array[LumenPart]:
+	var g := ground(u, v)
+	var out: Array[LumenPart] = []
+	for i in titles.size():
+		var y := g + y0 + dy * i
+		var p := LumenPart.new(LumenPart.Kind.LANTERN, titles[i], at(u, v, y), (y - dy + 0.15) if i > 0 else g, _wood, _brass)
+		_site.add_child(p)
+		parts.append(p)
+		out.append(p)
+	return out
+
+
 func _wire(from: LumenPart, to: LumenPart) -> void:
 	var b := LumenBeam.new(from, to, from.colour())
 	add_child(b)

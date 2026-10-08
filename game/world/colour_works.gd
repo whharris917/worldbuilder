@@ -652,13 +652,9 @@ func _peg(t: int, s: int) -> bool:
 
 ## A column of lanterns on one post at (u, v), from `y0` up by `dy`.
 func _mast(u: float, v: float, titles: Array, keys: Array, y0: float, dy := 0.38) -> void:
-	var g := ground(u, v)
-	for i in titles.size():
-		var y := g + y0 + dy * i
-		var p := LumenPart.new(LumenPart.Kind.LANTERN, titles[i], at(u, v, y), (y - dy + 0.15) if i > 0 else g, _wood, _brass)
-		_site.add_child(p)
-		parts.append(p)
-		_l[keys[i]] = p
+	var column := _lantern_column(u, v, titles, y0, dy)
+	for i in keys.size():
+		_l[keys[i]] = column[i]
 
 
 func _build_circuit() -> void:
