@@ -9,24 +9,35 @@ extends Node3D
 ##
 ## Each cloud forms (grows from nothing over a minute or so), drifts on a
 ## light wind, and after some minutes dissolves (shrinks away), as
-## cumulus do; another forms elsewhere. `amount` sets how many there are,
-## 0 none to 1 a sky well filled (CLOUDS at most); a change is met by new
-## ones forming or old ones dissolving, never by any popping in or out.
+## cumulus do; another forms elsewhere. `amount` sets how many there are
+## and how big, 0 none to 1 a sky well filled (CLOUDS at most, half as
+## large again); a change is met within seconds by clouds forming or
+## dissolving quickly, never by any popping in or out. Clouds far from
+## the island are built with fewer sides to their lumps.
 ## They ignore the depth haze, which would wash them away at their
 ## distance, and cast no shadows.
 
-const CLOUDS := 60                       # at the most
+const CLOUDS := 160                      # at the most
 const REACH := 2500.0                    # how far from the island's middle they lie
 const WIND := Vector2(-2.6, 1.4)         # m/s
-const FORM := 75.0                       # seconds to form, and to dissolve
+const FORM := 75.0                       # seconds to form, and to dissolve, in the sky's own time
+const QUICK := 8.0                       # seconds to, when the amount is changed
 
 ## 0 none to 1 a sky well filled.
-var amount := 0.4
+var amount := 0.4:
+	set(value):
+		amount = value
+		_hurry = true
 var island: CozyIsland
 var _mat: StandardMaterial3D
-var _clouds: Array[Dictionary] = []      # node, age, life, size, leaving
+# Each cloud: node, age, life (when it starts to dissolve of itself),
+# form (seconds to form), leave_at (when it began dissolving, INF while
+# it has not), leave_for (seconds to dissolve).
+var _clouds: Array[Dictionary] = []
 var _rng := RandomNumberGenerator.new()
 var _plan_left := 0.0
+var _hurry := false
+var _started := false
 
 
 func _init(owner_island: CozyIsland) -> void:
@@ -40,23 +51,20 @@ func _ready() -> void:
 			{"line_colour": Color(0.72, 0.78, 0.9)})
 	_mat.vertex_color_use_as_albedo = true
 	_mat.disable_fog = true
-	# The sky starts with its clouds already formed, at every stage of
-	# their lives.
-	for i in roundi(amount * CLOUDS):
-		var c := _form(Vector2(_rng.randf_range(-1, 1), _rng.randf_range(-1, 1)) * REACH * 0.8)
-		c["age"] = _rng.randf_range(FORM, float(c["life"]) - FORM)
 
 
-## A new cloud starting to form at `at` (x, z).
-func _form(at: Vector2) -> Dictionary:
+## A new cloud starting to form at `at` (x, z), over `form` seconds.
+func _form(at: Vector2, form: float) -> Dictionary:
 	var view := MeshInstance3D.new()
-	view.mesh = _heap(_rng.randf_range(160.0, 420.0))
+	var fine := at.length() < 900.0
+	view.mesh = _heap(_rng.randf_range(160.0, 420.0) * lerpf(1.0, 1.5, amount), 16 if fine else 11, 9 if fine else 6)
 	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	view.position = Vector3(at.x, _rng.randf_range(300.0, 520.0), at.y)
 	view.rotation.y = _rng.randf() * TAU
 	view.scale = Vector3.ONE * 0.001
 	add_child(view)
-	var c := {"node": view, "age": 0.0, "life": _rng.randf_range(420.0, 900.0), "leaving": false}
+	var c := {"node": view, "age": 0.0, "life": _rng.randf_range(420.0, 900.0), "form": form,
+			"leave_at": INF, "leave_for": FORM}
 	_clouds.append(c)
 	return c
 
@@ -66,7 +74,7 @@ func _form(at: Vector2) -> Dictionary:
 ## A heap `length` metres long, its base at y = 0: a row of big lumps
 ## along it, largest in the middle, a few beside them for depth, then
 ## smaller ones piled on top; every lump cut off flat at the base.
-func _heap(length: float) -> ArrayMesh:
+func _heap(length: float, sides: int, rings: int) -> ArrayMesh:
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var index := PackedInt32Array()
@@ -87,7 +95,7 @@ func _heap(length: float) -> ArrayMesh:
 		var r := length * _rng.randf_range(0.1, 0.14)
 		lumps.append(Vector4(_rng.randf_range(-0.1, 0.1) * length, length * _rng.randf_range(0.3, 0.36), 0.0, r))
 	for l: Vector4 in lumps:
-		_lump(verts, normals, index, Vector3(l.x, l.y, l.z), l.w)
+		_lump(verts, normals, index, Vector3(l.x, l.y, l.z), l.w, sides, rings)
 	var colours := PackedColorArray()
 	colours.resize(verts.size())
 	colours.fill(Color.WHITE)
@@ -106,9 +114,7 @@ func _heap(length: float) -> ArrayMesh:
 ## One round lump, its points below the base pressed up onto it and
 ## facing down there.
 func _lump(verts: PackedVector3Array, normals: PackedVector3Array, index: PackedInt32Array,
-		centre: Vector3, radius: float) -> void:
-	var sides := 18
-	var rings := 10
+		centre: Vector3, radius: float, sides: int, rings: int) -> void:
 	var first := verts.size()
 	for ring in rings + 1:
 		var theta := PI * ring / rings
@@ -131,55 +137,75 @@ func _lump(verts: PackedVector3Array, normals: PackedVector3Array, index: Packed
 ## ---- each frame --------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	if not _started:
+		# The sky starts with its clouds already formed, at every stage of
+		# their lives.
+		_started = true
+		_hurry = false
+		for k in roundi(amount * CLOUDS):
+			var c := _form(Vector2(_rng.randf_range(-1, 1), _rng.randf_range(-1, 1)) * REACH * 0.85, FORM)
+			c["age"] = _rng.randf_range(FORM, float(c["life"]))
 	_plan_left -= delta
 	if _plan_left <= 0.0:
-		_plan_left = 2.0
+		_plan_left = 0.2
 		_plan()
 	var gone: Array[Dictionary] = []
 	for c: Dictionary in _clouds:
 		var view := c["node"] as MeshInstance3D
-		c["age"] = float(c["age"]) + delta
+		var age: float = float(c["age"]) + delta
+		c["age"] = age
 		view.position += Vector3(WIND.x, 0.0, WIND.y) * delta
-		var age: float = c["age"]
-		var life: float = c["life"]
-		# Formed, then dissolving at the end of its life, or sooner when
-		# sent away or drifted out over the edge of the sky.
+		# At the end of its life, or drifted out over the edge of the sky,
+		# it dissolves.
 		var flat := Vector2(view.position.x, view.position.z)
-		if not c["leaving"] and (age > life - FORM or flat.length() > REACH):
-			c["leaving"] = true
-			c["life"] = age + FORM
-			life = age + FORM
-		var grown := smoothstep(0.0, FORM, age) * smoothstep(life, life - FORM, age)
+		if float(c["leave_at"]) == INF and (age > float(c["life"]) or flat.length() > REACH):
+			c["leave_at"] = age
+			c["leave_for"] = FORM
+		var leave_at: float = c["leave_at"]
+		var leave_for: float = c["leave_for"]
+		var grown := smoothstep(0.0, float(c["form"]), age)
+		if leave_at != INF:
+			grown *= 1.0 - smoothstep(leave_at, leave_at + leave_for, age)
+			if age >= leave_at + leave_for:
+				gone.append(c)
 		# Clouds grow up from their base, wider before taller.
-		view.scale = Vector3(lerpf(0.3, 1.0, grown), grown, lerpf(0.3, 1.0, grown)) * maxf(grown, 0.001) ** 0.5
-		if age >= life:
-			gone.append(c)
+		var g := maxf(grown, 0.001)
+		view.scale = Vector3(lerpf(0.3, 1.0, g), g, lerpf(0.3, 1.0, g)) * sqrt(g)
 	for c: Dictionary in gone:
 		_clouds.erase(c)
 		(c["node"] as Node).queue_free()
 
 
-## Keeps as many clouds as `amount` asks: new ones forming somewhere in
-## the sky, or the oldest dissolving.
+## Keeps as many clouds as `amount` asks. After a change of amount,
+## clouds form or dissolve quickly, several at a time, until the count is
+## met; otherwise one at a time at the sky's own pace (a cloud that has
+## dissolved of itself is replaced by one slowly forming).
 func _plan() -> void:
 	var want := roundi(amount * CLOUDS)
 	var living: Array[Dictionary] = []
 	for c: Dictionary in _clouds:
-		if not c["leaving"]:
+		if float(c["leave_at"]) == INF:
 			living.append(c)
-	if living.size() < want:
-		# Upwind more often, so the sky refills from where the wind comes.
-		var p := Vector2(_rng.randf_range(-1, 1), _rng.randf_range(-1, 1)) * REACH * 0.85
-		if _rng.randf() < 0.5:
-			p -= WIND.normalized() * REACH * 0.4
-		_form(p.limit_length(REACH * 0.9))
-	elif living.size() > want:
-		var oldest: Dictionary = living[0]
-		for c: Dictionary in living:
-			if float(c["age"]) > float(oldest["age"]):
-				oldest = c
-		oldest["leaving"] = true
-		oldest["life"] = maxf(float(oldest["age"]), FORM) + FORM
-		if float(oldest["age"]) < FORM:
-			# Still forming: it dissolves from where it has grown to.
-			oldest["life"] = float(oldest["age"]) * 2.0
+	var short := want - living.size()
+	if short == 0:
+		_hurry = false
+		return
+	var at_once := mini(absi(short), 12) if _hurry else 1
+	var pace := QUICK if _hurry else FORM
+	if short > 0:
+		for k in at_once:
+			# Upwind more often, so the sky refills from where the wind comes.
+			var p := Vector2(_rng.randf_range(-1, 1), _rng.randf_range(-1, 1)) * REACH * 0.85
+			if not _hurry and _rng.randf() < 0.5:
+				p -= WIND.normalized() * REACH * 0.4
+			var c := _form(p.limit_length(REACH * 0.9), _rng.randf_range(pace * 0.7, pace * 1.3))
+			if _hurry:
+				# Formed at a random point of its life, so they do not all
+				# dissolve together later.
+				c["life"] = _rng.randf_range(60.0, 900.0)
+	else:
+		living.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["age"]) > float(b["age"]))
+		for k in at_once:
+			var c: Dictionary = living[k]
+			c["leave_at"] = c["age"]
+			c["leave_for"] = _rng.randf_range(pace * 0.7, pace * 1.3)
