@@ -11,6 +11,8 @@ extends Node
 const VIEWS := [
 	["dock", 60.0, Vector3(4.0, 2.2, 56.0), Vector3(0.0, 3.0, 10.0), "dock"],
 	["beach", 60.0, Vector3(-28.0, 1.8, 32.0), Vector3(4.0, 2.0, 20.0), "cabin"],
+	["clouds", 70.0, Vector3(30.0, 1.7, 60.0), Vector3(-200.0, 260.0, -700.0), "ground"],
+	["clouds_sea", 70.0, Vector3(4.0, 1.7, 150.0), Vector3(200.0, 200.0, 1500.0), "ground"],
 	["island", 55.0, Vector3(60.0, 330.0, 420.0), Vector3(0.0, 0.0, -10.0), ""],
 	["meadow", 65.0, Vector3(30.0, 1.7, 60.0), Vector3(-40.0, 1.0, 0.0), "ground"],
 	["meadow_west", 65.0, Vector3(-60.0, 1.7, 90.0), Vector3(-90.0, 1.0, 20.0), "ground"],

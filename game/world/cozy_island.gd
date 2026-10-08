@@ -82,6 +82,7 @@ const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", 
 
 var player: Player
 var sky: IslandSky
+var clouds: IslandClouds
 var _panel: BenchPanel
 var _env: Environment
 var _camera_look: CameraAttributesPractical
@@ -171,6 +172,8 @@ func _ready() -> void:
 	add_child(InnerBay.new(self))
 	_build_bounds()
 	_lighten()
+	clouds = IslandClouds.new(self)
+	add_child(clouds)
 	_build_panels()
 	# Soft shadows need the engine's shadow softening at least at Low,
 	# whatever the graphics preset says.
@@ -265,6 +268,10 @@ func _build_panels() -> void:
 	var isle := _panel.panel("Island")
 	_panel.switch(isle, "Works and machines", true, func(v: bool) -> void: _set_works(v))
 	_panel.note(isle, "All five works, their machines, beams, sounds and storms. Off, the island is left to itself: the beaches, the dunes and the bay, the cabin, the campfire and the lanterns.")
+
+	var wx := _panel.panel("Weather")
+	_panel.slider(wx, "Clouds", 0.0, 1.0, 0.05, 0.4, func(v: float) -> void: clouds.amount = v)
+	_panel.note(wx, "Fair-weather clouds: from a clear sky to one well filled. New clouds form and old ones melt away to match, over a minute or so.")
 
 	var light := _panel.panel("Sun and moon")
 	_panel.slider(light, "Sun height", -30.0, 85.0, 0.5, 38.0, redraw)
