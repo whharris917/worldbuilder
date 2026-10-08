@@ -13,6 +13,9 @@ const VIEWS := [
 	["beach", 60.0, Vector3(-28.0, 1.8, 32.0), Vector3(4.0, 2.0, 20.0)],
 	["above", 50.0, Vector3(70.0, 35.0, 90.0), Vector3(0.0, 0.0, 5.0)],
 	["hill", 60.0, Vector3(-10.0, 12.0, -8.0), Vector3(4.0, 2.0, 30.0)],
+	["fire", 60.0, Vector3(-6.5, 1.7, 44.0), Vector3(-10.4, 0.6, 38.0)],
+	["flames", 50.0, Vector3(-9.0, 1.3, 40.6), Vector3(-10.4, 0.5, 38.0)],
+	["lanterns", 65.0, Vector3(2.0, 2.2, 33.0), Vector3(4.0, 2.4, 20.0)],
 ]
 
 var _world: CozyIsland

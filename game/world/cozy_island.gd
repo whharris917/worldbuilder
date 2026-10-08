@@ -36,7 +36,9 @@ extends Node3D
 ## water's depth (pale where shallow). Invisible walls keep the player
 ## on land and on the dock. The sun and moon go anywhere in the sky,
 ## below the horizon too, and the sky follows through dusk to night
-## (IslandSky); at dusk the cabin's windows and porch lamp come on.
+## (IslandSky); at dusk the cabin's windows and porch lamp come on, and
+## lanterns hanging in the trees round the cabin (HangingLantern). A
+## campfire burns on the beach by the dock (Campfire), day and night.
 ## Controls (BenchPanel; Esc frees the mouse)
 ## in two panels, kept in user://cozy_island.json.
 
@@ -52,6 +54,8 @@ const DOCK_X := 4.0
 const DOCK_W := 1.6
 const DOCK_Y := 0.6
 const NIGHT_SHADE := Color(0.22, 0.28, 0.6)
+const FIRE_BEARING := 105.0            # degrees round from +x toward +z
+const LANTERNS := 5
 const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", "Outlines",
 		"Gentle grade", "Glow", "Haze", "Soft focus", "Storybook sky", "Foam line"]
 
@@ -62,6 +66,9 @@ var _env: Environment
 var _camera_look: CameraAttributesPractical
 var _porch: OmniLight3D
 var _porch_mat: StandardMaterial3D
+var _crowns: Array[Vector4] = []        # broad-leaved trees: crown centre, size
+var _lanterns: Array[HangingLantern] = []
+var _fire_at := Vector3.ZERO
 var _surfaces: Array[Dictionary] = []
 var _sea: MeshInstance3D
 var _sea_mat: StandardMaterial3D
@@ -105,6 +112,8 @@ func _ready() -> void:
 	_build_dock()
 	_build_trees()
 	_build_rocks()
+	_build_campfire()
+	_build_lanterns()
 	_build_bounds()
 	_build_panels()
 	_panel.restore()
@@ -253,6 +262,8 @@ func _apply() -> void:
 	_porch.light_energy = 1.6 * night
 	_porch.visible = night > 0.01
 	_porch_mat.emission_energy_multiplier = 4.0 * night
+	for lantern in _lanterns:
+		lantern.set_lit(night)
 	if _on("Coloured shade"):
 		# The chosen shade by day, a deep blue at night.
 		var shade := (_panel.pickers["Shade colour"] as ColorPickerButton).color
@@ -847,6 +858,7 @@ func _round_tree(base: Vector3, size: float, bark: Material, leaves: Material,
 	var height := 3.2 * size
 	_trunk(base, height, 0.22 * size, bark)
 	var crown := base + Vector3.UP * (height + 0.6 * size)
+	_crowns.append(Vector4(crown.x, crown.y, crown.z, size))
 	for k in 4:
 		var ball := SphereMesh.new()
 		var r := size * (1.7 if k == 0 else rng.randf_range(1.0, 1.3))
@@ -889,6 +901,82 @@ func _build_rocks() -> void:
 		_boulder(Vector3(cos(a) * r, 0.0, sin(a) * r), s.z, int(s.w), rock, lumps)
 	for s: Vector3 in [Vector3(-16, -2, 1.6), Vector3(-6, -15, 1.1), Vector3(-19, -12, 0.9)]:
 		_boulder(Vector3(s.x, 0.0, s.y), s.z, 8 + int(s.x), rock, lumps)
+
+
+## ---- the campfire and the lanterns ---------------------------------------
+
+## A ring of stones on the sand six metres up the beach from the water,
+## east of the dock, three charred logs crossed in it and the fire on
+## them, and two logs to sit on.
+func _build_campfire() -> void:
+	var a := deg_to_rad(FIRE_BEARING)
+	var r := _coast(a, 0.0) - 6.0
+	_fire_at = Vector3(cos(a) * r, 0.0, sin(a) * r)
+	_fire_at.y = _height(_fire_at.x, _fire_at.z)
+	var stone := _surface("rough_rock", 1.2, Color(0.7, 0.68, 0.66), 0.9, Color(0.6, 0.6, 0.66))
+	var charred := _surface("bark", 1.5, Color(0.22, 0.19, 0.17), 0.9, Color(0.36, 0.26, 0.22))
+	var seat := _surface("bark", 1.0, Color(0.8, 0.78, 0.74), 0.9, Color(0.62, 0.45, 0.32))
+	var lumps := FastNoiseLite.new()
+	lumps.seed = 57
+	lumps.frequency = 0.9
+	for k in 9:
+		var t := TAU * k / 9.0
+		var at := _fire_at + Vector3(cos(t), 0.0, sin(t)) * 0.62
+		_boulder(at, 0.2 + 0.04 * sin(k * 2.7), 60 + k, stone, lumps)
+	for k in 3:
+		var log := CylinderMesh.new()
+		log.top_radius = 0.07
+		log.bottom_radius = 0.08
+		log.height = 0.7
+		log.radial_segments = 10
+		# Leaning in a low cone, their upper ends meeting over the middle.
+		var out := Vector3(cos(TAU * k / 3.0), 0.0, sin(TAU * k / 3.0))
+		var view := _solid(Vector3.ONE, _fire_at + out * 0.2 + Vector3(0, 0.16, 0), charred, log, false)
+		view.basis = Basis(out.cross(Vector3.UP).normalized(), 1.1)
+		view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for side: float in [-1.0, 1.0]:
+		var t := a + side * 1.1 + PI
+		var at := _fire_at + Vector3(cos(t), 0.0, sin(t)) * 1.9
+		at.y = _height(at.x, at.z) + 0.14
+		var log := CylinderMesh.new()
+		log.top_radius = 0.17
+		log.bottom_radius = 0.19
+		log.height = 1.6
+		var view := _solid(Vector3.ONE, at, seat, log, false)
+		# Lying on its side, square to the line to the fire.
+		view.basis = Basis(Vector3.UP, -t) * Basis(Vector3.RIGHT, PI * 0.5)
+		var body := StaticBody3D.new()
+		body.transform = view.transform
+		var shape := CylinderShape3D.new()
+		shape.radius = 0.18
+		shape.height = 1.6
+		var c := CollisionShape3D.new()
+		c.shape = shape
+		body.add_child(c)
+		add_child(body)
+	var fire := Campfire.new()
+	fire.position = _fire_at + Vector3(0, 0.08, 0)
+	add_child(fire)
+
+
+## Lanterns hung from the broad-leaved trees nearest the cabin, each from
+## the underside of the crown on the side toward the cabin.
+func _build_lanterns() -> void:
+	var frame := _surface("", 1.0, Color(0.06, 0.06, 0.06), 0.45, Color(0.28, 0.24, 0.32), {"no_line": true})
+	var cord := _surface("", 1.0, Color(0.25, 0.2, 0.15), 0.9, Color(0.45, 0.34, 0.25), {"no_line": true})
+	var near := _crowns.duplicate()
+	near.sort_custom(func(p: Vector4, q: Vector4) -> bool:
+		return Vector2(p.x, p.z).distance_to(Vector2(CABIN.x, CABIN.z)) < Vector2(q.x, q.z).distance_to(Vector2(CABIN.x, CABIN.z)))
+	for k in mini(LANTERNS, near.size()):
+		var c: Vector4 = near[k]
+		var toward := Vector3(CABIN.x - c.x, 0.0, CABIN.z - c.z).normalized()
+		# Where a line 1.5 sizes out from the trunk meets the main ball's
+		# underside (its radius 1.7 sizes).
+		var anchor := Vector3(c.x, c.y, c.z) + toward * 1.5 * c.w + Vector3.DOWN * 0.8 * c.w
+		var lantern := HangingLantern.new(frame, cord, k * 1.9)
+		lantern.position = anchor
+		add_child(lantern)
+		_lanterns.append(lantern)
 
 
 func _boulder(at: Vector3, size: float, seed_value: int, mat: Material, lumps: FastNoiseLite) -> void:
