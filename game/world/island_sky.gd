@@ -33,7 +33,7 @@ extends Node3D
 ## on SkyClock's date and latitude and does not turn. The storybook stars
 ## are the brightest only, larger, as four-pointed sparkles.
 ##
-## The storybook sky's colours, its clouds' tint and the haze's colour
+## The storybook sky's colours and the haze's colour
 ## are blended between key heights of the sun (KEYS).
 
 const MOON := 1 << 10                  # render layer of the moon's ball
@@ -44,14 +44,13 @@ const TAU_AIR := Vector3(0.12, 0.18, 0.32)
 const MOONLIGHT := 0.18                # its energy when full and high
 const MOON_COLOUR := Color(0.62, 0.72, 1.0)
 const STAR_HOURS := 21.0
-# Sun height (degrees); sky top; horizon; clouds (alpha their strength);
-# haze.
+# Sun height (degrees); sky top; horizon; haze.
 const KEYS := [
-	[-18.0, Color(0.02, 0.035, 0.1), Color(0.05, 0.08, 0.18), Color(0.15, 0.18, 0.28, 0.35), Color(0.04, 0.06, 0.12)],
-	[-6.0, Color(0.12, 0.14, 0.36), Color(0.6, 0.42, 0.58), Color(0.55, 0.45, 0.6, 0.6), Color(0.35, 0.3, 0.45)],
-	[0.0, Color(0.32, 0.38, 0.72), Color(1.0, 0.62, 0.45), Color(1.0, 0.72, 0.62, 0.8), Color(0.95, 0.72, 0.6)],
-	[6.0, Color(0.42, 0.56, 0.86), Color(1.0, 0.82, 0.62), Color(1.0, 0.9, 0.8, 0.8), Color(0.95, 0.85, 0.75)],
-	[20.0, Color(0.36, 0.6, 0.92), Color(0.82, 0.88, 0.95), Color(1.0, 1.0, 1.0, 0.8), Color(0.8, 0.86, 0.95)],
+	[-18.0, Color(0.02, 0.035, 0.1), Color(0.05, 0.08, 0.18), Color(0.04, 0.06, 0.12)],
+	[-6.0, Color(0.12, 0.14, 0.36), Color(0.6, 0.42, 0.58), Color(0.35, 0.3, 0.45)],
+	[0.0, Color(0.32, 0.38, 0.72), Color(1.0, 0.62, 0.45), Color(0.95, 0.72, 0.6)],
+	[6.0, Color(0.42, 0.56, 0.86), Color(1.0, 0.82, 0.62), Color(0.95, 0.85, 0.75)],
+	[20.0, Color(0.36, 0.6, 0.92), Color(0.82, 0.88, 0.95), Color(0.8, 0.86, 0.95)],
 ]
 
 var sun: DirectionalLight3D
@@ -62,8 +61,6 @@ var sun_height := 38.0                  # degrees
 var moon_height := 25.0                 # degrees
 var moon_lit := 1.0                     # the lit share of the moon's disc
 var haze_colour := Color.WHITE
-var _sun_energy := 0.0                  # the sun's light before the clouds
-var _sun_through := 1.0                 # the share the clouds let through
 
 var _physical := PhysicalSkyMaterial.new()
 var _story := ProceduralSkyMaterial.new()
@@ -86,7 +83,6 @@ func _init() -> void:
 	_story.sky_curve = 0.12
 	_story.sun_angle_max = 20.0
 	_story.sun_curve = 0.1
-	_story.sky_cover = _clouds()
 	sky.sky_material = _physical
 
 	# One shadow map each for the sun and the moon, over SHADOW_REACH:
@@ -119,27 +115,6 @@ func _init() -> void:
 	add_child(_moon_sun)
 	_build_moon()
 	_build_stars()
-
-
-## Clouds for the storybook sky: noise mapped round the sky, white above
-## a threshold and nothing below, added to the sky's colour.
-func _clouds() -> NoiseTexture2D:
-	var clouds := NoiseTexture2D.new()
-	clouds.width = 1024
-	clouds.height = 512
-	clouds.seamless = true
-	var noise := FastNoiseLite.new()
-	noise.seed = 3
-	noise.frequency = 0.012
-	noise.fractal_octaves = 3
-	clouds.noise = noise
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(0, 0, 0, 0))
-	ramp.set_offset(0, 0.62)
-	ramp.set_color(1, Color(1, 1, 1, 1))
-	ramp.set_offset(1, 0.72)
-	clouds.color_ramp = ramp
-	return clouds
 
 
 func _build_moon() -> void:
@@ -202,7 +177,8 @@ func _star_field(data: PackedByteArray, turn: Basis, limit: float, size: float,
 	mat.disable_fog = true
 	mat.disable_receive_shadows = true
 	# Drawn before every other see-through thing: the sky's farthest
-	# layer, behind clouds whatever their sorting by distance says.
+	# layer, behind anything see-through whatever its sorting by distance
+	# says.
 	mat.render_priority = -2
 	_star_mats.append(mat)
 	var quad := QuadMesh.new()
@@ -301,8 +277,6 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 	self.sun_height = sun_height
 	var to_sun := direction(sun_height, sun_bearing)
 	_light(sun, to_sun, sun_height, sun_energy, Color.WHITE)
-	_sun_energy = sun.light_energy
-	shade_sun(_sun_through)
 	_moon_dir = direction(moon_height, moon_bearing)
 	_moon_sun.look_at_from_position(Vector3.ZERO, -to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD)
 	var lit := (1.0 - to_sun.dot(_moon_dir)) * 0.5
@@ -324,8 +298,7 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 	_story.sky_horizon_color = key[2]
 	_story.ground_horizon_color = key[2]
 	_story.ground_bottom_color = (key[2] as Color).darkened(0.5)
-	_story.sky_cover_modulate = key[3]
-	haze_colour = key[4]
+	haze_colour = key[3]
 
 	# The storybook moon is about three times the real one's half degree.
 	_moon_radius = MOON_D * tan(deg_to_rad(0.8 if story else 0.26))
@@ -338,14 +311,6 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 		m.albedo_color = Color(1, 1, 1, stars)
 	_stars_real.visible = not story and stars > 0.0
 	_stars_story.visible = story and stars > 0.0
-
-
-## The sun's light at the ground dimmed by cloud: `through` the share
-## let through (IslandWeather), 1 a clear sky.
-func shade_sun(through: float) -> void:
-	_sun_through = through
-	sun.light_energy = _sun_energy * through
-	sun.visible = sun.light_energy > 0.0005
 
 
 ## Toward the moon, from anywhere on the island.

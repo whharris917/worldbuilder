@@ -8,13 +8,10 @@ extends BeachSite
 ## its moving parts a few more; it keeps its flat colours in the
 ## photographic look and follows the light, outline and shade switches.
 ##
-## Storms. Now and then a storm drifts across the island: a dark heap of
-## cloud 130 m up with rain falling under it. While it is within 700 m it
-## strikes, more often the nearer; a strike is a jagged bolt with a flash,
-## and its thunder sets out at the speed of sound (343 m/s), so it is
-## heard three seconds a kilometre after it is seen. A strike within reach
-## of a raised rod takes the rod: the rod is the tallest thing about, as a
-## real lightning rod is, and the charge runs down its cable into the jars.
+## Storms. A strike within reach of a raised rod takes the rod, the
+## tallest thing about, as a real lightning rod is, and its charge runs
+## down the cable into the jars. The island has no weather yet: no storm
+## comes, `_storm_near` stays 0, and the rods stay down.
 ##
 ## Moonlight. Each dish, unparked, turns to face the moon; what it gathers
 ## is the moon's lit share times how high it stands, in a dark clear sky,
@@ -28,10 +25,6 @@ extends BeachSite
 ##   PACK     = TON 5 s ( vials full ) -> a crate of moon vials
 
 const BEARING := 219.0                  # toward the hill from the island's middle
-const CLOUD_Y := 130.0
-const STORM_SPEED := 14.0
-const STRIKE_REACH := 260.0             # a raised rod draws strikes from a storm this near
-const SOUND := 343.0
 const JARS := 4.0
 const VIALS := 8.0
 
@@ -54,20 +47,6 @@ var _hv := 0.0
 var _cozy: StandardMaterial3D
 var _clock := 0.0
 var _rng := RandomNumberGenerator.new()
-
-# storms
-var _storm: Node3D
-var _storm_pos := Vector3.ZERO           # world
-var _storm_dir := Vector3.ZERO
-var _storm_live := false
-var _storm_wait := 20.0
-var _storm_mat: StandardMaterial3D
-var _rain: GPUParticles3D
-var _bolt: MeshInstance3D
-var _bolt_mat: StandardMaterial3D
-var _flash: OmniLight3D
-var _bolt_left := 0.0
-var _thunders: Array = []                # [when, path, pitch, position]
 
 # the works' state
 var _charge := 0.0
@@ -105,12 +84,10 @@ var _stone_digits: Array[Label3D] = []
 var _crate_digits: Array[Label3D] = []
 var _rack_at := Vector3.ZERO             # site frame
 
-var _snd_rain: AudioStreamPlayer
 var _snd_crackle: AudioStreamPlayer3D
 var _snd_ratchet: AudioStreamPlayer3D
 var _snd_chime: AudioStreamPlayer3D
 var _snd_pack: AudioStreamPlayer3D
-var _snd_thunder: Array[AudioStreamPlayer3D] = []
 
 
 func _init(owner_island: CozyIsland) -> void:
@@ -139,7 +116,6 @@ func _ready() -> void:
 	view.name = "Still"
 	view.mesh = still.commit(_cozy)
 	_site.add_child(view)
-	_build_storm()
 	_build_circuit()
 	_place_beams()
 	_build_sounds()
@@ -450,150 +426,6 @@ static func _show(digits: Array[Label3D], n: int) -> void:
 
 ## ---- storms ----------------------------------------------------------------
 
-func _build_storm() -> void:
-	_storm = Node3D.new()
-	_storm.top_level = true
-	_storm.visible = false
-	add_child(_storm)
-	_storm_mat = StandardMaterial3D.new()
-	_storm_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_storm_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_storm_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	_storm_mat.billboard_keep_scale = true
-	_storm_mat.albedo_texture = BeachSite.cloud_puff()
-	_storm_mat.disable_fog = true
-	var quad := QuadMesh.new()
-	quad.size = Vector2(1, 1)
-	quad.material = _storm_mat
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = quad
-	mm.instance_count = 140
-	for i in 140:
-		var a := _rng.randf() * TAU
-		var r := sqrt(_rng.randf()) * 85.0
-		var middle := 1.0 - r / 85.0
-		var p := Vector3(cos(a) * r, CLOUD_Y + middle * _rng.randf_range(5.0, 55.0), sin(a) * r)
-		var s := _rng.randf_range(35.0, 60.0)
-		mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3(s, s * 0.7, s)), p))
-	var heap := MultiMeshInstance3D.new()
-	heap.multimesh = mm
-	heap.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	heap.custom_aabb = AABB(Vector3(-130, CLOUD_Y - 40, -130), Vector3(260, 130, 260))
-	_storm.add_child(heap)
-	# Rain: thin streaks falling from under the cloud.
-	var process := ParticleProcessMaterial.new()
-	process.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	process.emission_box_extents = Vector3(65, 2, 65)
-	process.direction = Vector3.DOWN
-	process.spread = 3.0
-	process.initial_velocity_min = 13.0
-	process.initial_velocity_max = 15.0
-	process.gravity = Vector3(1.5, -2.0, 0)
-	var rmat := StandardMaterial3D.new()
-	rmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	rmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	rmat.albedo_color = Color(0.75, 0.8, 0.9, 0.35)
-	rmat.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
-	rmat.billboard_keep_scale = true
-	var streak := QuadMesh.new()
-	streak.size = Vector2(0.03, 0.9)
-	streak.material = rmat
-	_rain = GPUParticles3D.new()
-	_rain.amount = 900
-	_rain.lifetime = 5.0
-	_rain.process_material = process
-	_rain.draw_pass_1 = streak
-	_rain.position = Vector3(0, 70, 0)
-	_rain.visibility_aabb = AABB(Vector3(-80, -80, -80), Vector3(160, 90, 160))
-	_rain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_rain.emitting = false
-	_storm.add_child(_rain)
-	# The bolt and its flash.
-	_bolt_mat = StandardMaterial3D.new()
-	_bolt_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_bolt_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_bolt_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	_bolt_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_bolt_mat.disable_fog = true
-	_bolt = MeshInstance3D.new()
-	_bolt.top_level = true
-	_bolt.material_override = _bolt_mat
-	_bolt.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_bolt.visible = false
-	add_child(_bolt)
-	_flash = OmniLight3D.new()
-	_flash.top_level = true
-	_flash.light_color = Color(0.82, 0.85, 1.0)
-	_flash.omni_range = 160.0
-	_flash.omni_attenuation = 1.0
-	_flash.visible = false
-	add_child(_flash)
-
-
-func _start_storm() -> void:
-	var a := _rng.randf() * TAU
-	var start := Vector3(cos(a), 0, sin(a)) * 950.0
-	var aim := Vector3(_rng.randf_range(-120, 120), 0, _rng.randf_range(-120, 120))
-	_storm_pos = start
-	_storm_dir = (aim - start).normalized()
-	_storm_live = true
-	_storm.visible = true
-	_rain.emitting = true
-
-
-func _strike(target: Vector3, rod: int) -> void:
-	# From somewhere under the cloud to where it strikes.
-	var a := _rng.randf() * TAU
-	var r := _rng.randf() * 40.0
-	var from := Vector3(_storm_pos.x + cos(a) * r, CLOUD_Y, _storm_pos.z + sin(a) * r)
-	_bolt.mesh = _bolt_mesh(from, target)
-	_bolt.global_transform = Transform3D.IDENTITY
-	_bolt.visible = true
-	_bolt_left = 0.5
-	_flash.global_position = target + Vector3(0, 25, 0)
-	if rod >= 0:
-		_rod_glow[rod] = 1.0
-		_charge = minf(_charge + 0.35, JARS)
-	# The thunder, heard when the sound has crossed the distance.
-	var cam := get_viewport().get_camera_3d()
-	var dist := cam.global_position.distance_to(target) if cam != null else 500.0
-	var file := "res://audio/thunder_near.wav" if dist < 450.0 else "res://audio/thunder_%d.wav" % (1 + _rng.randi() % 3)
-	_thunders.append([_clock + dist / SOUND, file, _rng.randf_range(0.9, 1.1), target])
-	if rod >= 0:
-		_snd_crackle.position = _site.to_local(target)
-		_thunders.append([_clock + dist / SOUND, "crackle", 1.0, target])
-
-
-## A jagged bolt from `top` to `bottom`, as ribbons facing the viewer.
-func _bolt_mesh(top: Vector3, bottom: Vector3) -> ArrayMesh:
-	var pts: Array[Vector3] = [top, bottom]
-	for depth in 5:
-		var next: Array[Vector3] = [pts[0]]
-		for i in pts.size() - 1:
-			var a := pts[i]
-			var b := pts[i + 1]
-			var spread := a.distance_to(b) * 0.25
-			next.append((a + b) * 0.5 + Vector3(_rng.randf_range(-spread, spread), _rng.randf_range(-spread, spread) * 0.3, _rng.randf_range(-spread, spread)))
-			next.append(b)
-		pts = next
-	var cam := get_viewport().get_camera_3d()
-	var eye := cam.global_position if cam != null else bottom + Vector3(50, 0, 0)
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in pts.size() - 1:
-		var a := pts[i]
-		var b := pts[i + 1]
-		var side := (b - a).cross(eye - a).normalized() * 1.1
-		st.add_vertex(a - side)
-		st.add_vertex(a + side)
-		st.add_vertex(b + side)
-		st.add_vertex(a - side)
-		st.add_vertex(b + side)
-		st.add_vertex(b - side)
-	return st.commit()
-
-
 ## ---- the circuit -----------------------------------------------------------
 
 func _build_circuit() -> void:
@@ -643,21 +475,10 @@ func _build_circuit() -> void:
 
 
 func _build_sounds() -> void:
-	_snd_rain = AudioStreamPlayer.new()
-	_snd_rain.stream = _sound("res://audio/rain_loop.wav", true)
-	_snd_rain.volume_db = -80.0
-	_snd_rain.autoplay = _snd_rain.stream != null
-	add_child(_snd_rain)
 	_snd_crackle = _speaker("res://audio/crackle.wav", false, hill(0, 0, 3), 10.0)
 	_snd_ratchet = _speaker("res://audio/ratchet.wav", false, hill(0, 0, 2), 5.0)
 	_snd_chime = _speaker("res://audio/chime.wav", false, _rack_at, 5.0)
 	_snd_pack = _speaker("res://audio/clank_2.wav", false, _rack_at, 5.0)
-	for i in 3:
-		var p := AudioStreamPlayer3D.new()
-		p.unit_size = 80.0
-		p.max_db = 3.0
-		_site.add_child(p)
-		_snd_thunder.append(p)
 
 
 ## ---- the simulation --------------------------------------------------------
@@ -675,57 +496,6 @@ func _edge(key: String) -> bool:
 
 func _physics_process(dt: float) -> void:
 	_clock += dt
-	var summit := _site.to_global(hill(0, 0, 0))
-	# Storms come, cross and go.
-	if _storm_live:
-		_storm_pos += _storm_dir * STORM_SPEED * dt
-		if _storm_pos.length() > 1000.0 and _storm_pos.dot(_storm_dir) > 0.0:
-			_storm_live = false
-			_storm.visible = false
-			_rain.emitting = false
-			_storm_wait = _rng.randf_range(80.0, 180.0)
-	else:
-		_storm_wait -= dt
-		if _storm_wait <= 0.0:
-			_start_storm()
-	var d := Vector2(_storm_pos.x - summit.x, _storm_pos.z - summit.z).length() if _storm_live else 9999.0
-	_storm_near = clampf(1.0 - d / 700.0, 0.0, 1.0)
-	# Strikes, at random moments, more often the nearer.
-	if _storm_live and d < 700.0 and _rng.randf() < 0.4 * _storm_near * dt:
-		var rod := -1
-		var best := INF
-		if d < STRIKE_REACH:
-			for i in 3:
-				if float(_rod_up[i]) > 0.8:
-					var tip := _rod_tops[i].global_position
-					var far := Vector2(tip.x - _storm_pos.x, tip.z - _storm_pos.z).length()
-					if far < best:
-						best = far
-						rod = i
-		if rod >= 0 and _charge < JARS:
-			_strike(_rod_tops[rod].global_position + Vector3(0, 0.6, 0), rod)
-		else:
-			var a := _rng.randf() * TAU
-			var r := _rng.randf() * 45.0
-			var x := _storm_pos.x + cos(a) * r
-			var z := _storm_pos.z + sin(a) * r
-			_strike(Vector3(x, maxf(island.height(x, z), 0.0), z), -1)
-	# Thunder arriving.
-	var still: Array = []
-	for t: Array in _thunders:
-		if _clock >= float(t[0]):
-			if t[1] == "crackle":
-				_play(_snd_crackle, randf_range(0.9, 1.1))
-			else:
-				for p in _snd_thunder:
-					if not p.playing:
-						p.stream = _sound(t[1], false)
-						p.position = _site.to_local(t[3])
-						_play(p, float(t[2]))
-						break
-		else:
-			still.append(t)
-	_thunders = still
 	# Rods rise while their radiometer spins, clicking as they climb.
 	for i in 3:
 		var was: float = _rod_up[i]
@@ -771,7 +541,7 @@ func _physics_process(dt: float) -> void:
 		_show(_crate_digits, _crates)
 		_play(_snd_pack, 1.4)
 	# The lanterns.
-	_l["storm"].condition = d < (420.0 if _l["storm"].condition else 350.0)
+	_l["storm"].condition = _storm_near > 0.4
 	_l["jars"].condition = _charge >= JARS - 0.05
 	_l["moon"].condition = moon_up
 	_l["vials"].condition = _moon >= VIALS - 0.05
@@ -780,23 +550,6 @@ func _physics_process(dt: float) -> void:
 
 
 func _process(delta: float) -> void:
-	# The storm cloud, and how it darkens with the sky.
-	if _storm_live:
-		_storm.global_position = Vector3(_storm_pos.x, 0, _storm_pos.z)
-		var day := island.sky.daylight
-		var grey := lerpf(0.12, 0.42, day)
-		_storm_mat.albedo_color = Color(grey, grey * 1.02, grey * 1.12, 0.92)
-	# The bolt flickers in three pulses, the flash with it.
-	if _bolt_left > 0.0:
-		_bolt_left -= delta
-		var pulse := maxf(sin(_bolt_left * 40.0), 0.0) * (_bolt_left / 0.5)
-		_bolt_mat.albedo_color = Color(0.9, 0.9, 1.0) * (1.5 + 6.0 * pulse)
-		_flash.visible = true
-		_flash.light_energy = 14.0 * pulse
-		if _bolt_left <= 0.0:
-			_bolt.visible = false
-			_flash.visible = false
-	_snd_rain.volume_db = linear_to_db(clampf((_storm_near - 0.5) * 2.0, 0.0001, 1.0)) - 4.0
 	_storm_glass.emission_energy_multiplier = _storm_near * 1.5
 	_storm_glass.albedo_color = Color(0.85, 0.9, 1.0, 0.25 + 0.6 * _storm_near)
 	# Rods, their tips, the cables.

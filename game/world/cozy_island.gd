@@ -26,8 +26,8 @@ extends Node3D
 ## - Glow: bright parts bleed light into their neighbours.
 ## - Haze: depth fog in a pale sky colour, so distance fades.
 ## - Soft focus: the distance out of focus (camera depth of field).
-## - Storybook sky: the engine's procedural sky in soft colours with
-##   noise clouds, in place of its physical sky; a larger moon with a
+## - Storybook sky: the engine's procedural sky in soft colours, in
+##   place of its physical sky; a larger moon with a
 ##   crisp edge and fewer, sparkling stars.
 ## - Foam line: a crisp white band where the sea meets the beach, in
 ##   place of a soft one.
@@ -82,7 +82,6 @@ const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", 
 
 var player: Player
 var sky: IslandSky
-var weather: IslandWeather
 var _panel: BenchPanel
 var _env: Environment
 var _camera_look: CameraAttributesPractical
@@ -172,8 +171,6 @@ func _ready() -> void:
 	add_child(InnerBay.new(self))
 	_build_bounds()
 	_lighten()
-	weather = IslandWeather.new(self)
-	add_child(weather)
 	_build_panels()
 	# Soft shadows need the engine's shadow softening at least at Low,
 	# whatever the graphics preset says.
@@ -261,22 +258,13 @@ func _build_panels() -> void:
 
 	_panel.heading(steps, "Setting")
 	_panel.switch(steps, "Storybook sky", false, redraw)
-	_panel.note(steps, "Off, the engine's physical sky: the colour of air lit by the sun. On, its simpler sky drawn from a few chosen colours that change through sunset and dusk to night, with clouds made from noise; the moon larger with a crisp edge, and only the brightest stars, as sparkles.")
+	_panel.note(steps, "Off, the engine's physical sky: the colour of air lit by the sun. On, its simpler sky drawn from a few chosen colours that change through sunset and dusk to night; the moon larger with a crisp edge, and only the brightest stars, as sparkles.")
 	_panel.switch(steps, "Foam line", false, redraw)
 	_panel.note(steps, "Where the sea meets the beach, a crisp white band in place of a soft one. Both rise and fall with the swell.")
 
 	var isle := _panel.panel("Island")
 	_panel.switch(isle, "Works and machines", true, func(v: bool) -> void: _set_works(v))
 	_panel.note(isle, "All five works, their machines, beams, sounds and storms. Off, the island is left to itself: the beaches, the dunes and the bay, the cabin, the campfire and the lanterns.")
-
-	var wx := _panel.panel("Weather")
-	_panel.switch(wx, "Fair-weather clouds", true, func(v: bool) -> void: weather.fair = v)
-	_panel.slider(wx, "Showers", 0.0, 1.0, 0.05, 0.5, func(v: float) -> void: weather.showers = v)
-	_panel.slider(wx, "Wind (m/s)", 2.0, 14.0, 0.5, 7.0, func(v: float) -> void: weather.wind_speed = v)
-	_panel.switch(wx, "Weather out at sea", true, func(v: bool) -> void: weather.far_weather = v)
-	_panel.switch(wx, "Rainbows", true, func(v: bool) -> void: weather.rainbows = v)
-	_panel.button(wx, "Send a shower", func() -> void: weather.send_shower())
-	_panel.note(wx, "Clouds and showers blow across on the wind, so it can rain in one place and shine in another. A shower brings a gust before it and passes in under a minute; with the sun behind you, look for a rainbow in it. Far out at sea, squalls with lightning and banks of mist travel round the horizon.")
 
 	var light := _panel.panel("Sun and moon")
 	_panel.slider(light, "Sun height", -30.0, 85.0, 0.5, 38.0, redraw)

@@ -1,15 +1,16 @@
 class_name BalloonWorks
 extends BeachSite
 ## A balloon works on the cozy island's west beach: a tethered balloon
-## that harvests water from the cloud deck, run by light-beam logic
+## that harvests water from the air, run by light-beam logic
 ## (LumenPart, LumenBeam).
 ##
 ## The physics it starts from, scaled for the island: air cools about
 ## 6.5 degrees a kilometre of height; here a metre of tether stands for
 ## ten metres of sky, so the balloon at 260 m is in air as cold as 2.6 km
-## up. Inside the cloud deck (CLOUD_LOW to CLOUD_HIGH) the balloon's fog
-## net gathers water as fog nets in Chile and Morocco do; where the air
-## is below freezing the water gathers as frost and icicles instead. The
+## up. Its fog net gathers water as fog nets in Chile and Morocco do,
+## richly inside cloud; the island has no clouds yet, so it gathers only
+## the little in clear air. Where the air is below freezing the water
+## gathers as frost and icicles instead. The
 ## harvest is richest at dawn, good at night, poorest at noon. Wind blows
 ## in gusts and now and then a gale, stronger aloft.
 ##
@@ -34,8 +35,6 @@ extends BeachSite
 
 const BEARING := 170.0
 const TOP := 260.0                      # tether length at the top, m
-const CLOUD_LOW := 205.0
-const CLOUD_HIGH := 275.0
 const RISE_SPEED := 10.0                # m/s paying out
 const REEL_SPEED := 8.0                 # m/s reeling in
 const HARVEST_RATE := 0.035             # basket loads a second at full
@@ -90,8 +89,6 @@ var _trough_water: MeshInstance3D
 var _tank_water: MeshInstance3D
 var _tank_light: OmniLight3D
 var _pour: MeshInstance3D
-var _clouds: MultiMeshInstance3D
-var _cloud_mat: StandardMaterial3D
 var _digits: Array[Label3D] = []
 var _gathered := 0.0
 
@@ -134,7 +131,6 @@ func _ready() -> void:
 	_build_balloon()
 	_build_trough_and_tank()
 	_build_mast()
-	_build_clouds()
 	_build_circuit()
 	_place_beams()
 	_build_sounds()
@@ -423,7 +419,7 @@ func _build_balloon() -> void:
 	_rope = _rod(Vector3.ZERO, Vector3.UP, 0.02, _rope_mat, 6)
 	_rope.set_meta(StaticMerge.MOVES, true)
 	_balloon.add_child(HoverNote.new(Vector3(0, 0.7, 0), Vector3(1.6, 1.6, 1.6),
-			"Balloon\nIts net gathers water from the cloud deck, as frost and icicles above the freezing height.", 2.0))
+			"Balloon\nIts net gathers water from the air, as frost and icicles above the freezing height.", 2.0))
 
 
 ## ---- the thawing trough and the cistern ------------------------------------
@@ -535,52 +531,6 @@ func _build_mast() -> void:
 	_box(Vector3(0.02, 0.25, 0.3), Vector3(-0.45, 0, 0), _iron, false, _vane).rotation.y = PI * 0.5
 	_site.add_child(HoverNote.new(at(MAST.x, MAST.y, g + 3.0), Vector3(0.6, 6.0, 0.6),
 			"Weather mast\nThe cups spin with the wind; the vane points into it."))
-
-
-## ---- the cloud deck --------------------------------------------------------
-
-## Heaps of soft billboard puffs between CLOUD_LOW and CLOUD_HIGH over
-## this side of the island, tinted by the sky. Each puff is one picture
-## drawn here: a round falloff roughened by noise, its alpha ragged at the
-## edge, paler at the top and greyer underneath, as a cumulus is lit.
-func _build_clouds() -> void:
-	_cloud_mat = StandardMaterial3D.new()
-	_cloud_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_cloud_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_cloud_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	_cloud_mat.billboard_keep_scale = true
-	_cloud_mat.albedo_texture = BeachSite.cloud_puff()
-	_cloud_mat.disable_fog = true
-	var quad := QuadMesh.new()
-	quad.size = Vector2(1, 1)
-	quad.material = _cloud_mat
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = quad
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 2600
-	var heaps := 18
-	var per_heap := 22
-	mm.instance_count = heaps * per_heap
-	var i := 0
-	for h in heaps:
-		var a := rng.randf_range(0.0, TAU)
-		var r := sqrt(rng.randf()) * 190.0
-		var base := Vector3(cos(a) * r, rng.randf_range(CLOUD_LOW + 12.0, CLOUD_LOW + 30.0), sin(a) * r - 40.0)
-		var width := rng.randf_range(25.0, 45.0)
-		for k in per_heap:
-			# Wide and flat at the base, piling higher toward the middle.
-			var off := Vector2(rng.randf_range(-1, 1), rng.randf_range(-1, 1))
-			var middle := 1.0 - minf(off.length(), 1.0)
-			var p := base + Vector3(off.x * width, middle * rng.randf_range(5.0, 28.0), off.y * width * 0.7)
-			var size := rng.randf_range(18.0, 34.0) * (0.7 + 0.5 * middle)
-			mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3(size, size * 0.75, size)), p))
-			i += 1
-	_clouds = MultiMeshInstance3D.new()
-	_clouds.multimesh = mm
-	_clouds.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_clouds.position = at(CRADLE.x, CRADLE.y, 0.0)
-	_site.add_child(_clouds)
 
 
 ## ---- the circuit -----------------------------------------------------------
@@ -702,16 +652,10 @@ func _air_temp(height: float) -> float:
 	return ground_t - 0.065 * height
 
 
-## How much water the air offers at a height: little below the cloud,
-## most inside it, some above; most at dawn, more by night than at noon.
+## How much water the air offers at a height: clear air holds little,
+## a little more higher up; most at dawn, more by night than at noon.
 func _humidity(height: float) -> float:
-	var h: float
-	if height < CLOUD_LOW:
-		h = lerpf(0.05, 0.3, height / CLOUD_LOW)
-	elif height <= CLOUD_HIGH:
-		h = 1.0
-	else:
-		h = 0.4
+	var h := lerpf(0.05, 0.12, clampf(height / TOP, 0.0, 1.0))
 	var sun := island.sky.sun_height
 	var dawn := 1.0 - clampf(absf(sun - 2.0) / 10.0, 0.0, 1.0)
 	var time := lerpf(1.2, 0.7, clampf(sun / 40.0, 0.0, 1.0)) + 0.6 * dawn
@@ -850,6 +794,3 @@ func _process(delta: float) -> void:
 	_level(_snd_pour, _drain if _water > 0.001 else 0.0, -6.0)
 	_level(_snd_fire, _thaw * 0.5, -8.0)
 	_level(_snd_wind, 0.2 + 0.8 * _wind, -6.0)
-	# The clouds take the sky's light.
-	var tint := island.sky.haze_colour.lerp(Color.WHITE, island.sky.daylight * 0.85)
-	_cloud_mat.albedo_color = Color(tint, 1.0)
