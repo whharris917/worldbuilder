@@ -1,5 +1,5 @@
 class_name SaltWorks
-extends Node3D
+extends BeachSite
 ## A seaside salt works on the cozy island's east beach, run by a circuit
 ## of light beams: a demonstration of ladder logic (the way machine
 ## controllers are programmed) made of lanterns, crystals, hourglasses
@@ -44,15 +44,6 @@ const VALVE_FLOW := 0.12
 const BOIL_RATE := 0.03                 # m3/s at full fire
 const SALT_PER_M3 := 35.0               # kg of salt in a cubic metre of seawater
 
-var island: CozyIsland
-var parts: Array[LumenPart] = []
-var beams: Array[LumenBeam] = []
-
-var _site := Node3D.new()
-var _dir := Vector3.ZERO
-var _in := Vector3.ZERO
-var _along := Vector3.ZERO
-var _origin := Vector3.ZERO
 var _wind_noise := FastNoiseLite.new()
 var _clock := 0.0
 
@@ -127,12 +118,10 @@ var _lever: WorksHandle
 var _bell_sound: AudioStreamPlayer3D
 var _water_sound: AudioStreamPlayer3D
 
-var _wood: StandardMaterial3D
 var _plank: StandardMaterial3D
 var _stone: StandardMaterial3D
 var _brick: StandardMaterial3D
 var _iron: StandardMaterial3D
-var _brass: StandardMaterial3D
 var _canvas: StandardMaterial3D
 var _roof: StandardMaterial3D
 var _salt_mat: StandardMaterial3D
@@ -141,26 +130,15 @@ var _tank_wood: StandardMaterial3D
 
 
 func _init(owner_island: CozyIsland) -> void:
+	super(owner_island, BEARING)
 	name = "SaltWorks"
-	island = owner_island
-	var a := deg_to_rad(BEARING)
-	_dir = Vector3(cos(a), 0.0, sin(a))
-	_in = -_dir
-	_along = Vector3(-_dir.z, 0.0, _dir.x)
-	_origin = _dir * island.coast(a, 0.0)
-	_site.basis = Basis(_along, Vector3.UP, _in)
-	_site.position = Vector3(_origin.x, 0.0, _origin.z)
 	_wind_noise.seed = 77
 	_wind_noise.frequency = 1.0
 
 
 ## Where the site's middle is, for keeping trees off it.
 static func centre(owner_island: CozyIsland) -> Vector3:
-	var a := deg_to_rad(BEARING)
-	var d := Vector3(cos(a), 0.0, sin(a))
-	var o := d * owner_island.coast(a, 0.0)
-	var along := Vector3(-d.z, 0.0, d.x)
-	return o + along * -2.0 - d * 6.0
+	return BeachSite.site_point(owner_island, BEARING, -2.0, 6.0)
 
 
 func _ready() -> void:
@@ -176,21 +154,7 @@ func _ready() -> void:
 	_build_rake_and_bin()
 	_build_bell()
 	_build_circuit()
-	for b in beams:
-		b.place()
-
-
-## ---- the site's frame ------------------------------------------------------
-
-## A point of the site: u along the shore, v inland, y absolute.
-func at(u: float, v: float, y: float) -> Vector3:
-	return Vector3(u, y, v)
-
-
-## Ground height at (u, v).
-func ground(u: float, v: float) -> float:
-	var p := _origin + _along * u + _in * v
-	return island.height(p.x, p.z)
+	_place_beams()
 
 
 func _materials() -> void:
@@ -216,70 +180,6 @@ func _materials() -> void:
 	_water_mat.uv1_triplanar = true
 	_water_mat.uv1_world_triplanar = true
 	_water_mat.uv1_scale = Vector3.ONE * 0.6
-
-
-## ---- building helpers ------------------------------------------------------
-
-func _box(size: Vector3, pos: Vector3, mat: Material, collide := false, parent: Node3D = null) -> MeshInstance3D:
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	mesh.material = mat
-	return _put(mesh, pos, collide, size, parent)
-
-
-func _cyl(top: float, bottom: float, height: float, pos: Vector3, mat: Material,
-		segments := 12, collide := false, parent: Node3D = null) -> MeshInstance3D:
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = top
-	mesh.bottom_radius = bottom
-	mesh.height = height
-	mesh.radial_segments = segments
-	mesh.rings = 1
-	mesh.material = mat
-	var view := _put(mesh, pos, false, Vector3.ZERO, parent)
-	if collide:
-		var body := StaticBody3D.new()
-		body.position = pos
-		var shape := CylinderShape3D.new()
-		shape.radius = maxf(top, bottom)
-		shape.height = height
-		var c := CollisionShape3D.new()
-		c.shape = shape
-		body.add_child(c)
-		(parent if parent != null else _site).add_child(body)
-	return view
-
-
-func _put(mesh: Mesh, pos: Vector3, collide: bool, size: Vector3, parent: Node3D) -> MeshInstance3D:
-	var view := MeshInstance3D.new()
-	view.mesh = mesh
-	view.position = pos
-	var into := parent if parent != null else _site
-	into.add_child(view)
-	if collide:
-		var body := StaticBody3D.new()
-		body.position = pos
-		var shape := BoxShape3D.new()
-		shape.size = size
-		var c := CollisionShape3D.new()
-		c.shape = shape
-		body.add_child(c)
-		into.add_child(body)
-	return view
-
-
-## A rod or timber of `radius` from a to b (site coordinates).
-func _rod(a: Vector3, b: Vector3, radius: float, mat: Material, segments := 8, parent: Node3D = null) -> MeshInstance3D:
-	var view := _cyl(radius, radius, a.distance_to(b), (a + b) * 0.5, mat, segments, false, parent)
-	view.basis = _aligned(b - a)
-	return view
-
-
-## A basis whose y runs along `dir`.
-static func _aligned(dir: Vector3) -> Basis:
-	var y := dir.normalized()
-	var x := y.cross(Vector3.FORWARD if absf(y.z) < 0.9 else Vector3.RIGHT).normalized()
-	return Basis(x, y, x.cross(y))
 
 
 ## ---- the windmill ----------------------------------------------------------
@@ -725,34 +625,7 @@ func _build_bell() -> void:
 	_site.add_child(_bell_sound)
 
 
-## A sound, looped if asked; none when headless (nothing would hear it,
-## and a loop left playing holds its file at exit).
-func _sound(path: String, loop: bool) -> AudioStreamWAV:
-	if DisplayServer.get_name() == "headless":
-		return null
-	var stream := load(path) as AudioStreamWAV
-	if loop:
-		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		stream.loop_begin = 0
-		stream.loop_end = int(stream.get_length() * stream.mix_rate)
-	return stream
-
-
 ## ---- the circuit -----------------------------------------------------------
-
-func _part(kind: LumenPart.Kind, title: String, u: float, v: float, y: float, delay := 0.0) -> LumenPart:
-	var p := LumenPart.new(kind, title, at(u, v, y), ground(u, v), _wood, _brass, delay)
-	_site.add_child(p)
-	parts.append(p)
-	return p
-
-
-func _wire(from: LumenPart, to: LumenPart) -> void:
-	var b := LumenBeam.new(from, to, from.colour())
-	add_child(b)
-	to.inputs.append(b)
-	beams.append(b)
-
 
 func _build_circuit() -> void:
 	var gm := ground(MILL_U, MILL_V)
@@ -815,10 +688,6 @@ func _build_circuit() -> void:
 	_wire(rise_rake, _r_bell)
 	_wire(latch, fall_boil)
 	_wire(fall_boil, _r_count)
-	# Lanterns face where their beams go.
-	for b in beams:
-		if b.source.kind == LumenPart.Kind.LANTERN:
-			b.source.face(b.target.global_position)
 
 	var gl := ground(-0.4, 7.0)
 	_lever = WorksHandle.new(WorksHandle.Kind.LEVER, at(-0.4, 7.0, gl + 0.55), _wood, _iron,
@@ -898,12 +767,7 @@ func _physics_process(dt: float) -> void:
 		for k in 3:
 			_digits[k].text = str(_batches / int(pow(10, 2 - k)) % 10)
 	_was_count = _r_count.powered
-	# The circuit: every part reads the beams as they stand, then every
-	# beam carries the new outputs on.
-	for p in parts:
-		p.evaluate(dt)
-	for b in beams:
-		b.step(dt)
+	_step_circuit(dt)
 
 
 func _process(delta: float) -> void:

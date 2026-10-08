@@ -44,6 +44,16 @@ Writes to game/audio/:
                   breathing band of air
   shell_light.wav a high glassy chord swelling in and dying away, for the
                   sun breaking through every bowl to the centre
+  bubble_loop.wav 8 s seamless rolling boil: bubbles bursting, each
+                  rising in pitch as it closes, over a low simmer
+  hiss_loop.wav   6 s seamless steam from a relief valve
+  clank_1..2.wav  a brass valve thrown over
+  chime.wav       a quick run of shimmering glass partials, for a reaction
+                  flashing over
+  chuff.wav       a small steam engine's exhaust beat
+  flare_loop.wav  6 s seamless roar of a gas flare, flickering
+  ratchet.wav     a sequencer drum's pawl dropping into its ratchet
+  whistle.wav     a three-chamber steam whistle's chord
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -1235,6 +1245,190 @@ def make_shell_light() -> None:
     write_wav(OUT_DIR / "shell_light.wav", [buf], normalize_to=0.7)
 
 
+# ---- the colour works ------------------------------------------------------
+
+def _band(buf: list[float], low_hz: float, high_hz: float) -> list[float]:
+    """Two one-pole stages each way: what lies between low_hz and high_hz."""
+    a_hi = 1.0 - math.exp(-2.0 * math.pi * high_hz / SR)
+    a_lo = 1.0 - math.exp(-2.0 * math.pi * low_hz / SR)
+    hi = _lowpass(_lowpass(buf, a_hi), a_hi)
+    lo = _lowpass(_lowpass(hi, a_lo), a_lo)
+    return [h - l for h, l in zip(hi, lo)]
+
+
+def make_bubbles() -> None:
+    """A vessel at a rolling boil: bubbles bursting at the surface, each a
+    short sine whose pitch rises as the bubble closes (a bubble's ringing,
+    the Minnaert resonance, is higher the smaller it is: 2 to 6 mm, 500 Hz
+    to 1.6 kHz), over a low simmer. Bubbles placed round the loop, wrapping
+    at the seam."""
+    r = random.Random(20261007)
+    dur = 8.0
+    n = int(SR * dur)
+    out = [0.0] * n
+    simmer = _band(_noise_r(r, n + SR), 80.0, 400.0)[SR:]
+    for i in range(n):
+        out[i] = simmer[i] * 0.5
+    for _ in range(int(dur * 26)):
+        start = r.randrange(n)
+        f0 = r.uniform(480.0, 1500.0)
+        length = int(SR * r.uniform(0.025, 0.06))
+        rise = r.uniform(1.2, 1.9)
+        amp = r.uniform(0.2, 1.0)
+        samples = [0.0] * length
+        phase = 0.0
+        for j in range(length):
+            t = j / length
+            phase += 2.0 * math.pi * f0 * (1.0 + (rise - 1.0) * t) / SR
+            samples[j] = math.sin(phase) * math.exp(-t * 4.0) * min(1.0, j / 30.0)
+        _add_wrapped(out, start, samples, amp)
+    write_wav(OUT_DIR / "bubble_loop.wav", [out], normalize_to=0.4)
+
+
+def make_hiss() -> None:
+    """Steam escaping through a relief valve: a hard hiss of broadband
+    noise, most of it between 1.5 and 7 kHz, with a faint whistle where the
+    jet edges ring, wavering."""
+    r = random.Random(20261008)
+    dur = 6.0
+    n = int(SR * dur)
+    fade = int(0.4 * SR)
+    total = n + fade
+    white = _noise_r(r, total + SR)
+    hiss = _band(white, 1500.0, 7000.0)[SR:]
+    body = _band(white, 400.0, 1500.0)[SR:]
+    out = [0.0] * total
+    phase = 0.0
+    for i in range(total):
+        t = i / SR
+        wob = 1.0 + 0.15 * math.sin(2.0 * math.pi * 0.7 * t) + 0.08 * math.sin(2.0 * math.pi * 2.3 * t)
+        phase += 2.0 * math.pi * 2350.0 * (1.0 + 0.01 * math.sin(2.0 * math.pi * 1.1 * t)) / SR
+        out[i] = (hiss[i] * 1.2 + body[i] * 0.4) * wob + 0.04 * math.sin(phase)
+    out = loop_crossfade(out, 0.4)
+    write_wav(OUT_DIR / "hiss_loop.wav", [out], normalize_to=0.4)
+
+
+def make_clank(path: Path, f0: float, seed: int) -> None:
+    """A brass valve thrown over: the click of the stop, then the body
+    ringing in a few inharmonic partials (a thick bar's, not a string's),
+    the high ones dying first."""
+    r = random.Random(seed)
+    length = int(0.6 * SR)
+    out = [0.0] * length
+    partials = [(1.0, 1.0, 9.0), (2.76, 0.6, 14.0), (5.40, 0.35, 22.0), (8.93, 0.18, 35.0)]
+    for i in range(length):
+        t = i / SR
+        v = 0.0
+        for ratio, amp, decay in partials:
+            v += amp * math.exp(-t * decay) * math.sin(2.0 * math.pi * f0 * ratio * t)
+        v += 1.2 * math.exp(-t / 0.0015) * (r.random() * 2.0 - 1.0)
+        out[i] = v * min(1.0, i / 20.0)
+    write_wav(path, [out], normalize_to=0.6)
+
+
+def make_chime() -> None:
+    """A glassy sparkle for a reaction flashing over: a quick rising run
+    of four high glass partials, each shimmering in a pair a few hertz
+    apart, ringing out over two seconds."""
+    dur = 2.6
+    n = int(SR * dur)
+    out = [0.0] * n
+    notes = [(1568.0, 0.0), (2093.0, 0.06), (2637.0, 0.12), (3136.0, 0.18), (4186.0, 0.26)]
+    for f, at in notes:
+        for i in range(int(at * SR), n):
+            t = i / SR - at
+            env = math.exp(-t * 2.2) * min(1.0, t / 0.003)
+            out[i] += 0.5 * env * (math.sin(2.0 * math.pi * f * t) + math.sin(2.0 * math.pi * (f + 3.5) * t + 1.1))
+    tail = int(0.3 * SR)
+    for i in range(tail):
+        out[n - tail + i] *= 1.0 - i / tail
+    write_wav(OUT_DIR / "chime.wav", [out], normalize_to=0.5)
+
+
+def make_chuff() -> None:
+    """A small steam engine's exhaust beat: a puff of noise between 250 Hz
+    and 2.5 kHz, quick to start and dying in about a tenth of a second,
+    with a low knock of the piston under it."""
+    r = random.Random(20261009)
+    length = int(0.35 * SR)
+    puff = _band(_noise_r(r, length + SR), 250.0, 2500.0)[SR:]
+    out = [0.0] * length
+    for i in range(length):
+        t = i / SR
+        env = min(1.0, t / 0.006) * math.exp(-t / 0.09)
+        out[i] = puff[i] * env * 2.0 + 0.4 * math.exp(-t / 0.03) * math.sin(2.0 * math.pi * 140.0 * t)
+    write_wav(OUT_DIR / "chuff.wav", [out], normalize_to=0.5)
+
+
+def make_flare() -> None:
+    """A gas flare burning: a broad roar, its weight below 600 Hz with a
+    hissing edge, flickering as the flame tears."""
+    r = random.Random(20261010)
+    dur = 6.0
+    n = int(SR * dur)
+    fade = int(0.5 * SR)
+    total = n + fade
+    white = _noise_r(r, total + SR)
+    roar = _band(white, 60.0, 600.0)[SR:]
+    edge = _band(white, 1200.0, 4000.0)[SR:]
+    flick = _lowpass(_noise_r(r, total), 0.002)
+    peak = max(1e-6, max(abs(x) for x in flick))
+    out = [0.0] * total
+    for i in range(total):
+        f = 1.0 + 0.5 * flick[i] / peak
+        out[i] = roar[i] * 2.5 * f + edge[i] * 0.35 * f
+    out = loop_crossfade(out, 0.5)
+    write_wav(OUT_DIR / "flare_loop.wav", [out], normalize_to=0.4)
+
+
+def make_ratchet() -> None:
+    """The sequencer drum stepping on: a pawl dropping into its ratchet, a
+    sharp click with a little ring of the brass."""
+    r = random.Random(20261011)
+    length = int(0.12 * SR)
+    out = [0.0] * length
+    for i in range(length):
+        t = i / SR
+        out[i] = (math.exp(-t / 0.0012) * (r.random() * 2.0 - 1.0)
+                  + 0.5 * math.exp(-t / 0.02) * math.sin(2.0 * math.pi * 2600.0 * t)
+                  + 0.3 * math.exp(-t / 0.03) * math.sin(2.0 * math.pi * 1150.0 * t))
+    write_wav(OUT_DIR / "ratchet.wav", [out], normalize_to=0.5)
+
+
+def make_whistle() -> None:
+    """A steam whistle at the end of a batch: three chambers sounding a
+    chord (D, F sharp, A) over breathy steam, swelling in, held, dropping
+    a little in pitch as the steam fades."""
+    r = random.Random(20261012)
+    dur = 2.0
+    n = int(SR * dur)
+    breath = _band(_noise_r(r, n + SR), 500.0, 3000.0)[SR:]
+    out = [0.0] * n
+    phases = [0.0, 0.0, 0.0]
+    for i in range(n):
+        t = i / SR
+        env = min(1.0, t / 0.12) * (1.0 if t < 1.4 else math.exp(-(t - 1.4) / 0.15))
+        sag = 1.0 - 0.03 * max(0.0, t - 1.4)
+        v = 0.0
+        for k, f in enumerate((587.3, 740.0, 880.0)):
+            phases[k] += 2.0 * math.pi * f * sag * (1.0 + 0.003 * math.sin(2.0 * math.pi * 5.0 * t)) / SR
+            v += (0.5 - 0.1 * k) * (math.sin(phases[k]) + 0.3 * math.sin(2.0 * phases[k]))
+        out[i] = (v + breath[i] * 0.5) * env
+    write_wav(OUT_DIR / "whistle.wav", [out], normalize_to=0.5)
+
+
+def make_colour_works() -> None:
+    make_bubbles()
+    make_hiss()
+    make_clank(OUT_DIR / "clank_1.wav", 410.0, 20261013)
+    make_clank(OUT_DIR / "clank_2.wav", 530.0, 20261014)
+    make_chime()
+    make_chuff()
+    make_flare()
+    make_ratchet()
+    make_whistle()
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -1264,6 +1458,7 @@ def main() -> None:
     make_shell_shifts()
     make_shell_drone()
     make_shell_light()
+    make_colour_works()
     print("done")
 
 
