@@ -129,6 +129,7 @@ func _ready() -> void:
 	add_child(LagoonWorks.new(self))
 	piers.append(LagoonWorks.pier(self))
 	_build_bounds()
+	_lighten()
 	_build_panels()
 	# Soft shadows need the engine's shadow softening at least at Low,
 	# whatever the graphics preset says.
@@ -150,6 +151,21 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	get_viewport().use_debanding = _was_debanding
 	RenderingServer.directional_soft_shadow_filter_set_quality(_was_soft as RenderingServer.ShadowQuality)
+
+
+## Everything built made cheap to draw (StaticMerge): round shapes given
+## only the sides their size needs, every piece that never moves joined
+## into one mesh per material per works, small separate details faded
+## out at a distance.
+func _lighten() -> void:
+	var shared: Array = []
+	for s: Dictionary in _surfaces:
+		shared.append(s["mat"])
+	var simplified := StaticMerge.simplify(self)
+	var merged := StaticMerge.merge(self, shared)
+	StaticMerge.fade_details(self)
+	if DisplayServer.get_name() == "headless":
+		print("[worldbuilder] cozy island: %d shapes simplified, %d pieces joined into %d meshes" % [simplified, merged.x, merged.y])
 
 
 ## ---- the controls ----------------------------------------------------------

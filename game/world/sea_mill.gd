@@ -60,6 +60,7 @@ func _init(depth: float, wood: Material, iron: Material, canvas: Material, brass
 	_put(cap, Vector3(0, top + 2.55, 0))
 	# The rotor, facing the open sea (-z, local), four canvas sails.
 	_rotor = Node3D.new()
+	_rotor.set_meta(StaticMerge.MOVES, true)
 	_rotor.position = Vector3(0, top + 1.0, -2.0)
 	add_child(_rotor)
 	_cyl(0.4, 0.4, 0.6, Vector3.ZERO, iron, 12, _rotor).rotation.x = PI * 0.5

@@ -23,6 +23,7 @@ func _init(handle_kind: Kind, at: Vector3, wood: Material, iron: Material, text:
 	name = "Lever" if kind == Kind.LEVER else "Crank"
 	position = at
 	set_meta("view", self)
+	set_meta(StaticMerge.MOVES, true)
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = Vector3(0.6, 0.6, 0.6)

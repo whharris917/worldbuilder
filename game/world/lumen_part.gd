@@ -267,6 +267,7 @@ func _build_lantern(brass: Material) -> void:
 	cap.material = brass
 	_add(cap, Vector3(0, 0.15, 0)).rotation.y = PI * 0.25
 	_shutter = Node3D.new()
+	_shutter.set_meta(StaticMerge.MOVES, true)
 	_shutter.position = Vector3(0, 0.085, -0.14)
 	_head.add_child(_shutter)
 	var flap := MeshInstance3D.new()
@@ -369,6 +370,7 @@ func _build_radiometer() -> void:
 	stem.material = glass
 	_add(stem, Vector3(0, -0.15, 0))
 	_vanes = Node3D.new()
+	_vanes.set_meta(StaticMerge.MOVES, true)
 	_head.add_child(_vanes)
 	var black := StandardMaterial3D.new()
 	black.albedo_color = Color(0.02, 0.02, 0.02)

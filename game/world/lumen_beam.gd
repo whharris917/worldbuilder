@@ -78,7 +78,8 @@ func step(dt: float) -> void:
 			s[1] = minf(float(s[1]) + move, _length)
 		if float(s[0]) >= _length and float(s[1]) < _length:
 			delivered = true
-	_stretches = _stretches.filter(func(s: Array) -> bool: return float(s[1]) < _length)
+	while not _stretches.is_empty() and float(_stretches[0][1]) >= _length:
+		_stretches.pop_front()
 	_draw()
 
 

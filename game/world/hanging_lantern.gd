@@ -19,6 +19,7 @@ var _clock := 0.0
 ## `frame` and `cord` are the metal and the cord's materials.
 func _init(frame: Material, cord: Material, phase: float) -> void:
 	name = "Lantern"
+	set_meta(StaticMerge.MOVES, true)
 	_phase = phase
 	_swing = Node3D.new()
 	add_child(_swing)

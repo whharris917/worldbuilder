@@ -224,6 +224,7 @@ func _build_pools() -> void:
 		# The branch and valve from the main pipe along this side.
 		var main_u := side * (HALF + 0.25)
 		var wheel := Node3D.new()
+		wheel.set_meta(StaticMerge.MOVES, true)
 		wheel.position = at(main_u, v + 1.2, DECK + 0.25)
 		_site.add_child(wheel)
 		var torus := TorusMesh.new()
@@ -320,6 +321,7 @@ func _build_shore() -> void:
 		_rod(jar_at + Vector3(0, 0.7, 0), jar_at + Vector3(0, 1.05, 0), 0.015, _brass, 6)
 		_ball(0.045, jar_at + Vector3(0, 1.07, 0), _brass)
 	_charge_needle = Node3D.new()
+	_charge_needle.set_meta(StaticMerge.MOVES, true)
 	var dial_at := at(STORE.x + 1.25, STORE.y + 0.3, gst + 0.9)
 	_cyl(0.18, 0.18, 0.03, dial_at, _brass, 16).rotation.x = PI * 0.5
 	var enamel := StandardMaterial3D.new()
@@ -415,6 +417,7 @@ func _soft_quad(size: float, additive: bool) -> QuadMesh:
 
 func _build_cart() -> void:
 	_cart_node = Node3D.new()
+	_cart_node.set_meta(StaticMerge.MOVES, true)
 	_site.add_child(_cart_node)
 	_box(Vector3(1.4, 0.45, 1.8), Vector3(0, 0.45, 0), _plank, false, _cart_node)
 	for du: float in [-0.55, 0.55]:

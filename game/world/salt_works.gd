@@ -200,6 +200,7 @@ func _build_windmill() -> void:
 	var hub := at(MILL_U, MILL_V - 1.45, g + HUB_Y)
 	_rod(at(MILL_U, MILL_V, g + HUB_Y), hub, 0.12, _iron)
 	_sails = Node3D.new()
+	_sails.set_meta(StaticMerge.MOVES, true)
 	_sails.position = hub
 	_site.add_child(_sails)
 	_cyl(0.25, 0.25, 0.3, Vector3.ZERO, _iron, 12, false, _sails).rotation.x = PI * 0.5
@@ -213,6 +214,7 @@ func _build_windmill() -> void:
 			_box(Vector3(1.3, 0.05, 0.05), Vector3(0.6, 1.2 + r * 0.8, 0.0), _wood, false, arm)
 	# The governor: two iron balls on arms swinging out as it spins.
 	_governor = Node3D.new()
+	_governor.set_meta(StaticMerge.MOVES, true)
 	_governor.position = at(MILL_U + 1.3, MILL_V - 1.6, g + 0.9)
 	_site.add_child(_governor)
 	_cyl(0.03, 0.03, 0.9, Vector3(0, 0.45, 0), _iron, 8, false, _governor)
@@ -243,6 +245,7 @@ func _build_shaft() -> void:
 	_shaft_from = at(MILL_U, MILL_V - 1.6, _shaft_y(MILL_V - 1.6))
 	_shaft_to = at(MILL_U, -3.6, _shaft_y(-3.6))
 	_shaft = _rod(_shaft_from, _shaft_to, 0.06, _iron, 6)
+	_shaft.set_meta(StaticMerge.MOVES, true)
 	# Trestles with bearing blocks.
 	for v: float in [10.5, 6.5, 2.5, -1.2]:
 		var y := _shaft_y(v)
@@ -251,6 +254,7 @@ func _build_shaft() -> void:
 			_rod(at(MILL_U + side, v, g - 0.2), at(MILL_U + side * 0.15, v, y - 0.05), 0.06, _wood)
 		_box(Vector3(0.45, 0.12, 0.18), at(MILL_U, v, y - 0.05), _wood)
 	_clutch = Node3D.new()
+	_clutch.set_meta(StaticMerge.MOVES, true)
 	_clutch.position = at(MILL_U, -3.0, _shaft_y(-3.0))
 	_site.add_child(_clutch)
 	_cyl(0.11, 0.11, 0.18, Vector3.ZERO, _brass, 12, false, _clutch).basis = _aligned(_shaft_to - _shaft_from)
@@ -295,6 +299,7 @@ func _build_noria() -> void:
 	water.material = _water_mat
 	for i in BUCKETS:
 		var b := Node3D.new()
+		b.set_meta(StaticMerge.MOVES, true)
 		_site.add_child(b)
 		_put(bucket, Vector3(0, 0.1, 0), false, Vector3.ZERO, b)
 		var w := _put(water, Vector3(0, 0.18, 0), false, Vector3.ZERO, b)
@@ -393,6 +398,7 @@ func _build_cistern() -> void:
 	# The float: a ball on the water, its rod up through a guide with a
 	# pointer against a board.
 	_float_rod = Node3D.new()
+	_float_rod.set_meta(StaticMerge.MOVES, true)
 	_site.add_child(_float_rod)
 	var ball := SphereMesh.new()
 	ball.radius = 0.12
@@ -419,6 +425,7 @@ func _build_pipe() -> void:
 	_rod(at(CIST_U + TANK_R - 0.05, CIST_V, y), at(PAN_U - PAN_L * 0.5 + 0.15, CIST_V, y), 0.06, _iron)
 	_cyl(0.07, 0.07, 0.12, at(PAN_U - PAN_L * 0.5 + 0.15, CIST_V, y - 0.06), _iron, 10)
 	_valve_wheel = Node3D.new()
+	_valve_wheel.set_meta(StaticMerge.MOVES, true)
 	_valve_wheel.position = at(-1.2, CIST_V, y + 0.28)
 	_site.add_child(_valve_wheel)
 	var wheel := TorusMesh.new()
@@ -458,9 +465,11 @@ func _build_furnace() -> void:
 	_box(Vector3(0.04, PAN_DEPTH + 0.04, PAN_W), at(PAN_U - PAN_L * 0.5 - 0.02, PAN_V, bottom + PAN_DEPTH * 0.5), _iron)
 	_pan_water = _box(Vector3(PAN_L, 1.0, PAN_W), Vector3.ZERO, _water_mat)
 	_salt_layer = _box(Vector3(1.0, 1.0, PAN_W - 0.04), Vector3.ZERO, _salt_mat)
+	_salt_layer.set_meta(StaticMerge.MOVES, true)
 	# The chimney with its damper arm.
 	_box(Vector3(0.6, 5.2, 0.6), at(u1 - 0.3, v0 - 0.3, g + 2.4), _brick, true)
 	_damper = Node3D.new()
+	_damper.set_meta(StaticMerge.MOVES, true)
 	_damper.position = at(u1 + 0.02, v0 - 0.3, g + 3.2)
 	_site.add_child(_damper)
 	_box(Vector3(0.04, 0.04, 0.55), Vector3(0, 0, 0.25), _iron, false, _damper)
@@ -472,6 +481,7 @@ func _build_furnace() -> void:
 	(_fire_node.get_node("Embers") as Node3D).visible = false
 	_site.add_child(_fire_node)
 	_bellows = Node3D.new()
+	_bellows.set_meta(StaticMerge.MOVES, true)
 	_bellows.position = at(u0 - 0.35, PAN_V - 0.4, g + 0.45)
 	_site.add_child(_bellows)
 	_box(Vector3(0.5, 0.04, 0.35), Vector3(0, 0.15, 0), _wood, false, _bellows)
@@ -493,6 +503,7 @@ func _build_furnace() -> void:
 	# 100 degrees is straight up; the dial reads 0 to 200.
 	_box(Vector3(0.012, 0.04, 0.005), dial_at + Vector3(0, 0.14, 0.03), red)
 	_needle = Node3D.new()
+	_needle.set_meta(StaticMerge.MOVES, true)
 	_needle.position = dial_at + Vector3(0, 0, 0.035)
 	_site.add_child(_needle)
 	_box(Vector3(0.012, 0.15, 0.006), Vector3(0, 0.06, 0), _iron, false, _needle)
@@ -565,6 +576,7 @@ func _build_rake_and_bin() -> void:
 		_rod(at(PAN_U - PAN_L * 0.5, PAN_V + dv * (PAN_W * 0.5 + 0.08), rail_y),
 				at(BIN_U + 0.5, PAN_V + dv * (PAN_W * 0.5 + 0.08), rail_y), 0.02, _iron, 6)
 	_rake_blade = Node3D.new()
+	_rake_blade.set_meta(StaticMerge.MOVES, true)
 	_site.add_child(_rake_blade)
 	_box(Vector3(0.06, 0.06, PAN_W + 0.3), Vector3(0, 0.0, 0), _wood, false, _rake_blade)
 	_box(Vector3(0.03, PAN_DEPTH, PAN_W - 0.06), Vector3(0, -PAN_DEPTH * 0.5, 0), _wood, false, _rake_blade)
@@ -581,6 +593,7 @@ func _build_rake_and_bin() -> void:
 	heap.height = 2.0
 	heap.material = _salt_mat
 	_salt_heap = _put(heap, at(BIN_U, PAN_V, g + 0.08), false, Vector3.ZERO, null)
+	_salt_heap.set_meta(StaticMerge.MOVES, true)
 	_salt_heap.scale = Vector3.ONE * 0.001
 	# The batch counter: three numbered wheels in a brass case on the
 	# bin's front.
@@ -609,10 +622,12 @@ func _build_bell() -> void:
 		_box(Vector3(0.1, 2.2, 0.1), at(u + du, v, g + 1.0), _wood)
 	_box(Vector3(1.0, 0.1, 0.12), at(u, v, g + 2.1), _wood)
 	_bell = Node3D.new()
+	_bell.set_meta(StaticMerge.MOVES, true)
 	_bell.position = at(u, v, g + 2.05)
 	_site.add_child(_bell)
 	_cyl(0.06, 0.18, 0.3, Vector3(0, -0.2, 0), _brass, 16, false, _bell)
 	_hammer = Node3D.new()
+	_hammer.set_meta(StaticMerge.MOVES, true)
 	_hammer.position = at(u + 0.35, v, g + 1.7)
 	_site.add_child(_hammer)
 	_box(Vector3(0.02, 0.02, 0.3), Vector3(-0.15, 0, 0), _iron, false, _hammer).rotation.y = PI * 0.5

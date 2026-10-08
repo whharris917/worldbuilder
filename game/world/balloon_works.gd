@@ -216,6 +216,7 @@ func _build_winch() -> void:
 	for du: float in [-0.9, 0.9]:
 		_box(Vector3(0.12, 1.3, 0.8), at(WINCH.x + du, WINCH.y, g + 0.45), _wood, true)
 	_drum = Node3D.new()
+	_drum.set_meta(StaticMerge.MOVES, true)
 	_drum.position = at(WINCH.x, WINCH.y, g + 1.0)
 	_site.add_child(_drum)
 	_cyl(0.42, 0.42, 1.6, Vector3.ZERO, _wood, 16, false, _drum).rotation.z = PI * 0.5
@@ -231,6 +232,7 @@ func _build_winch() -> void:
 	_box(Vector3(1.3, 0.4, 0.8), at(WINCH.x - 2.6, WINCH.y, g + 0.15), _stone, true)
 	_rod(at(WINCH.x - 3.1, WINCH.y, g + 1.0), at(WINCH.x - 3.1, WINCH.y, g + 2.9), 0.07, _iron, 10)
 	_flywheel = Node3D.new()
+	_flywheel.set_meta(StaticMerge.MOVES, true)
 	_flywheel.position = at(WINCH.x - 1.5, WINCH.y, g + 0.85)
 	_site.add_child(_flywheel)
 	var rim := TorusMesh.new()
@@ -257,6 +259,7 @@ func _dial(pos: Vector3) -> Node3D:
 	enamel.albedo_color = Color(0.93, 0.9, 0.82)
 	_cyl(0.17, 0.17, 0.006, pos + Vector3(0, 0, 0.018), enamel, 20).rotation.x = PI * 0.5
 	var needle := Node3D.new()
+	needle.set_meta(StaticMerge.MOVES, true)
 	needle.position = pos + Vector3(0, 0, 0.026)
 	_site.add_child(needle)
 	_box(Vector3(0.012, 0.15, 0.006), Vector3(0, 0.06, 0), _iron, false, needle)
@@ -326,6 +329,7 @@ func _soft_dot() -> GradientTexture2D:
 
 func _build_balloon() -> void:
 	_balloon = Node3D.new()
+	_balloon.set_meta(StaticMerge.MOVES, true)
 	_site.add_child(_balloon)
 	# The envelope in eight gores of two colours, with a frost skin over it.
 	var gore_mesh := SphereMesh.new()
@@ -417,6 +421,7 @@ func _build_balloon() -> void:
 		_balloon.add_child(lantern)
 		_lanterns.append(lantern)
 	_rope = _rod(Vector3.ZERO, Vector3.UP, 0.02, _rope_mat, 6)
+	_rope.set_meta(StaticMerge.MOVES, true)
 	_balloon.add_child(HoverNote.new(Vector3(0, 0.7, 0), Vector3(1.6, 1.6, 1.6),
 			"Balloon\nIts net gathers water from the cloud deck, as frost and icicles above the freezing height.", 2.0))
 
@@ -508,6 +513,7 @@ func _build_mast() -> void:
 	var g := ground(MAST.x, MAST.y)
 	_rod(at(MAST.x, MAST.y, g - 0.2), at(MAST.x, MAST.y, g + 6.0), 0.06, _wood)
 	_cup_head = Node3D.new()
+	_cup_head.set_meta(StaticMerge.MOVES, true)
 	_cup_head.position = at(MAST.x, MAST.y, g + 6.1)
 	_site.add_child(_cup_head)
 	for k in 4:
@@ -522,6 +528,7 @@ func _build_mast() -> void:
 		cup.material = _brass
 		_put(cup, Vector3(0.5, 0, 0), false, Vector3.ZERO, arm).rotation.z = PI * 0.5
 	_vane = Node3D.new()
+	_vane.set_meta(StaticMerge.MOVES, true)
 	_vane.position = at(MAST.x, MAST.y, g + 5.6)
 	_site.add_child(_vane)
 	_box(Vector3(0.9, 0.02, 0.02), Vector3.ZERO, _iron, false, _vane)
