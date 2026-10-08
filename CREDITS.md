@@ -15,7 +15,7 @@ Work by others in this project, with where it comes from and its licence. Everyt
 
 | Work | Author | Licence | Used for |
 | --- | --- | --- | --- |
-| [WaterDrop](https://freesound.org/people/noisyredfox/sounds/868240/) | noisyredfox, via Freesound | CC0 | Light pool: drips (`drip_one_c*.wav`) |
+| [WaterDrop](https://freesound.org/people/noisyredfox/sounds/868240/) | noisyredfox, via Freesound | CC0 | Light pool: drips (`drip_one_c*.wav`); cozy island: the colour works' condenser |
 | Drops of water [#1](https://bigsoundbank.com/drops-of-water-1-s1384.html), [#2](https://bigsoundbank.com/drops-of-water-2-s1385.html), [#4](https://bigsoundbank.com/drops-of-water-4-s1387.html) | Joseph Sardin, BigSoundBank | CC0 | Light pool: the Cut drip sounds (`drip_rec_*.wav`) |
 
 ### Textures

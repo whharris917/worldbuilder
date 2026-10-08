@@ -116,6 +116,7 @@ func _ready() -> void:
 	_build_campfire()
 	_build_lanterns()
 	add_child(SaltWorks.new(self))
+	add_child(ColourWorks.new(self))
 	_build_bounds()
 	_build_panels()
 	# Soft shadows need the engine's shadow softening at least at Low,
@@ -834,6 +835,7 @@ func _build_trees() -> void:
 	rng.seed = 1874
 	var placed: Array[Vector2] = []
 	var works := SaltWorks.centre(self)
+	var colours := ColourWorks.centre(self)
 	var tries := 0
 	while placed.size() < 16 and tries < 600:
 		tries += 1
@@ -843,7 +845,7 @@ func _build_trees() -> void:
 			continue
 		if p.distance_to(Vector2(CABIN.x, CABIN.z)) < 7.0 or absf(p.x - DOCK_X) < 4.0 and p.y > 10.0:
 			continue
-		if p.distance_to(Vector2(works.x, works.z)) < 20.0:
+		if p.distance_to(Vector2(works.x, works.z)) < 20.0 or p.distance_to(Vector2(colours.x, colours.z)) < 18.0:
 			continue
 		var crowded := false
 		for q: Vector2 in placed:
