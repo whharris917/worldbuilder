@@ -291,6 +291,8 @@ func _build_panels() -> void:
 	var isle := _panel.panel("Island")
 	_panel.switch(isle, "Works and machines", true, func(v: bool) -> void: _set_works(v))
 	_panel.switch(isle, "Floating labels", true, func(v: bool) -> void: _labels = v)
+	_panel.button(isle, "Build the shuttle again", func() -> void: workshop.build_demo())
+	_panel.note(isle, "The shuttle by the cabin: a cart running to and fro by itself, worked by beams. Built once on your first visit; this builds it afresh, in place of whatever stands there.")
 	_panel.note(isle, "All the works and the exposition, their machines, beams and sounds. Off, the island is left to itself: the beaches, the dunes and the bay, the cabin, the campfire and the lanterns.")
 
 	var wx := _panel.panel("Weather")

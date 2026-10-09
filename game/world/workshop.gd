@@ -58,11 +58,23 @@ extends Node3D
 ## its cart is driven by those beams striking the copper ball on its
 ## pole (see BenchLight).
 ##
+## The shuttle (`build_demo`), built of these pieces in the meadow by
+## the cabin the first time the island is visited (and again from the
+## Island panel): a cart running to and fro on its track by itself. A
+## gold beam crosses the track near each end; the cart's ball arriving
+## blocks it and a NOT crystal behind it lights, setting or resetting a
+## latch; the latch works an opening gate and a closing gate, through a
+## splitter, on a push lamp's beam and a pull lamp's beam, which a second
+## splitter at the track's end brings onto the track's line, so only one
+## reaches the ball at a time. Once built it is the player's like any
+## other build.
+##
 ## The light is one for every piece (BenchLight), travelling slowly. A
 ## radiometer rings its bell when its vanes start. Everything built is
 ## kept in SAVE_PATH.
 
 const SAVE_PATH := "user://cozy_island_build.json"
+const DEMO_AT := Vector3(16.7, 0.0, 106.1)   # the shuttle's track middle, in the meadow by the cabin
 const REACH := 8.0
 const HEAD := 1.0                       # a piece's height over what it stands on, to begin
 const LIFT_STEP := 0.1
@@ -165,6 +177,7 @@ var _targets := {}                      # piece -> its target, for the pieces ai
 ## {point}, where it was.
 var links := {}
 var _aim_target := {}                   # what the piece being aimed points at now
+var _demo_built := false
 var _reaim: Array = []                  # [piece, target, steps left]: aimed again as the light settles
 var _red := StandardMaterial3D.new()
 var _ui := CanvasLayer.new()
@@ -205,6 +218,8 @@ func _ready() -> void:
 	_build_ui()
 	if not MouseMode.probe:
 		_load()
+		if not _demo_built:
+			build_demo()
 
 
 func _exit_tree() -> void:
@@ -378,6 +393,79 @@ func aimed_by_scope(piece: Node3D, target: Node3D, turned: bool) -> void:
 		links[piece] = {"piece": target, "point": target.global_position}
 	elif turned:
 		links.erase(piece)
+
+
+## ---- the shuttle ---------------------------------------------------------------
+
+## The shuttle built at DEMO_AT, in place of any pieces standing there:
+## the track along x, the lamps at its east end, the gold beams' lanterns
+## on the south side, the crystals and the latch to the north.
+func build_demo() -> void:
+	# Whatever stands in its place goes first.
+	for piece: Node3D in pieces.duplicate():
+		var off := piece.global_position - DEMO_AT
+		if off.x > -3.6 and off.x < 4.1 and off.z > -4.6 and off.z < 1.7:
+			remove_piece(piece)
+	var base := -INF
+	for k in 5:
+		base = maxf(base, island.height(DEMO_AT.x - 2.0 + k, DEMO_AT.z))
+	var at := func(u: float, v: float, h: float) -> Vector3:
+		return Vector3(DEMO_AT.x + u, base + h, DEMO_AT.z + v)
+	var h := BeamCart.HANDLE
+	var cart := add_piece("track", Vector3(DEMO_AT.x, base, DEMO_AT.z), 0.0, 0.0) as BeamCart
+	# The east end: the push lamp's beam straight along the track through
+	# its gate and the splitter; the pull lamp's from the south, through
+	# its gate, turned onto the track's line by the splitter.
+	var join := add_piece("splitter", at.call(2.7, 0.0, h), 0.0, 0.0) as OpticElement
+	join.aim_along(Vector3(-1.0, 0.0, 1.0))
+	var push := add_piece("push_lamp", at.call(3.6, 0.0, h), 0.0, 0.0) as LumenPart
+	var pull := add_piece("pull_lamp", at.call(2.7, 1.0, h), 0.0, 0.0) as LumenPart
+	_demo_aim(push, join)
+	_demo_aim(pull, join)
+	# The latch, and which of its sides each end's crystal strikes.
+	# The latch stands west of the crystals' line, so the line of its own
+	# beam passes between them and they strike it from opposite sides.
+	var latch_at: Vector3 = at.call(-3.0, -4.0, 1.7)
+	var push_gate_at: Vector3 = at.call(3.15, 0.0, h)
+	var pull_gate_at: Vector3 = at.call(2.7, 0.5, h)
+	var push_bulb := push_gate_at + Vector3(0, 0.27, 0)
+	var pull_bulb := pull_gate_at + Vector3(0, 0.27, 0)
+	var fork_at := latch_at.lerp(push_bulb, 0.85)
+	var east_crystal_at: Vector3 = at.call(1.6, -1.3, h)
+	var right := (fork_at - latch_at).normalized().cross(Vector3.UP)
+	var east_sets := (latch_at - east_crystal_at).normalized().dot(right) > 0.0
+	# Lit, the latch means the cart is to go west: the push gate open and
+	# the pull gate shut. Whether lit means that depends on the side the
+	# east crystal strikes it from.
+	var push_gate := add_piece("gate" if east_sets else "closing_gate", push_gate_at, 0.0, 0.0) as LightGate
+	var pull_gate := add_piece("closing_gate" if east_sets else "gate", pull_gate_at, 0.0, 0.0) as LightGate
+	push_gate.aim_along(Vector3(1.0, 0.0, 0.0))
+	pull_gate.aim_along(Vector3(0.0, 0.0, 1.0))
+	var latch := add_piece("latch", latch_at, 0.0, 0.0) as LumenPart
+	var fork := add_piece("splitter", fork_at, 0.0, 0.0) as OpticElement
+	_demo_aim(latch, fork)
+	var incoming := (fork_at - latch_at).normalized()
+	fork.aim_along(((pull_bulb - fork_at).normalized() - incoming).normalized())
+	links[fork] = {"piece": pull_gate, "sensor": true, "point": pull_bulb}
+	# The beams across the track near its ends, and the NOT crystals that
+	# light when the cart's ball blocks them.
+	for u: float in [-1.6, 1.6]:
+		var lamp := add_piece("lantern", at.call(u, 1.3, h), 0.0, 0.0) as LumenPart
+		var crystal := add_piece("not", at.call(u, -1.3, h), 0.0, 0.0) as LumenPart
+		lamp.condition = true
+		_demo_aim(lamp, crystal)
+		_demo_aim(crystal, latch)
+	push.condition = true
+	pull.condition = true
+	cart.place_cart(0.0)
+	_demo_built = true
+	changed()
+
+
+## `from` aimed at `to`, and the link kept.
+func _demo_aim(from: Node3D, to: Node3D) -> void:
+	aim_at(from, to.global_position)
+	links[from] = {"piece": to, "point": to.global_position}
 
 
 func toggle(lantern: LumenPart) -> void:
@@ -1293,7 +1381,7 @@ func _save() -> void:
 		list.append(entry)
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file != null:
-		file.store_string(JSON.stringify({"floor": floor_list, "pieces": list}))
+		file.store_string(JSON.stringify({"floor": floor_list, "pieces": list, "demo": _demo_built}))
 
 
 func _load() -> void:
@@ -1306,6 +1394,7 @@ func _load() -> void:
 	if not parsed is Dictionary:
 		return
 	var data := parsed as Dictionary
+	_demo_built = bool(data.get("demo", false))
 	if data.get("floor") is Array:
 		for f: Variant in data["floor"]:
 			if f is Array and (f as Array).size() >= 4:
