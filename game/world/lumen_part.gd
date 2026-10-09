@@ -36,7 +36,8 @@ extends StaticBody3D
 ## "colour" is its light's colour in place of its kind's; "aimed" makes
 ## it a part the player aims (see OpticBench): a brass lens on its front
 ## that its beam leaves from, straight ahead; it reads whatever beams
-## strike it, from any side, in place of fixed LumenBeams.
+## strike it, from any side, in place of fixed LumenBeams, within a
+## round body "catch" metres in radius (0.32).
 
 enum Kind { LANTERN, AND, OR, NOT, LATCH, TON, TOF, RISE, FALL, RADIOMETER }
 
@@ -193,6 +194,11 @@ func show_label(on: bool) -> void:
 	_label.visible = on
 
 
+## Its label made to read `text` in place of its own description.
+func relabel(text: String) -> void:
+	_label.text = text
+
+
 ## What a player looking at it is told. Drafts.
 func describe() -> String:
 	if aimed:
@@ -232,7 +238,7 @@ func _describe_kind() -> String:
 ## The head turned to `y` (about the upright) and `p` (up and down).
 func aim(y: float, p: float) -> void:
 	yaw = y
-	pitch = clampf(p, -1.0, 1.0)
+	pitch = clampf(p, -1.5, 1.5)
 	_head.basis = Basis.from_euler(Vector3(pitch, yaw, 0.0))
 
 
@@ -267,7 +273,7 @@ func _build_lens(lens_metal: Material) -> void:
 	inputs.clear()
 	var catch := CollisionShape3D.new()
 	var ball := SphereShape3D.new()
-	ball.radius = 0.32
+	ball.radius = float(_look.get("catch", 0.32))
 	catch.shape = ball
 	add_child(catch)
 	if kind == Kind.RADIOMETER:

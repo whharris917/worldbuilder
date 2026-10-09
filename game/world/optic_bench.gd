@@ -308,7 +308,7 @@ func _build_scope() -> void:
 	_overlay.visible = false
 	add_child(_overlay)
 	var frame := TextureRect.new()
-	frame.texture = _scope_picture()
+	frame.texture = scope_picture()
 	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
 	frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	frame.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
@@ -326,7 +326,7 @@ func _build_scope() -> void:
 
 
 ## The scope's frame: dark brass round a clear circle, a fine reticle.
-func _scope_picture() -> ImageTexture:
+static func scope_picture() -> ImageTexture:
 	var w := 1280
 	var h := 720
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)

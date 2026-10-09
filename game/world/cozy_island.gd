@@ -90,6 +90,9 @@ const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", 
 var player: Player
 var sky: IslandSky
 var clouds: IslandClouds
+var workshop: Workshop
+var _flower_tiles := {}                 # 50 m tile -> [flowers as [base, height, turn, colour], view]
+var _clear: Array = []                  # ground kept clear of flowers: [transform, half size]
 var _panel: BenchPanel
 var _env: Environment
 var _camera_look: CameraAttributesPractical
@@ -185,6 +188,9 @@ func _ready() -> void:
 	add_child(InnerBay.new(self))
 	_build_bounds()
 	_lighten()
+	# The player's own benches come and go: kept out of the joining.
+	workshop = Workshop.new(self)
+	add_child(workshop)
 	clouds = IslandClouds.new(self)
 	add_child(clouds)
 	_build_panels()
@@ -1326,7 +1332,6 @@ func _build_outcrops() -> void:
 func _build_flowers() -> void:
 	var colours := [Color(0.98, 0.95, 0.85), Color(0.98, 0.82, 0.25), Color(0.85, 0.55, 0.9),
 			Color(0.95, 0.45, 0.45), Color(0.55, 0.7, 0.98)]
-	var stem := Color(0.42, 0.62, 0.3)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2626
 	var tiles := {}
@@ -1342,20 +1347,59 @@ func _build_flowers() -> void:
 				continue
 			var key := Vector2i(floori(p.x / 50.0), floori(p.y / 50.0))
 			if not tiles.has(key):
-				tiles[key] = CozyMesh.new()
-			var m: CozyMesh = tiles[key]
+				tiles[key] = []
 			var tall := rng.randf_range(0.22, 0.42)
-			m.box(Vector3(0.02, tall, 0.02), CozyMesh.at(Vector3(p.x, h + tall * 0.5, p.y)), stem)
-			m.box(Vector3(0.13, 0.05, 0.13), CozyMesh.at(Vector3(p.x, h + tall, p.y), Basis(Vector3.UP, rng.randf() * TAU)), colour)
-	var mat := cozy_material(false)
+			(tiles[key] as Array).append([Vector3(p.x, h, p.y), tall, rng.randf() * TAU, colour])
 	for key: Vector2i in tiles:
 		var view := MeshInstance3D.new()
 		view.name = "Flowers"
-		view.mesh = (tiles[key] as CozyMesh).commit(mat)
 		view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		view.visibility_range_end = 70.0
 		view.visibility_range_end_margin = 10.0
 		add_child(view)
+		_flower_tiles[key] = [tiles[key], view]
+		_draw_flowers(key)
+
+
+## The flowers of one 50 m tile, but those on ground kept clear.
+func _draw_flowers(key: Vector2i) -> void:
+	var stem := Color(0.42, 0.62, 0.3)
+	var m := CozyMesh.new()
+	var count := 0
+	for f: Array in (_flower_tiles[key] as Array)[0]:
+		var base: Vector3 = f[0]
+		var tall: float = f[1]
+		if _kept_clear(base):
+			continue
+		m.box(Vector3(0.02, tall, 0.02), CozyMesh.at(base + Vector3(0, tall * 0.5, 0)), stem)
+		m.box(Vector3(0.13, 0.05, 0.13), CozyMesh.at(base + Vector3(0, tall, 0), Basis(Vector3.UP, float(f[2]))), f[3])
+		count += 1
+	var view := (_flower_tiles[key] as Array)[1] as MeshInstance3D
+	view.mesh = m.commit(cozy_material(false)) if count > 0 else null
+
+
+func _kept_clear(p: Vector3) -> bool:
+	for area: Array in _clear:
+		var local := (area[0] as Transform3D).affine_inverse() * p
+		if absf(local.x) < float(area[1]) and absf(local.z) < float(area[1]):
+			return true
+	return false
+
+
+## Ground kept clear of flowers, as [transform, half size] squares (the
+## player's workbenches), the flowers drawn again round them.
+func clear_ground(areas: Array) -> void:
+	var touched := {}
+	for area: Array in _clear + areas:
+		var at := (area[0] as Transform3D).origin
+		var r := float(area[1]) * 1.5
+		for x: float in [at.x - r, at.x + r]:
+			for z: float in [at.z - r, at.z + r]:
+				touched[Vector2i(floori(x / 50.0), floori(z / 50.0))] = true
+	_clear = areas
+	for key: Vector2i in touched:
+		if _flower_tiles.has(key):
+			_draw_flowers(key)
 
 
 ## ---- the campfire and the lanterns ---------------------------------------

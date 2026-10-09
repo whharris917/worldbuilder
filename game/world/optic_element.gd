@@ -23,7 +23,7 @@ var _label: Label3D
 
 
 func _init(element_kind: Kind, at: Vector3, ground: float, wood: Material, frame: Material,
-		silver: Material, glass: Material) -> void:
+		silver: Material, glass: Material, with_post := true) -> void:
 	kind = element_kind
 	title = ["mirror", "splitter", "lens"][kind]
 	name = Kind.keys()[kind].capitalize()
@@ -31,15 +31,16 @@ func _init(element_kind: Kind, at: Vector3, ground: float, wood: Material, frame
 	set_meta("view", self)
 	_head.set_meta(StaticMerge.MOVES, true)
 	add_child(_head)
-	var post := CylinderMesh.new()
-	post.top_radius = 0.04
-	post.bottom_radius = 0.055
-	post.height = maxf(at.y - ground - 0.22, 0.1)
-	post.material = wood
-	var post_view := MeshInstance3D.new()
-	post_view.mesh = post
-	post_view.position.y = -0.22 - post.height * 0.5
-	add_child(post_view)
+	if with_post:
+		var post := CylinderMesh.new()
+		post.top_radius = 0.04
+		post.bottom_radius = 0.055
+		post.height = maxf(at.y - ground - 0.22, 0.1)
+		post.material = wood
+		var post_view := MeshInstance3D.new()
+		post_view.mesh = post
+		post_view.position.y = -0.22 - post.height * 0.5
+		add_child(post_view)
 	# A fork on the post holding the plate, which turns in it.
 	var fork := TorusMesh.new()
 	fork.inner_radius = 0.2
@@ -133,9 +134,14 @@ func show_label(on: bool) -> void:
 	_label.visible = on
 
 
+## Its label made to read `text` in place of its own description.
+func relabel(text: String) -> void:
+	_label.text = text
+
+
 func aim(y: float, p: float) -> void:
 	yaw = y
-	pitch = clampf(p, -1.2, 1.2)
+	pitch = clampf(p, -1.5, 1.5)
 	_head.basis = Basis.from_euler(Vector3(pitch, yaw, 0.0))
 	_shape.transform = _head.transform
 
