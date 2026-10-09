@@ -109,7 +109,8 @@ func _ready() -> void:
 ## panel cannot stop the player walking just by marking events handled.
 var input_locked: bool = false
 ## Set while something in the world takes the mouse (a part being aimed
-## with E held): mouse movement goes to its `turn_by` instead of the view.
+## through its scope): mouse movement goes to its `turn_by` and the wheel
+## to its `zoom_by` instead of the view, and the player stands still.
 var look_held_by: Object = null
 
 
@@ -135,6 +136,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		rotate_y(-motion.relative.x * sens)
 		camera.rotation.x = clampf(camera.rotation.x - motion.relative.y * sens,
 			-PI / 2.0 + 0.05, PI / 2.0 - 0.05)
+	elif look_held_by != null and (event.is_action_pressed("zoom_in") or event.is_action_pressed("zoom_out")):
+		look_held_by.call("zoom_by", 1 if event.is_action_pressed("zoom_in") else -1)
 	elif event.is_action_pressed("zoom_in"):
 		if Input.is_key_pressed(KEY_CTRL):
 			_fov_target = clampf(_fov_target * 0.90, 8.0, 85.0)
@@ -151,7 +154,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		MouseMode.capture()
 	elif event.is_action_pressed("ui_cancel"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	elif event.is_action_pressed("interact"):
+	elif event.is_action_pressed("interact") and look_held_by == null:
 		var view := look_view()
 		if view != null and view.has_method("use"):
 			view.call("use")
@@ -164,7 +167,7 @@ func _physics_process(delta: float) -> void:
 	if not grounded:
 		velocity.y -= GRAVITY * delta
 		_fall_speed = -velocity.y
-	var input := Vector2.ZERO if input_locked else Input.get_vector(
+	var input := Vector2.ZERO if input_locked or look_held_by != null else Input.get_vector(
 		"move_left", "move_right", "move_forward", "move_back")
 	var direction := (transform.basis * Vector3(input.x, 0, input.y)).normalized()
 	var pace := RUN_SPEED if Input.is_action_pressed("run") and not input_locked else WALK_SPEED
@@ -177,7 +180,7 @@ func _physics_process(delta: float) -> void:
 		ground = ground.move_toward(wanted, AIR_STEER * delta)
 	velocity.x = ground.x
 	velocity.z = ground.y
-	if _jump_wanted > 0.0 and _off_floor < JUMP_GRACE:
+	if _jump_wanted > 0.0 and _off_floor < JUMP_GRACE and look_held_by == null:
 		velocity.y = JUMP_SPEED * sqrt(body_scale)
 		_jump_wanted = 0.0
 		_off_floor = JUMP_GRACE

@@ -4,36 +4,43 @@ extends Node3D
 ## the boardwalk and the sea: parts the player aims themselves.
 ##
 ## An aimed part's beam leaves its lens straight ahead and runs until it
-## strikes something, at most REACH metres, fading toward its end. Landing
-## on an intake ring of another aimed part it carries the signal in;
+## strikes something, at most REACH metres, fading toward its end. A beam
+## striking an aimed part, from any side, is read by it (every beam that
+## strikes it, lit or dark: an AND shines while all of them are lit; a
+## latch is set by beams from its left, reset by beams from its right);
 ## striking anything else it is lost there. A mirror turns it (a tenth of
 ## its reach lost), a splitter sends half its reach on and half aside, a
 ## lens doubles what reach it has left; every crystal sends its own beam
 ## out at full reach, so a crystal is a relay. Dark beams are drawn as
-## faint guide lines, so the player can see where everything points; lit
-## ones glow in their colour. A beam is stopped by the player's body too.
+## faint guide lines; lit ones glow in their colour. A beam is stopped by
+## the player's body too.
 ##
-## Aiming: look at a part, hold E and move the mouse (the player's view
-## stays still meanwhile, `Player.look_held_by`). A beam that comes within
-## SNAP metres of an intake, or of the middle of a mirror, splitter or
-## lens, settles onto it with a click; a firm push frees it again. Aims
-## are kept in SAVE_PATH.
+## Aiming: E on a part looks through it, in a scope: from a crystal's or
+## lantern's lens along its beam; from a mirror or splitter along the beam
+## it turns, so steering the view turns the glass to send the beam there;
+## from a lens along its axis. The mouse aims (finer as the view zooms),
+## the wheel zooms, a glowing spot marks where the beam strikes; E again,
+## or Esc, looks out through the player's own eyes. The player stands
+## still meanwhile (`Player.look_held_by`). A beam passing within SNAP
+## metres of the middle of a part or a glass settles there with a click;
+## a firm push frees it. Aims are kept in SAVE_PATH.
 ##
 ## The line: a lantern at the north end, relay crystals about 22 m apart
 ## along the shore, a radiometer and bell at the far end, 85 m on. After
 ## the second relay a splitter can feed a mirror that turns the branch
-## back along the water's edge into an AND crystal, whose second way in
-## takes a beam from a second lantern; it rings a second bell. The
-## splitter halves the line's reach, so the lens just past it is needed
-## to reach the third relay; a lens bends no beam, so those four stand on
-## one straight line and the second relay must be aimed down it. Every
-## part starts aimed at nothing.
+## back along the water's edge into an AND crystal, which also takes a
+## second lantern's beam; it rings a second bell. The splitter halves the
+## line's reach, so the lens just past it is needed to reach the third
+## relay; a lens bends no beam, so those four stand on one straight line
+## and the second relay must be aimed down it. Every part starts aimed at
+## nothing.
 
 const REACH := 25.0
 const SNAP := 0.35
 const SAVE_PATH := "user://cozy_island_optics.json"
 const HEIGHT := 1.15
 const MAX_BOUNCES := 10
+const FOV_START := 30.0
 
 var expo: CrystalExpo
 var island: CozyIsland
@@ -42,11 +49,16 @@ var elements: Array[OpticElement] = []
 var _clocks: Array = []                  # [lantern, period, on, phase]
 var _bells: Array = []                   # [radiometer, was spinning, speaker]
 var _segments: Array = []                # [from, to, reach at from, reach at to, colour, lit]
-var _arrivals := {}                      # element -> [point, incoming direction], this step
+var _landed := {}                        # aimed part -> Array of OpticArrival, this step
+var _arrivals := {}                      # glass -> [point, incoming direction], first beam this step
 var _held: Node3D = null
+var _marker := Vector3.INF               # where the held part's beam strikes
 var _snapped := false
 var _snap_drag := 0.0
 var _broken_from := Vector3.INF
+var _fov := FOV_START
+var _scope: Camera3D
+var _overlay: CanvasLayer
 var _mesh := ImmediateMesh.new()
 var _beam_mat: StandardMaterial3D
 var _click: AudioStreamPlayer3D
@@ -67,7 +79,7 @@ func _ready() -> void:
 	var glass: Material = expo.get("_glass")
 	var lamp1 := _part("North lantern", LumenPart.Kind.LANTERN, _at(184.5, 4.5), {"lamp": "drum", "metal": copper})
 	_clocks.append([lamp1, 8.0, 5.5, 0.0])
-	var relay := {"design": "orb", "setting": "cage", "metal": silver, "colour": Color(0.6, 0.9, 1.0), "intake_metal": copper}
+	var relay := {"design": "orb", "setting": "cage", "metal": silver, "colour": Color(0.6, 0.9, 1.0)}
 	_part("First relay", LumenPart.Kind.OR, _at(193.5, 4.5), relay)
 	var second := _at(202.5, 4.5)
 	_part("Second relay", LumenPart.Kind.OR, second, relay)
@@ -79,7 +91,7 @@ func _ready() -> void:
 	_element("Splitter", OpticElement.Kind.SPLITTER, _on_line(second, line, 5.8), wood, copper, silver, glass)
 	_element("Lens", OpticElement.Kind.LENS, _on_line(second, line, 10.6), wood, brass, silver, glass)
 	_part("Third relay", LumenPart.Kind.OR, _on_line(second, line, 19.0), relay)
-	var far := _part("Far radiometer", LumenPart.Kind.RADIOMETER, _at(219.5, 4.5), {"metal": brass, "intake_metal": copper})
+	var far := _part("Far radiometer", LumenPart.Kind.RADIOMETER, _at(219.5, 4.5), {"metal": brass})
 	# The branch: the mirror 3.3 m seaward of the splitter, the gate 5 m on
 	# from it along the water's edge, the shore lantern 1.8 m inland of
 	# the gate, the shore radiometer 2.6 m past it.
@@ -87,11 +99,10 @@ func _ready() -> void:
 	var mirror_at := _on_line(second, line, 5.8) + sea * 3.3
 	_element("Mirror", OpticElement.Kind.MIRROR, mirror_at, wood, brass, silver, glass)
 	var gate_at := _on_line(mirror_at, line, 5.0)
-	_part("Gate", LumenPart.Kind.AND, gate_at, {"design": "gem", "setting": "prongs", "metal": brass,
-			"intake_metal": copper, "second_metal": silver})
+	_part("Gate", LumenPart.Kind.AND, gate_at, {"design": "gem", "setting": "prongs", "metal": brass})
 	var lamp2 := _part("Shore lantern", LumenPart.Kind.LANTERN, _on_line(gate_at - sea * 1.8, line, 0.0), {"lamp": "drum", "metal": brass})
 	_clocks.append([lamp2, 5.0, 3.5, 1.0])
-	var near := _part("Shore radiometer", LumenPart.Kind.RADIOMETER, _on_line(gate_at, line, 2.6), {"metal": brass, "intake_metal": copper})
+	var near := _part("Shore radiometer", LumenPart.Kind.RADIOMETER, _on_line(gate_at, line, 2.6), {"metal": brass})
 	for r: LumenPart in [far, near]:
 		var bell := AudioStreamPlayer3D.new()
 		bell.stream = load("res://audio/chime.wav") if DisplayServer.get_name() != "headless" else null
@@ -117,6 +128,7 @@ func _ready() -> void:
 	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	view.extra_cull_margin = 16384.0
 	add_child(view)
+	_build_scope()
 	# Every part starts aimed at nothing in particular, or as the player
 	# left it.
 	var rng := RandomNumberGenerator.new()
@@ -187,20 +199,34 @@ func _aimables() -> Array[Node3D]:
 
 func _physics_process(dt: float) -> void:
 	_clock += dt
+	# What struck each part last step is what it reads now.
 	for p in parts:
-		for it in p.intakes:
-			it.delivered = it.pending
-			it.pending = false
+		var hits: Array = _landed.get(p, [])
+		p.inputs.clear()
+		if p.kind == LumenPart.Kind.LATCH:
+			var set_on := false
+			var reset_on := false
+			for h: OpticArrival in hits:
+				if h.from_left:
+					set_on = set_on or h.delivered
+				else:
+					reset_on = reset_on or h.delivered
+			p.inputs.append(OpticArrival.new(set_on, true))
+			p.inputs.append(OpticArrival.new(reset_on, false))
+		else:
+			p.inputs.append_array(hits)
+	_landed.clear()
 	for c: Array in _clocks:
 		(c[0] as LumenPart).condition = fmod(_clock + float(c[3]), float(c[1])) < float(c[2])
 	for p in parts:
 		p.evaluate(dt)
 	_segments.clear()
 	_arrivals.clear()
+	_marker = Vector3.INF
 	for p in parts:
 		if p.kind != LumenPart.Kind.RADIOMETER:
 			var skip: Array[RID] = [p.get_rid()]
-			_trace(p.lens_point(), p.forward(), REACH, skip, p.out, p.colour(), 0)
+			_trace(p.lens_point(), p.forward(), REACH, skip, p.out, p.colour(), 0, p == _held)
 	for b: Array in _bells:
 		var r := b[0] as LumenPart
 		var on := r.powered
@@ -213,8 +239,11 @@ func _physics_process(dt: float) -> void:
 
 ## A beam from `origin` along `dir` with `reach` metres left: straight on
 ## until it strikes something, turned by mirrors, split by splitters,
-## focused by lenses, delivered to an intake when lit.
-func _trace(origin: Vector3, dir: Vector3, reach: float, exclude: Array[RID], lit: bool, colour: Color, depth: int) -> void:
+## focused by lenses, read by the aimed part it strikes. `mark` records
+## where it next strikes (the held part's own beam, or the beam a held
+## glass sends on).
+func _trace(origin: Vector3, dir: Vector3, reach: float, exclude: Array[RID], lit: bool, colour: Color,
+		depth: int, mark: bool) -> void:
 	var space := get_world_3d().direct_space_state
 	var skip := exclude
 	while depth < MAX_BOUNCES and reach > 0.05:
@@ -227,12 +256,17 @@ func _trace(origin: Vector3, dir: Vector3, reach: float, exclude: Array[RID], li
 		var p: Vector3 = hit["position"]
 		var d := origin.distance_to(p)
 		_segments.append([origin, p, reach, reach - d, colour, lit])
+		if mark:
+			_marker = p
+			mark = false
 		reach -= d
 		var c: Object = hit["collider"]
 		if c is LumenPart and (c as LumenPart).aimed:
-			var it := (c as LumenPart).intake_for(dir)
-			if it != null and lit:
-				it.pending = true
+			var part := c as LumenPart
+			var right := part.global_transform.basis * (Basis.from_euler(Vector3(part.pitch, part.yaw, 0.0)) * Vector3.RIGHT)
+			if not _landed.has(part):
+				_landed[part] = []
+			(_landed[part] as Array).append(OpticArrival.new(lit, dir.dot(right) > 0.0))
 			return
 		if not (c is OpticElement):
 			return
@@ -248,38 +282,150 @@ func _trace(origin: Vector3, dir: Vector3, reach: float, exclude: Array[RID], li
 				reach *= 0.9
 			OpticElement.Kind.SPLITTER:
 				var through: Array[RID] = [e.get_rid()]
-				_trace(p, dir, reach * 0.5, through, lit, colour, depth + 1)
+				_trace(p, dir, reach * 0.5, through, lit, colour, depth + 1, false)
 				dir = (dir - 2.0 * dir.dot(n) * n).normalized()
 				reach *= 0.5
 			OpticElement.Kind.LENS:
 				if absf(dir.dot(n)) < 0.5:
 					return
 				reach = minf(reach * 2.0, REACH * 2.0)
+		if e == _held:
+			mark = true
 		origin = p
 		skip = [e.get_rid()]
 		depth += 1
 
 
-## ---- aiming -----------------------------------------------------------------
+## ---- the scope ----------------------------------------------------------------
+
+func _build_scope() -> void:
+	_scope = Camera3D.new()
+	_scope.near = 0.03
+	_scope.top_level = true
+	add_child(_scope)
+	_overlay = CanvasLayer.new()
+	_overlay.layer = 20
+	_overlay.visible = false
+	add_child(_overlay)
+	var frame := TextureRect.new()
+	frame.texture = _scope_picture()
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	frame.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_overlay.add_child(frame)
+	var hint := Label.new()
+	hint.text = "Mouse: aim     Wheel: zoom     E: done"
+	hint.add_theme_font_size_override("font_size", 18)
+	hint.add_theme_color_override("font_color", Color(0.95, 0.9, 0.78))
+	hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	hint.position.y -= 46.0
+	hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_overlay.add_child(hint)
+
+
+## The scope's frame: dark brass round a clear circle, a fine reticle.
+func _scope_picture() -> ImageTexture:
+	var w := 1280
+	var h := 720
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var r_view := h * 0.44
+	for y in h:
+		for x in w:
+			var dx := x - w * 0.5
+			var dy := y - h * 0.5
+			var r := sqrt(dx * dx + dy * dy)
+			var c := Color(0, 0, 0, 0)
+			if r > r_view:
+				var rim := clampf((r - r_view) / 14.0, 0.0, 1.0)
+				c = Color(0.14, 0.1, 0.06, 1.0).lerp(Color(0.04, 0.035, 0.03, 1.0), rim)
+				c.a = smoothstep(r_view - 1.0, r_view + 2.0, r)
+			elif r > r_view - 5.0:
+				c = Color(0.6, 0.45, 0.2, 0.9)
+			else:
+				var line := (absf(dx) < 0.8 or absf(dy) < 0.8) and r > 16.0 and r < r_view - 30.0
+				var ring := absf(r - 9.0) < 0.9
+				if line or ring:
+					c = Color(0.05, 0.04, 0.03, 0.7)
+				else:
+					# A faint darkening toward the edge of the glass.
+					c = Color(0, 0, 0, 0.35 * smoothstep(r_view * 0.6, r_view, r))
+			img.set_pixel(x, y, c)
+	return ImageTexture.create_from_image(img)
+
 
 func _process(_delta: float) -> void:
 	var player := island.player
-	if Input.is_action_pressed("interact"):
-		if _held == null and player.look_held_by == null:
+	if Input.is_action_just_pressed("interact"):
+		if _held == null:
 			var v := player.look_view()
-			if v != null and (parts.has(v) or elements.has(v)):
-				_held = v
-				_snapped = false
-				player.look_held_by = self
-	elif _held != null:
-		_held = null
-		player.look_held_by = null
-		_save()
+			if v != null and player.look_held_by == null and (parts.has(v) or elements.has(v)) \
+					and not (v is LumenPart and (v as LumenPart).kind == LumenPart.Kind.RADIOMETER):
+				_enter(v)
+		else:
+			_leave()
+	elif _held != null and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		_leave()
+	if _held != null:
+		_place_scope()
 	_draw_beams()
 
 
-## Mouse movement while a part is held: it turns, unless it has just
-## settled onto something and the push is not yet firm enough.
+func _enter(v: Node3D) -> void:
+	_held = v
+	island.player.look_held_by = self
+	_fov = FOV_START
+	_snapped = false
+	_broken_from = Vector3.INF
+	_scope.current = true
+	_overlay.visible = true
+
+
+func _leave() -> void:
+	_held = null
+	island.player.look_held_by = null
+	island.player.camera.current = true
+	_overlay.visible = false
+	_save()
+
+
+## Which way the held part sends its beam: a crystal or lantern along its
+## lens; a mirror or splitter the beam reaching it turned off its face (or
+## its face's direction when none reaches it); a lens along its axis.
+func _sending_dir() -> Vector3:
+	if _held is OpticElement:
+		var e := _held as OpticElement
+		var n := e.normal()
+		if e.kind != OpticElement.Kind.LENS and _arrivals.has(e):
+			var incoming: Vector3 = (_arrivals[e] as Array)[1]
+			return (incoming - 2.0 * incoming.dot(n) * n).normalized()
+		return n
+	return (_held as LumenPart).forward()
+
+
+## The scope's eye: at the lens looking along the beam; for a mirror or
+## splitter where the beam strikes it, looking along the beam it sends.
+func _place_scope() -> void:
+	var dir := _sending_dir()
+	var from: Vector3
+	if _held is LumenPart:
+		from = (_held as LumenPart).lens_point()
+	else:
+		var e := _held as OpticElement
+		if e.kind != OpticElement.Kind.LENS and _arrivals.has(e):
+			from = (_arrivals[e] as Array)[0]
+		else:
+			from = e.global_position + dir * 0.06
+	from += dir * 0.04
+	var up := Vector3.UP if absf(dir.y) < 0.98 else Vector3.FORWARD
+	_scope.global_transform = Transform3D(Basis.looking_at(dir, up), from)
+	_scope.fov = _fov
+
+
+## The mouse while looking through the scope: the view (and with it the
+## part, or a glass's face) turns, the finer the narrower the view; held
+## where it has settled until the push is firm.
 func turn_by(motion: Vector2) -> void:
 	if _held == null:
 		return
@@ -288,33 +434,48 @@ func turn_by(motion: Vector2) -> void:
 		if _snap_drag < 45.0:
 			return
 		_snapped = false
-	_held.call("turn_by", motion)
+	var fine := motion * (_fov / 60.0)
+	if _held is LumenPart:
+		(_held as LumenPart).turn_by(fine)
+		return
+	var e := _held as OpticElement
+	if e.kind != OpticElement.Kind.LENS and _arrivals.has(e):
+		# Steer the sent beam; the face sits halfway between it and the
+		# beam coming in.
+		var d := _sending_dir()
+		var yaw := atan2(-d.x, -d.z) - fine.x * 0.004
+		var pitch := clampf(asin(clampf(d.y, -1.0, 1.0)) - fine.y * 0.004, -1.2, 1.2)
+		var out := Basis.from_euler(Vector3(pitch, yaw, 0.0)) * Vector3.FORWARD
+		var incoming: Vector3 = (_arrivals[e] as Array)[1]
+		e.aim_along((out - incoming).normalized())
+	else:
+		e.turn_by(fine)
 
 
-## The held part's beam (or, for a mirror or splitter, the beam it turns)
-## passing close by an intake or another piece of glass settles onto it.
+func zoom_by(step: int) -> void:
+	_fov = clampf(_fov * (0.8 if step > 0 else 1.25), 1.5, 60.0)
+
+
+## The beam passing close by the middle of a part or a glass settles
+## there.
 func _try_snap() -> void:
 	var origin: Vector3
 	var out_dir: Vector3
 	var incoming := Vector3.ZERO
 	if _held is LumenPart:
 		var p := _held as LumenPart
-		if p.kind == LumenPart.Kind.RADIOMETER:
-			return
 		origin = p.lens_point()
 		out_dir = p.forward()
-	elif _held is OpticElement and (_held as OpticElement).kind != OpticElement.Kind.LENS and _arrivals.has(_held):
-		var e := _held as OpticElement
-		var arrival: Array = _arrivals[e]
+	elif (_held as OpticElement).kind != OpticElement.Kind.LENS and _arrivals.has(_held):
+		var arrival: Array = _arrivals[_held]
 		origin = arrival[0]
 		incoming = arrival[1]
-		var n := e.normal()
-		out_dir = (incoming - 2.0 * incoming.dot(n) * n).normalized()
+		out_dir = _sending_dir()
 	else:
 		return
 	var best := Vector3.INF
 	var best_perp := SNAP
-	for target in _targets(origin):
+	for target in _targets():
 		var to := target - origin
 		var t := to.dot(out_dir)
 		if t < 0.3 or t > REACH * 2.0:
@@ -332,7 +493,6 @@ func _try_snap() -> void:
 			_broken_from = Vector3.INF
 	if best == Vector3.INF or best.is_equal_approx(_broken_from):
 		return
-	var want := (best - origin).normalized()
 	if _held is LumenPart:
 		# The lens swings with the head: aimed again from where it now is
 		# until it holds still.
@@ -340,9 +500,7 @@ func _try_snap() -> void:
 		for k in 4:
 			p.aim_along(best - p.lens_point())
 	else:
-		# The face set halfway between the way the beam comes and the way
-		# it should leave.
-		(_held as OpticElement).aim_along((want - incoming).normalized())
+		(_held as OpticElement).aim_along(((best - origin).normalized() - incoming).normalized())
 	_snapped = true
 	_snap_drag = 0.0
 	_broken_from = best
@@ -350,18 +508,12 @@ func _try_snap() -> void:
 	BeachSite._play(_click, 1.6)
 
 
-## What a beam from `origin` can be settled onto: every intake it could
-## come in through from there, and the middle of every piece of glass,
-## but the held one's own.
-func _targets(origin: Vector3) -> Array[Vector3]:
+## The middle of every other part and glass.
+func _targets() -> Array[Vector3]:
 	var out: Array[Vector3] = []
 	for p in parts:
-		if p == _held:
-			continue
-		for it in p.intakes:
-			var point := p.intake_point(it)
-			if p.intake_for((point - origin).normalized()) == it:
-				out.append(point)
+		if p != _held:
+			out.append(p.global_position)
 	for e in elements:
 		if e != _held:
 			out.append(e.global_position)
@@ -369,13 +521,12 @@ func _targets(origin: Vector3) -> Array[Vector3]:
 
 
 ## Every beam as a flat ribbon turned to the eye: lit ones bright in their
-## colour, dark ones a faint guide; each dimming over its last 6 m.
+## colour, dark ones a faint guide; each dimming over its last 6 m. While
+## a part is aimed, a glowing spot where its beam strikes.
 func _draw_beams() -> void:
 	_mesh.clear_surfaces()
-	if _segments.is_empty():
-		return
 	var cam := get_viewport().get_camera_3d()
-	if cam == null:
+	if cam == null or (_segments.is_empty() and _marker == Vector3.INF):
 		return
 	var eye := cam.global_position
 	_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES, _beam_mat)
@@ -384,16 +535,32 @@ func _draw_beams() -> void:
 		var b: Vector3 = s[1]
 		if a.distance_squared_to(b) < 0.0001:
 			continue
+		var cross := (b - a).cross(eye - a)
+		if cross.length_squared() < 1e-8:
+			continue
 		var lit: bool = s[5]
 		var colour: Color = s[4]
 		var tint := colour if lit else colour.lerp(Color.WHITE, 0.6) * 0.18
-		var width := 0.028 if lit else 0.01
-		var side := (b - a).cross(eye - a).normalized() * width
+		var side := cross.normalized() * (0.028 if lit else 0.01)
 		var ca := tint * smoothstep(0.0, 6.0, float(s[2]))
 		var cb := tint * smoothstep(0.0, 6.0, float(s[3]))
 		for v: Array in [[a - side, ca], [a + side, ca], [b + side, cb], [a - side, ca], [b + side, cb], [b - side, cb]]:
 			_mesh.surface_set_color(v[1])
 			_mesh.surface_add_vertex(v[0])
+	if _held != null and _marker != Vector3.INF:
+		# A spot a fixed share of the scope's view across, so it shows at
+		# any zoom and distance.
+		var size := eye.distance_to(_marker) * tan(deg_to_rad(_fov * 0.5)) * 0.025
+		var right := cam.global_transform.basis.x * size
+		var up := cam.global_transform.basis.y * size
+		var glow := Color(1.0, 0.95, 0.75)
+		for q: Array in [[right, up], [up, -right]]:
+			var r: Vector3 = q[0]
+			var u: Vector3 = q[1]
+			var corners := [_marker - r * 0.25 - u, _marker + r * 0.25 - u, _marker + r * 0.25 + u, _marker - r * 0.25 + u]
+			for k: int in [0, 1, 2, 0, 2, 3]:
+				_mesh.surface_set_color(glow)
+				_mesh.surface_add_vertex(corners[k])
 	_mesh.surface_end()
 
 
