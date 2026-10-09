@@ -15,6 +15,10 @@ extends Node3D
 ## a loop of beams takes time to go round. Each sending part's output is
 ## kept as a list of its changes for HISTORY seconds.
 ##
+## A light gate (LightGate) passes a beam through its ring while open and
+## stops it while shut; a beam striking its sensor is read by it, and
+## each step it opens or shuts at once on whether any lit beam struck it.
+##
 ## What a part reads: every beam striking it, lit or dark, for an AND, an
 ## OR and a radiometer; for a latch, any lit beam striking it from its
 ## left sets it and any from its right resets it; the other kinds read
@@ -34,6 +38,7 @@ const BEAM := Color(1.0, 0.72, 0.22)
 
 var parts: Array[LumenPart] = []
 var elements: Array[OpticElement] = []
+var gates: Array[LightGate] = []
 ## The first beam reaching each glass this step: glass -> [point, direction].
 var arrivals := {}
 ## A piece whose beam's landing is wanted (the one being aimed), and
@@ -74,6 +79,8 @@ func add(piece: Node3D) -> void:
 		parts.append(piece as LumenPart)
 	elif piece is OpticElement:
 		elements.append(piece as OpticElement)
+	elif piece is LightGate:
+		gates.append(piece as LightGate)
 
 
 func remove(piece: Node3D) -> void:
@@ -81,6 +88,8 @@ func remove(piece: Node3D) -> void:
 		parts.erase(piece)
 	elif piece is OpticElement:
 		elements.erase(piece)
+	elif piece is LightGate:
+		gates.erase(piece)
 	_history.erase(piece)
 	_landed.erase(piece)
 	arrivals.erase(piece)
@@ -114,6 +123,11 @@ func step(dt: float) -> void:
 					for h: OpticArrival in hits:
 						any = any or h.delivered
 					p.inputs.append(OpticArrival.new(any, false))
+	for g in gates:
+		var on := false
+		for h: OpticArrival in _landed.get(g, []):
+			on = on or h.delivered
+		g.sense(on)
 	_landed.clear()
 	for p in parts:
 		p.evaluate(dt)
@@ -175,6 +189,21 @@ func _trace(source: LumenPart, origin: Vector3, dir: Vector3, reach: float, excl
 			if not _landed.has(part):
 				_landed[part] = []
 			(_landed[part] as Array).append(OpticArrival.new(_shown(source, _clock - s / SPEED), dir.dot(right) > 0.0))
+			return
+		if c is LightGate and gates.has(c):
+			# Through the ring while the gate is open.
+			if not (c as LightGate).open:
+				return
+			origin = p
+			skip = [(c as LightGate).get_rid()]
+			depth += 1
+			continue
+		if c is StaticBody3D and (c as Node).has_meta("gate_of"):
+			var gate: Object = (c as Node).get_meta("gate_of")
+			if gates.has(gate):
+				if not _landed.has(gate):
+					_landed[gate] = []
+				(_landed[gate] as Array).append(OpticArrival.new(_shown(source, _clock - s / SPEED), false))
 			return
 		if not (c is OpticElement and elements.has(c)):
 			return

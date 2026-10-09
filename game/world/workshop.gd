@@ -34,6 +34,12 @@ extends Node3D
 ## on any piece it is on) until a left click fixes it or a right click or
 ## Esc leaves it as it was.
 ##
+## Light gates (LightGate): an opening gate lets a beam through its ring
+## while a lit beam strikes the bulb above it, a closing gate stops one
+## while lit; a right click on one turns its ring to face what the
+## crosshair is on. From these an AND is gates in a row along one beam,
+## a NOT a closing gate.
+##
 ## The light is one for every piece (BenchLight), travelling slowly. A
 ## radiometer rings its bell when its vanes start. Everything built is
 ## kept in SAVE_PATH.
@@ -48,10 +54,12 @@ const CLEAR := 0.4                      # pieces' middles kept this far apart
 
 ## What can be built, in the tray's order: key, name. The first ten have
 ## the number keys 1 to 9 and 0.
-const ITEMS := [["floor", "Floor"], ["lantern", "Lantern"], ["and", "AND"], ["or", "OR"], ["not", "NOT"],
-		["latch", "Latch"], ["on_delay", "Hourglass"], ["off_delay", "Afterglow"], ["rise", "Rising spark"],
-		["fall", "Falling spark"], ["radiometer", "Radiometer"], ["mirror", "Mirror"], ["splitter", "Splitter"],
-		["lens", "Lens"]]
+const ITEMS := [["floor", "Floor"], ["lantern", "Lantern"], ["gate", "Opening gate"],
+		["closing_gate", "Closing gate"], ["and", "AND"], ["or", "OR"], ["not", "NOT"], ["latch", "Latch"],
+		["on_delay", "Hourglass"], ["off_delay", "Afterglow"], ["rise", "Rising spark"], ["fall", "Falling spark"],
+		["radiometer", "Radiometer"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"]]
+const GATES := {"gate": false, "closing_gate": true}   # key -> closing
+const GATE_COLOUR := Color(0.92, 0.72, 0.34)
 const KINDS := {"lantern": LumenPart.Kind.LANTERN, "and": LumenPart.Kind.AND, "or": LumenPart.Kind.OR,
 		"not": LumenPart.Kind.NOT, "latch": LumenPart.Kind.LATCH, "on_delay": LumenPart.Kind.TON,
 		"off_delay": LumenPart.Kind.TOF, "rise": LumenPart.Kind.RISE, "fall": LumenPart.Kind.FALL,
@@ -82,6 +90,8 @@ const NOTES := {
 	"rise": "Rising spark\nOne flash when a beam striking it lights.",
 	"fall": "Falling spark\nOne flash when a beam striking it goes dark.",
 	"radiometer": "Radiometer\nIts vanes spin in the light; a bell rings as they start.",
+	"gate": "Opening gate\nLets a beam through its ring while a lit beam strikes the bulb above it.",
+	"closing_gate": "Closing gate\nStops a beam at its ring while a lit beam strikes the bulb above it.",
 	"mirror": "Mirror\nTurns a beam off its silvered face; a little of its reach is lost.",
 	"splitter": "Splitter\nSends a beam on through and aside as well, each with half its reach.",
 	"lens": "Lens\nA beam passing through it reaches twice as far again.",
@@ -191,7 +201,7 @@ func remove_tile(t: FloorTile) -> void:
 ## and `pitch`.
 func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0) -> Node3D:
 	var piece := _make(key, at, delay)
-	(piece as CollisionObject3D).collision_layer = 4
+	_set_layer(piece, 4)
 	piece.set_meta("piece", key)
 	add_child(piece)
 	piece.call("aim", yaw, pitch)
@@ -210,6 +220,8 @@ func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0)
 
 ## A piece of `key` at `at`, not yet placed.
 func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
+	if GATES.has(key):
+		return LightGate.new(at, brass, copper if GATES[key] else brass, glass, GATES[key])
 	if GLASS.has(key):
 		return OpticElement.new(GLASS[key], at, 0.0, timber, brass, silver, glass, false)
 	var kind: LumenPart.Kind = KINDS[key]
@@ -219,6 +231,14 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 		look["metal"] = get(look["metal"])
 	return LumenPart.new(kind, "", at, at.y, timber, brass,
 			delay if kind == LumenPart.Kind.TON or kind == LumenPart.Kind.TOF else 0.0, look)
+
+
+## A piece (a gate's sensor too) on collision layer `layer`.
+func _set_layer(n: Node3D, layer: int) -> void:
+	if n is LightGate:
+		(n as LightGate).set_layer(layer)
+	else:
+		(n as CollisionObject3D).collision_layer = layer
 
 
 func remove_piece(piece: Node3D) -> void:
@@ -247,6 +267,8 @@ func relabel(piece: Node3D) -> void:
 		p.relabel(text)
 	elif piece is OpticElement:
 		(piece as OpticElement).relabel(text + AIM_NOTE)
+	elif piece is LightGate:
+		(piece as LightGate).relabel(text + "\nRight click: turn its ring to face what you look at.")
 
 
 func is_piece(n: Object) -> bool:
@@ -260,7 +282,12 @@ func all_pieces() -> Array[Node3D]:
 ## Whether a piece sends a beam of its own or turns one (all but the
 ## radiometer).
 static func sends(piece: Node3D) -> bool:
-	return not (piece is LumenPart and (piece as LumenPart).kind == LumenPart.Kind.RADIOMETER)
+	return piece is OpticElement or (piece is LumenPart and (piece as LumenPart).kind != LumenPart.Kind.RADIOMETER)
+
+
+## Whether a right click turns it: all that send a beam, and gates.
+static func turns(piece: Node3D) -> bool:
+	return sends(piece) or piece is LightGate
 
 
 ## `piece` turned so its beam goes to `point`: a part's lens toward it; a
@@ -272,6 +299,10 @@ func aim_at(piece: Node3D, point: Vector3) -> void:
 		# The lens swings with the head: aimed again from where it now is.
 		for k in 4:
 			p.aim_along(point - p.lens_point())
+		return
+	if piece is LightGate:
+		if piece.global_position.distance_to(point) > 0.01:
+			(piece as LightGate).aim_along(point - piece.global_position)
 		return
 	var e := piece as OpticElement
 	if e.kind != OpticElement.Kind.LENS and light.arrivals.has(e):
@@ -306,7 +337,7 @@ func _clear_ground() -> void:
 func _place_rods() -> void:
 	var space := get_world_3d().direct_space_state
 	for piece in pieces:
-		var glass_piece := piece is OpticElement
+		var glass_piece := piece is OpticElement or piece is LightGate
 		var from := piece.global_position - Vector3(0, 0.24 if glass_piece else 0.16, 0)
 		var q := PhysicsRayQueryParameters3D.create(from, from - Vector3(0, 12.0, 0), 1 | 4)
 		q.exclude = [(piece as CollisionObject3D).get_rid(), island.player.get_rid()]
@@ -353,7 +384,11 @@ func _look_hit(exclude: Array[RID] = []) -> Dictionary:
 	var skip: Array[RID] = [island.player.get_rid()]
 	skip.append_array(exclude)
 	q.exclude = skip
-	return get_world_3d().direct_space_state.intersect_ray(q)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty() and (hit["collider"] as Node).has_meta("gate_of"):
+		hit["collider"] = (hit["collider"] as Node).get_meta("gate_of")
+		hit["sensor"] = true
+	return hit
 
 
 func _held_key() -> String:
@@ -445,8 +480,9 @@ func _find_tile(p: Vector3, n: Vector3, c: Object) -> bool:
 func _find_spot(p: Vector3, n: Vector3, c: Object) -> bool:
 	if is_piece(c):
 		var under := c as Node3D
-		_support = under.global_position.y + 0.2
-		_at = under.global_position + Vector3(0, 0.5 + lift, 0)
+		var over := 0.33 if under is LightGate else 0.2
+		_support = under.global_position.y + over
+		_at = under.global_position + Vector3(0, over + 0.3 + lift, 0)
 	elif n.y > 0.7:
 		_support = p.y
 		_at = p + Vector3(0, HEAD + lift, 0)
@@ -548,7 +584,7 @@ func _hide(n: Node3D, away: bool) -> void:
 	if n is FloorTile:
 		body.collision_layer = 0 if away else 1
 	else:
-		body.collision_layer = 0 if away else 4
+		_set_layer(n, 0 if away else 4)
 		if away:
 			light.remove(n)
 		else:
@@ -608,7 +644,10 @@ func _show_ghost() -> void:
 			_ghost = _make(key, _at)
 			_ghost_rod = MeshInstance3D.new()
 			_ghost.add_child(_ghost_rod)
-		(_ghost as CollisionObject3D).collision_layer = 0
+		if tile:
+			(_ghost as CollisionObject3D).collision_layer = 0
+		else:
+			_set_layer(_ghost, 0)
 		add_child(_ghost)
 		for m: Node in _ghost.find_children("*", "MeshInstance3D", true, false):
 			var mi := m as MeshInstance3D
@@ -622,7 +661,7 @@ func _show_ghost() -> void:
 			_ghost.call("aim", float(_carried.get("yaw")), float(_carried.get("pitch")))
 		else:
 			_ghost.call("aim", _yaw, 0.0)
-		var top := _at.y - (0.2 if _ghost is OpticElement else 0.13)
+		var top := _at.y - (0.2 if (_ghost is OpticElement or _ghost is LightGate) else 0.13)
 		var rod := CylinderMesh.new()
 		rod.top_radius = 0.016
 		rod.bottom_radius = 0.022
@@ -672,7 +711,9 @@ func _follow_aim() -> void:
 	var point := cam.global_position - cam.global_basis.z * 20.0
 	if not hit.is_empty():
 		point = hit["position"]
-		if is_piece(hit["collider"]):
+		if hit.get("sensor", false):
+			point = (hit["collider"] as LightGate).sensor_point()
+		elif is_piece(hit["collider"]):
 			point = (hit["collider"] as Node3D).global_position
 	aim_at(_aiming, point)
 	light.spot = point
@@ -714,7 +755,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 	elif click != null and click.pressed and click.button_index == MOUSE_BUTTON_RIGHT:
 		var hit := _look_hit()
-		if hit.is_empty() or not is_piece(hit["collider"]) or not sends(hit["collider"]):
+		if hit.is_empty() or not is_piece(hit["collider"]) or not turns(hit["collider"]):
 			return
 		_start_aim(hit["collider"])
 	elif event.is_action_pressed("interact"):
@@ -869,6 +910,8 @@ func _hint_text() -> String:
 			return "Right click: aim it     E: open or close it     G: move it"
 		if p != null and p.kind == LumenPart.Kind.RADIOMETER:
 			return "G: move it"
+		if _on_piece is LightGate:
+			return "Right click: turn it     G: move it"
 		return "Right click: aim it     E: look through it     G: move it"
 	if _carried != null:
 		var put := "Click: set it down here" if _ok else _why
@@ -946,7 +989,8 @@ func _build_ui() -> void:
 		swatch.custom_minimum_size = Vector2(28, 5)
 		swatch.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		swatch.color = FLOOR_COLOUR if key == "floor" else (LumenPart.COLOURS[KINDS[key]] if KINDS.has(key) else GLASS_COLOUR)
+		swatch.color = FLOOR_COLOUR if key == "floor" else (LumenPart.COLOURS[KINDS[key]] if KINDS.has(key)
+				else (GATE_COLOUR if GATES.has(key) else GLASS_COLOUR))
 		col.add_child(swatch)
 		var name_label := Label.new()
 		name_label.text = str(ITEMS[i][1])
@@ -1030,7 +1074,7 @@ func _load() -> void:
 			var d := entry as Dictionary
 			var key := str(d.get("kind", ""))
 			var at: Variant = d.get("at")
-			if not (KINDS.has(key) or GLASS.has(key)) or not at is Array or (at as Array).size() < 3:
+			if not (KINDS.has(key) or GLASS.has(key) or GATES.has(key)) or not at is Array or (at as Array).size() < 3:
 				continue
 			var aim := [0.0, 0.0]
 			var a: Variant = d.get("aim")
