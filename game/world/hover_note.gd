@@ -35,3 +35,8 @@ func _init(at: Vector3, size: Vector3, text: String, lift := 0.0) -> void:
 
 func show_label(on: bool) -> void:
 	_label.visible = on
+
+
+## Its label made to read `text`, for a note that tells a machine's state.
+func set_text(text: String) -> void:
+	_label.text = text

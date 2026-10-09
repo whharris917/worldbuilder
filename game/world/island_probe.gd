@@ -5,7 +5,8 @@ extends Node
 ## WORLDBUILDER_ISLAND_SHOTS=name,name limits it to those views;
 ## WORLDBUILDER_ISLAND_VIEWS=name:fov:x,y,z:tx,ty,tz;... takes its own;
 ## WORLDBUILDER_ISLAND_SET=Title=value;... sets panel switches (0/1) and
-## sliders by title; All=0/1 sets every step of the Softening panel.
+## sliders by title; All=0/1 sets every step of the Softening panel
+## (the aurora view wants a night: "Sun height=-18").
 
 ## name, fov, camera, target.
 const VIEWS := [
@@ -69,6 +70,10 @@ const VIEWS := [
 	["expo", 60.0, Vector3(-6.0, 7.0, -22.0), Vector3(14.0, 1.0, 0.0), "booth2"],
 	["expo_walk", 66.0, Vector3(-4.0, 1.6, -10.5), Vector3(20.0, 1.6, -3.0), "booth3"],
 	["island", 55.0, Vector3(60.0, 330.0, 420.0), Vector3(0.0, 0.0, -10.0), ""],
+	["line_a", 60.0, Vector3(-61.0, 6.0, 122.0), Vector3(-54.3, 3.0, 116.4), ""],
+	["line_b", 62.0, Vector3(-30.0, 9.0, -128.0), Vector3(-40.0, 3.0, -146.0), ""],
+	["line_air", 55.0, Vector3(-120.0, 90.0, 60.0), Vector3(-20.0, 0.0, -40.0), ""],
+	["aurora", 70.0, Vector3(-30.0, 8.0, -110.0), Vector3(-30.0, 260.0, -900.0), ""],
 	["meadow", 65.0, Vector3(30.0, 1.7, 60.0), Vector3(-40.0, 1.0, 0.0), "ground"],
 	["meadow_west", 65.0, Vector3(-60.0, 1.7, 90.0), Vector3(-90.0, 1.0, 20.0), "ground"],
 	["woods", 60.0, Vector3(80.0, 1.7, -10.0), Vector3(20.0, 2.0, -40.0), "ground"],

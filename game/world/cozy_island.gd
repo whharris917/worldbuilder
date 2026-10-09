@@ -91,6 +91,7 @@ var player: Player
 var sky: IslandSky
 var clouds: IslandClouds
 var workshop: Workshop
+var aurora: Aurora
 var _flower_tiles := {}                 # 50 m tile -> [flowers as [base, height, turn, colour], view]
 var _clear: Array = []                  # ground kept clear of flowers: [transform, half size]
 var _panel: BenchPanel
@@ -191,6 +192,11 @@ func _ready() -> void:
 	# The player's own benches come and go: kept out of the joining.
 	workshop = Workshop.new(self)
 	add_child(workshop)
+	aurora = Aurora.new(self)
+	add_child(aurora)
+	var line := AuroraLine.new(self)
+	add_child(line)
+	_works.append(line)
 	clouds = IslandClouds.new(self)
 	add_child(clouds)
 	_build_panels()
