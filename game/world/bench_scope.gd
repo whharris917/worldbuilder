@@ -25,6 +25,8 @@ var _fov := FOV_START
 var _snapped := false
 var _snap_drag := 0.0
 var _broken_from := Vector3.INF
+var _snap_piece: Node3D = null          # the piece the beam last settled on
+var _turned := false                    # turned by the mouse since entering
 var _click := AudioStreamPlayer3D.new()
 
 
@@ -76,6 +78,8 @@ func enter(piece: Node3D, back: Camera3D) -> void:
 	workshop.light.held = piece
 	_fov = FOV_START
 	_snapped = false
+	_snap_piece = null
+	_turned = false
 	_broken_from = Vector3.INF
 	_place()
 	_cam.current = true
@@ -86,6 +90,7 @@ func leave() -> void:
 	if held == null:
 		return
 	var player := workshop.island.player
+	workshop.aimed_by_scope(held, _snap_piece if _snapped else null, _turned)
 	held = null
 	workshop.light.held = null
 	workshop.light.spot = Vector3.INF
@@ -170,6 +175,7 @@ func _turn_by(motion: Vector2) -> void:
 		if _snap_drag < 45.0:
 			return
 		_snapped = false
+	_turned = true
 	var fine := motion * (_fov / 60.0)
 	if held is LumenPart:
 		(held as LumenPart).turn_by(fine)
@@ -199,6 +205,7 @@ func _try_snap() -> void:
 	else:
 		return
 	var best := Vector3.INF
+	var best_piece: Node3D = null
 	var best_perp := SNAP
 	for piece in workshop.all_pieces():
 		if piece == held:
@@ -211,6 +218,7 @@ func _try_snap() -> void:
 		if perp < best_perp:
 			best_perp = perp
 			best = target
+			best_piece = piece
 	if _broken_from != Vector3.INF:
 		var away := INF
 		var t2 := (_broken_from - origin).dot(out_dir)
@@ -221,6 +229,7 @@ func _try_snap() -> void:
 	if best == Vector3.INF or best.is_equal_approx(_broken_from):
 		return
 	workshop.aim_at(held, best)
+	_snap_piece = best_piece
 	_snapped = true
 	_snap_drag = 0.0
 	_broken_from = best

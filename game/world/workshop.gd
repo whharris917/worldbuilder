@@ -26,9 +26,16 @@ extends Node3D
 ## leaves its place (a tile taking the pieces standing on it), its copy
 ## follows the crosshair as a new one would, and a left click sets it
 ## down there with its delay and shutter as they were, still aimed at
-## what its beam struck before it was taken up (a piece, a gate's bulb,
-## or the point struck), as are the pieces carried on a tile; and pieces
-## aimed at what moved turn to follow it. Esc, B or
+## its target, as are the pieces carried on a tile; and pieces aimed at
+## what moved turn to follow it.
+##
+## A piece's target is what it was last aimed at (`links`): the piece,
+## gate's bulb or point the crosshair settled on when it was aimed by a
+## right click, or the piece its beam settled on in the lens view. So a
+## lantern aimed across at a crystal with gates set in its path later
+## keeps to the crystal when either moves. A piece never aimed that way
+## (or turned freely in the lens view) is taken to be aimed at what its
+## beam strikes first. Esc, B or
 ## choosing something else puts it back where it stood.
 ##
 ## A crosshair shows whenever the player looks about, gold when it is on
@@ -137,7 +144,12 @@ var _ghost_red := false
 # Something picked up to move, gone from where it stood until set down.
 var _carried: Node3D = null
 var _riders: Array[Node3D] = []         # pieces standing on a carried tile
-var _targets := {}                      # carried piece -> what its beam struck when taken up
+var _targets := {}                      # piece -> its target, for the pieces aimed again after a move
+## What each piece was aimed at: piece -> {piece, sensor} for a piece or a
+## gate's bulb, {tile, local} for a point on a floor tile, and always
+## {point}, where it was.
+var links := {}
+var _aim_target := {}                   # what the piece being aimed points at now
 var _reaim: Array = []                  # [piece, target, steps left]: aimed again as the light settles
 var _red := StandardMaterial3D.new()
 var _ui := CanvasLayer.new()
@@ -198,6 +210,11 @@ func add_tile(at: Vector3, yaw: float) -> FloorTile:
 
 
 func remove_tile(t: FloorTile) -> void:
+	for target: Dictionary in links.values():
+		if target.get("tile") == t:
+			target["point"] = _target_point(target)
+			target.erase("tile")
+			target.erase("local")
 	tiles.erase(t)
 	t.queue_free()
 	_clear_ground()
@@ -256,6 +273,12 @@ func remove_piece(piece: Node3D) -> void:
 	pieces.erase(piece)
 	light.remove(piece)
 	_bells.erase(piece)
+	links.erase(piece)
+	for target: Dictionary in links.values():
+		if target.get("piece") == piece:
+			target["point"] = _target_point(target)
+			target.erase("piece")
+			target.erase("sensor")
 	piece.queue_free()
 	_rods_due = true
 
@@ -318,6 +341,15 @@ func aim_at(piece: Node3D, point: Vector3) -> void:
 		e.aim_along((out - (arrival[1] as Vector3)).normalized())
 	elif e.global_position.distance_to(point) > 0.01:
 		e.aim_along(point - e.global_position)
+
+
+## The lens view left `piece`: aimed at `target` if its beam settled on a
+## piece there, or, turned freely, at whatever its beam strikes first.
+func aimed_by_scope(piece: Node3D, target: Node3D, turned: bool) -> void:
+	if target != null and pieces.has(target):
+		links[piece] = {"piece": target, "point": target.global_position}
+	elif turned:
+		links.erase(piece)
 
 
 func toggle(lantern: LumenPart) -> void:
@@ -585,21 +617,29 @@ func _take_up(n: Node3D) -> void:
 	var moving: Array = [n] + _riders
 	for m: Node3D in moving:
 		if sends(m):
-			_targets[m] = _target_of(m)
+			_targets[m] = _target_for(m)
 	# Pieces left standing that are aimed at what moves follow it.
 	for other in pieces:
 		if moving.has(other) or not sends(other):
 			continue
-		var target := _target_of(other)
-		if moving.has(target.get("piece")) or target.has("on_tile"):
+		var target := _target_for(other)
+		if moving.has(target.get("piece")) or (n is FloorTile and target.get("tile") == n):
 			_targets[other] = target
 	for m: Node3D in [n] + _riders:
 		_hide(m, true)
 
 
-## What a piece's beam strikes first, to aim at again once moved: a
-## piece (or a gate's bulb) by name, or the point struck (on the carried
-## tile, kept in its frame), or a point 20 m on.
+## A piece's target: what it was aimed at, or else what its beam
+## strikes first.
+func _target_for(piece: Node3D) -> Dictionary:
+	if links.has(piece):
+		return links[piece]
+	return _target_of(piece)
+
+
+## What a piece's beam strikes first: a piece (or a gate's bulb), a point
+## on a floor tile (kept in its frame), the point struck, or a point
+## 20 m on.
 func _target_of(piece: Node3D) -> Dictionary:
 	var origin := piece.global_position
 	var dir := Vector3.FORWARD
@@ -624,9 +664,14 @@ func _target_of(piece: Node3D) -> Dictionary:
 		return {"piece": (c as Node).get_meta("gate_of"), "sensor": true, "point": hit["position"]}
 	if is_piece(c):
 		return {"piece": c, "point": hit["position"]}
-	if c == _carried:
-		return {"on_tile": (c as Node3D).to_local(hit["position"]), "point": hit["position"]}
-	return {"point": hit["position"]}
+	return _point_target(c, hit["position"])
+
+
+## A point struck on `c` as a target: kept in a floor tile's frame.
+func _point_target(c: Object, at: Vector3) -> Dictionary:
+	if c is FloorTile:
+		return {"tile": c, "local": (c as FloorTile).to_local(at), "point": at}
+	return {"point": at}
 
 
 ## Where a kept target now is.
@@ -636,6 +681,9 @@ func _target_point(target: Dictionary) -> Vector3:
 		if target.get("sensor", false):
 			return (piece as LightGate).sensor_point()
 		return (piece as Node3D).global_position
+	var tile: Variant = target.get("tile")
+	if tile != null and is_instance_valid(tile) and tiles.has(tile):
+		return (tile as FloorTile).global_transform * (target["local"] as Vector3)
 	return target["point"]
 
 
@@ -668,13 +716,14 @@ func _put_down() -> void:
 			r.global_position = move * r.global_position
 			r.call("aim", float(r.get("yaw")) + turn, float(r.get("pitch")))
 			_hide(r, false)
-		for target: Dictionary in _targets.values():
-			if target.has("on_tile"):
-				target["point"] = tile.global_transform * (target["on_tile"] as Vector3)
+		for target: Dictionary in _targets.values() + links.values():
+			if target.get("tile") == old:
+				target["tile"] = tile
 	else:
 		_carried.global_position = _at
 		_hide(_carried, false)
 	for piece: Node3D in _targets:
+		links[piece] = _targets[piece]
 		aim_at(piece, _target_point(_targets[piece]))
 		_reaim.append([piece, _targets[piece], 6])
 	_targets.clear()
@@ -778,12 +827,17 @@ func _follow_aim() -> void:
 	var hit := _look_hit([(_aiming as CollisionObject3D).get_rid()])
 	var cam := island.player.camera
 	var point := cam.global_position - cam.global_basis.z * 20.0
+	_aim_target = {"point": point}
 	if not hit.is_empty():
 		point = hit["position"]
+		var c: Object = hit["collider"]
+		_aim_target = _point_target(c, point)
 		if hit.get("sensor", false):
-			point = (hit["collider"] as LightGate).sensor_point()
-		elif is_piece(hit["collider"]):
-			point = (hit["collider"] as Node3D).global_position
+			point = (c as LightGate).sensor_point()
+			_aim_target = {"piece": c, "sensor": true, "point": point}
+		elif is_piece(c):
+			point = (c as Node3D).global_position
+			_aim_target = {"piece": c, "point": point}
 	aim_at(_aiming, point)
 	light.spot = point
 	light.spot_size = 0.012 * cam.global_position.distance_to(point) + 0.02
@@ -817,6 +871,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_change(key.physical_keycode)
 	elif _aiming != null:
 		if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+			if not _aim_target.is_empty():
+				links[_aiming] = _aim_target
+			_aim_target = {}
 			_end_aim()
 			changed()
 		elif (click != null and click.pressed and click.button_index == MOUSE_BUTTON_RIGHT) \
@@ -1129,6 +1186,18 @@ func _save() -> void:
 				entry["delay"] = part.delay
 			if part.kind == LumenPart.Kind.LANTERN:
 				entry["on"] = part.condition
+		if links.has(piece):
+			var l: Dictionary = links[piece]
+			var at: Vector3 = _target_point(l)
+			var link := {"point": [at.x, at.y, at.z]}
+			if l.get("piece") != null and pieces.has(l["piece"]):
+				link["to"] = pieces.find(l["piece"])
+				link["sensor"] = l.get("sensor", false)
+			elif l.get("tile") != null and tiles.has(l["tile"]):
+				var local: Vector3 = l["local"]
+				link["tile"] = tiles.find(l["tile"])
+				link["local"] = [local.x, local.y, local.z]
+			entry["link"] = link
 		list.append(entry)
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file != null:
@@ -1153,6 +1222,7 @@ func _load() -> void:
 				# Kept when tiles stood on a grid 2 m square: grid x, grid z, top.
 				add_tile(Vector3((float(f[0]) + 0.5) * 2.0, float(f[2]), (float(f[1]) + 0.5) * 2.0), 0.0)
 	if data.get("pieces") is Array:
+		var saved_links := {}
 		for entry: Variant in data["pieces"]:
 			if not entry is Dictionary:
 				continue
@@ -1169,3 +1239,22 @@ func _load() -> void:
 					float(d.get("delay", 2.0)))
 			if piece is LumenPart and bool(d.get("on", false)):
 				(piece as LumenPart).condition = true
+			if d.get("link") is Dictionary:
+				saved_links[piece] = d["link"]
+		# Links name pieces and tiles by their place in the lists.
+		for piece: Node3D in saved_links:
+			var l: Dictionary = saved_links[piece]
+			var pt: Variant = l.get("point")
+			if not pt is Array or (pt as Array).size() < 3:
+				continue
+			var target := {"point": Vector3(float(pt[0]), float(pt[1]), float(pt[2]))}
+			var to := int(l.get("to", -1))
+			var tile_at := int(l.get("tile", -1))
+			var local: Variant = l.get("local")
+			if to >= 0 and to < pieces.size():
+				target["piece"] = pieces[to]
+				target["sensor"] = bool(l.get("sensor", false)) and pieces[to] is LightGate
+			elif tile_at >= 0 and tile_at < tiles.size() and local is Array and (local as Array).size() >= 3:
+				target["tile"] = tiles[tile_at]
+				target["local"] = Vector3(float(local[0]), float(local[1]), float(local[2]))
+			links[piece] = target
