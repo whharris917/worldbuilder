@@ -20,6 +20,8 @@ extends Node3D
 ## cannot go. Shift and the wheel raise and lower it; X takes away what
 ## the crosshair is on; T changes an hourglass's or afterglow's delay.
 ##
+## A crosshair shows whenever the player looks about, gold when it is on
+## a piece within REACH; the line above it then says what can be done.
 ## At any time: E on a lantern opens or closes it; E on any other piece
 ## but a radiometer looks through it to aim it (BenchScope); a right click
 ## on one takes it up to aim, its beam following the crosshair (settling
@@ -114,6 +116,7 @@ var _ghost_red := false
 var _red := StandardMaterial3D.new()
 var _ui := CanvasLayer.new()
 var _cross := Label.new()
+var _on_piece: Node3D = null            # the piece the crosshair is on, within reach
 var _hint := Label.new()
 var _tray := HBoxContainer.new()
 var _tray_cells: Array[PanelContainer] = []
@@ -599,9 +602,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		_start_aim(hit["collider"])
 	elif event.is_action_pressed("interact"):
-		var v := player.look_view()
-		if not is_piece(v):
+		var hit := _look_hit()
+		if hit.is_empty() or not is_piece(hit["collider"]):
 			return
+		var v := hit["collider"] as Node3D
 		if v is LumenPart and (v as LumenPart).kind == LumenPart.Kind.LANTERN:
 			toggle(v as LumenPart)
 		elif sends(v):
@@ -705,11 +709,21 @@ func _process(delta: float) -> void:
 		_find_place()
 	elif _ghost != null:
 		_ghost.visible = false
-	_cross.visible = free and (building or _aiming != null)
+	# The crosshair shows whenever the player looks about, gold over a
+	# piece within reach.
+	var looking := free and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or MouseMode.probe)
+	_on_piece = null
+	if looking and _aiming == null:
+		var hit := _look_hit()
+		if not hit.is_empty() and is_piece(hit["collider"]):
+			_on_piece = hit["collider"] as Node3D
+	_cross.visible = looking
+	_cross.add_theme_color_override("font_color", Color(1.0, 0.82, 0.35, 1.0) if _on_piece != null else Color(1, 1, 1, 0.7))
 	_tray.get_parent().visible = building and free
-	_hint.visible = _cross.visible
+	_hint.visible = looking and (building or _aiming != null or _on_piece != null)
 	if _hint.visible:
 		_hint.text = _hint_text()
+		_hint.visible = _hint.text != ""
 	if _save_in >= 0.0:
 		_save_in -= delta
 		if _save_in < 0.0:
@@ -729,6 +743,13 @@ func _hint_text() -> String:
 				text = ("It strikes the latch from its left: it will light it.\n" if dir.dot(right) > 0.0
 						else "It strikes the latch from its right: it will put it out.\n") + text
 		return text
+	if not building:
+		var p := _on_piece as LumenPart
+		if p != null and p.kind == LumenPart.Kind.LANTERN:
+			return "Right click: aim it     E: open or close it"
+		if p != null and p.kind == LumenPart.Kind.RADIOMETER:
+			return ""
+		return "Right click: aim it     E: look through it"
 	var place := ("Click: place the %s" % str(ITEMS[item][1]).to_lower()) if _ok else _why
 	if place == "":
 		place = "Look at the ground, a floor or a piece"
