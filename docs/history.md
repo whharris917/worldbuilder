@@ -544,3 +544,5 @@ The director questioned the AND crystal: it must know all its inputs, and with d
 X (take away) and T (a timer's delay) work whether building or not, and the hint over a piece says so. Checked down the beam line: a shut gate's leaf lies in its ring, an open one stands square across it. A gate's rod had stopped 6 cm short of its ring; it now meets the ring in a cradle.
 
 A piece moved with G keeps its aim on what its beam struck when taken up (traced at that moment, so it works however it was aimed): a piece by name, a gate's bulb, a point on the carried tile in the tile's frame, or the point struck. Aimed again on setting down and for six steps after, so a moved mirror settles once the beam reaching it has moved too. Pieces carried on a tile keep theirs the same way. Checked: a lantern on a crystal and one on a gate's bulb, each moved, both still lit their targets.
+
+Pieces aimed at what is moved now follow it: on taking up, every other piece whose beam strikes a moving piece (or a point on a moving tile) keeps that target too and is aimed again with the rest. Checked: a crystal moved 1.9 m and a gate 3.6 m stayed lit by the lanterns aimed at them.

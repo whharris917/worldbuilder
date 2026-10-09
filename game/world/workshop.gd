@@ -27,7 +27,8 @@ extends Node3D
 ## follows the crosshair as a new one would, and a left click sets it
 ## down there with its delay and shutter as they were, still aimed at
 ## what its beam struck before it was taken up (a piece, a gate's bulb,
-## or the point struck), as are the pieces carried on a tile. Esc, B or
+## or the point struck), as are the pieces carried on a tile; and pieces
+## aimed at what moved turn to follow it. Esc, B or
 ## choosing something else puts it back where it stood.
 ##
 ## A crosshair shows whenever the player looks about, gold when it is on
@@ -581,9 +582,17 @@ func _take_up(n: Node3D) -> void:
 	lift = 0.0
 	_carried = n
 	_targets.clear()
-	for m: Node3D in [n] + _riders:
+	var moving: Array = [n] + _riders
+	for m: Node3D in moving:
 		if sends(m):
 			_targets[m] = _target_of(m)
+	# Pieces left standing that are aimed at what moves follow it.
+	for other in pieces:
+		if moving.has(other) or not sends(other):
+			continue
+		var target := _target_of(other)
+		if moving.has(target.get("piece")) or target.has("on_tile"):
+			_targets[other] = target
 	for m: Node3D in [n] + _riders:
 		_hide(m, true)
 
