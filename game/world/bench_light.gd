@@ -20,14 +20,17 @@ extends Node3D
 ## left sets it and any from its right resets it; the other kinds read
 ## one beam, lit if any beam striking them is.
 ##
-## Drawn as flat ribbons turned to the eye: lit stretches bright in the
-## sender's colour, dark ones a faint guide line (plainer for the piece
-## being aimed), each dimming over the last 6 m of its reach.
+## Drawn as flat ribbons turned to the eye, only where lit, in one warm
+## gold (BEAM) laid over what is behind (not added to it, which turns a
+## beam white against a bright sky); each fades over the last 6 m of its
+## reach. The piece being aimed shows its path faintly
+## while dark, so its landing can be seen.
 
 const SPEED := 12.0
 const REACH := 25.0
 const MAX_BOUNCES := 10
 const HISTORY := 30.0
+const BEAM := Color(1.0, 0.72, 0.22)
 
 var parts: Array[LumenPart] = []
 var elements: Array[OpticElement] = []
@@ -53,9 +56,9 @@ func _ready() -> void:
 	_mat = StandardMaterial3D.new()
 	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	_mat.vertex_color_use_as_albedo = true
-	_mat.albedo_color = Color(2.5, 2.5, 2.5)
+	_mat.vertex_color_is_srgb = true
+	_mat.albedo_color = Color.WHITE
 	_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
 	var view := MeshInstance3D.new()
@@ -245,21 +248,22 @@ func _process(_delta: float) -> void:
 		var source := seg[5] as LumenPart
 		if not is_instance_valid(source):
 			continue
-		var colour := source.colour()
 		for span: Array in _spans(source, s0, s1):
 			var u0: float = span[0]
 			var u1: float = span[1]
 			var lit: bool = span[2]
 			var pa := a.lerp(b, (u0 - s0) / (s1 - s0))
 			var pb := a.lerp(b, (u1 - s0) / (s1 - s0))
+			var hot: bool = seg[6]
+			if not lit and not hot:
+				continue
 			var cross := (pb - pa).cross(eye - pa)
 			if cross.length_squared() < 1e-8:
 				continue
-			var hot: bool = seg[6]
-			var tint := colour if lit else colour.lerp(Color.WHITE, 0.6) * (0.5 if hot else 0.18)
-			var side := cross.normalized() * (0.024 if lit else (0.014 if hot else 0.008))
-			var ca := tint * smoothstep(0.0, 6.0, float(seg[4]) - (u0 - s0))
-			var cb := tint * smoothstep(0.0, 6.0, float(seg[4]) - (u1 - s0))
+			var opacity := 0.95 if lit else 0.3
+			var side := cross.normalized() * (0.022 if lit else 0.01)
+			var ca := Color(BEAM, opacity * smoothstep(0.0, 6.0, float(seg[4]) - (u0 - s0)))
+			var cb := Color(BEAM, opacity * smoothstep(0.0, 6.0, float(seg[4]) - (u1 - s0)))
 			points.append_array([pa - side, pa + side, pb + side, pa - side, pb + side, pb - side])
 			colours.append_array([ca, ca, cb, ca, cb, cb])
 	if spot != Vector3.INF:
