@@ -55,6 +55,10 @@ Writes to game/audio/:
   ratchet.wav     a sequencer drum's pawl dropping into its ratchet
   whistle.wav     a three-chamber steam whistle's chord
   crackle.wav     lightning caught by a rod: a snap and dying sparks
+  cart_roll_loop.wav  3 s seamless rumble of a small cart's wheels on brass rails
+  cart_clack_1..3.wav  a cart wheel crossing a rail joint
+  cart_buffer.wav a cart striking the wooden buffer at a track's end
+  radiometer_whir_loop.wav  2 s seamless whir of a radiometer's vanes
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -1457,6 +1461,67 @@ def make_crackle() -> None:
     write_wav(OUT_DIR / "crackle.wav", [out], normalize_to=0.6)
 
 
+def make_cart_sounds() -> None:
+    """The player's cart on its track (BeamCart). The roll: wheels on
+    brass rails, a rumble between 120 Hz and 1.8 kHz fluttering a little,
+    with the rails' faint ring in two partials, played louder and higher
+    the faster the cart goes. A wheel crossing a rail joint: a sharp
+    click, a short metal ring and a small thump. The buffer: a wooden
+    thump with the cart's iron ringing over it."""
+    r = random.Random(20261020)
+    dur = 3.0
+    n = int(SR * dur)
+    fade = int(0.25 * SR)
+    rumble = _band(_noise_r(r, n + fade + SR), 120.0, 1800.0)[SR:]
+    flutter = _lowpass(_noise_r(r, n + fade + SR), 1.0 - math.exp(-2.0 * math.pi * 6.0 / SR))[SR:]
+    peak = max(abs(v) for v in flutter) or 1.0
+    roll = [rumble[i] * (0.8 + 0.4 * flutter[i] / peak) for i in range(n + fade)]
+    roll = loop_crossfade(roll, fade / SR)
+    for f, amp in ((640.0, 0.05), (1380.0, 0.03)):
+        add_partial(roll, f, amp, dur)
+    write_wav(OUT_DIR / "cart_roll_loop.wav", [roll], normalize_to=0.45)
+    for k, (ring, seed) in enumerate(((1850.0, 31), (2050.0, 32), (1700.0, 33)), start=1):
+        rk = random.Random(20261020 + seed)
+        length = int(0.18 * SR)
+        out = [0.0] * length
+        for i in range(length):
+            tt = i / SR
+            out[i] = (math.exp(-tt / 0.0015) * (rk.random() * 2.0 - 1.0)
+                      + 0.45 * math.exp(-tt / 0.04) * math.sin(2.0 * math.pi * ring * tt)
+                      + 0.25 * math.exp(-tt / 0.05) * math.sin(2.0 * math.pi * ring * 1.57 * tt)
+                      + 0.5 * math.exp(-tt / 0.03) * math.sin(2.0 * math.pi * 115.0 * tt))
+        write_wav(OUT_DIR / f"cart_clack_{k}.wav", [out], normalize_to=0.5)
+    rb = random.Random(20261040)
+    length = int(0.7 * SR)
+    knock = _band(_noise_r(rb, length + SR), 300.0, 1500.0)[SR:]
+    out = [0.0] * length
+    for i in range(length):
+        tt = i / SR
+        v = 0.9 * math.exp(-tt / 0.12) * math.sin(2.0 * math.pi * 85.0 * tt)
+        v += 2.5 * knock[i] * math.exp(-tt / 0.05)
+        for ratio, amp, decay in ((1.0, 0.35, 6.0), (2.76, 0.22, 10.0), (5.40, 0.12, 16.0)):
+            v += amp * math.exp(-tt * decay) * math.sin(2.0 * math.pi * 420.0 * ratio * tt)
+        out[i] = v * min(1.0, i / 12.0)
+    write_wav(OUT_DIR / "cart_buffer.wav", [out], normalize_to=0.6)
+
+
+def make_radiometer_whir() -> None:
+    """A radiometer's vanes spinning in their bulb: an airy whir between
+    700 Hz and 3.5 kHz beating 30 times a second as the four vanes pass,
+    with a faint glassy tone; played louder and higher as the vanes spin
+    faster."""
+    r = random.Random(20261050)
+    dur = 2.0
+    n = int(SR * dur)
+    fade = int(0.2 * SR)
+    air = _band(_noise_r(r, n + fade + SR), 700.0, 3500.0)[SR:]
+    air = loop_crossfade(air, fade / SR)
+    beat = quantize(30.0, dur)
+    out = [air[i] * (0.55 + 0.45 * math.sin(2.0 * math.pi * beat * i / SR)) for i in range(n)]
+    add_partial(out, 1500.0, 0.02, dur)
+    write_wav(OUT_DIR / "radiometer_whir_loop.wav", [out], normalize_to=0.35)
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -1488,6 +1553,8 @@ def main() -> None:
     make_shell_light()
     make_colour_works()
     make_crackle()
+    make_cart_sounds()
+    make_radiometer_whir()
     print("done")
 
 

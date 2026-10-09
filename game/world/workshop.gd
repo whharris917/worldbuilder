@@ -66,15 +66,19 @@ extends Node3D
 ## latch; the latch works an opening gate and a closing gate, through a
 ## splitter, on a push lamp's beam and a pull lamp's beam, which a second
 ## splitter at the track's end brings onto the track's line, so only one
-## reaches the ball at a time. Once built it is the player's like any
-## other build.
+## reaches the ball at a time; a lens past it gives back the reach the
+## splitter takes, so the beams reach the track's far end. Once built it
+## is the player's like any other build. A save with an older shuttle
+## (DEMO_VERSION) has it built afresh.
 ##
 ## The light is one for every piece (BenchLight), travelling slowly. A
-## radiometer rings its bell when its vanes start. Everything built is
+## radiometer rings its bell when its vanes start, and whirs as they spin. Everything built is
 ## kept in SAVE_PATH.
 
 const SAVE_PATH := "user://cozy_island_build.json"
-const DEMO_AT := Vector3(16.7, 0.0, 106.1)   # the shuttle's track middle, in the meadow by the cabin
+const DEMO_AT := Vector3(21.3, 0.0, 108.9)   # the shuttle's track middle, in the meadow by the cabin
+const DEMO_VERSION := 2                 # the shuttle for the 16 m track
+const OLD_DEMO_AT := Vector3(16.7, 0.0, 106.1)   # where the first, short shuttle stood
 const REACH := 8.0
 const HEAD := 1.0                       # a piece's height over what it stands on, to begin
 const LIFT_STEP := 0.1
@@ -267,7 +271,18 @@ func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0)
 		bell.stream = load("res://audio/chime.wav") if DisplayServer.get_name() != "headless" else null
 		bell.unit_size = 6.0
 		piece.add_child(bell)
-		_bells[piece] = [false, bell]
+		var whir := AudioStreamPlayer3D.new()
+		if DisplayServer.get_name() != "headless":
+			var loop := load("res://audio/radiometer_whir_loop.wav") as AudioStreamWAV
+			loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			loop.loop_begin = 0
+			loop.loop_end = int(loop.get_length() * loop.mix_rate)
+			whir.stream = loop
+			whir.autoplay = true
+		whir.volume_db = -80.0
+		whir.unit_size = 3.0
+		piece.add_child(whir)
+		_bells[piece] = [false, bell, whir]
 	_rods_due = true
 	if piece is BeamCart:
 		_clear_ground()
@@ -401,14 +416,18 @@ func aimed_by_scope(piece: Node3D, target: Node3D, turned: bool) -> void:
 ## the track along x, the lamps at its east end, the gold beams' lanterns
 ## on the south side, the crystals and the latch to the north.
 func build_demo() -> void:
-	# Whatever stands in its place goes first.
+	# Whatever stands in its place goes first, and the first, short
+	# shuttle where it stood.
+	var half := BeamCart.LENGTH * 0.5
 	for piece: Node3D in pieces.duplicate():
 		var off := piece.global_position - DEMO_AT
-		if off.x > -3.6 and off.x < 4.1 and off.z > -4.6 and off.z < 1.7:
+		var old := piece.global_position - OLD_DEMO_AT
+		if (off.x > -half - 0.6 and off.x < half + 2.1 and off.z > -4.6 and off.z < 1.7) \
+				or (old.x > -3.6 and old.x < 4.1 and old.z > -4.6 and old.z < 1.7):
 			remove_piece(piece)
 	var base := -INF
-	for k in 5:
-		base = maxf(base, island.height(DEMO_AT.x - 2.0 + k, DEMO_AT.z))
+	for k in 9:
+		base = maxf(base, island.height(DEMO_AT.x - half + k * half / 4.0, DEMO_AT.z))
 	var at := func(u: float, v: float, h: float) -> Vector3:
 		return Vector3(DEMO_AT.x + u, base + h, DEMO_AT.z + v)
 	var h := BeamCart.HANDLE
@@ -416,22 +435,24 @@ func build_demo() -> void:
 	# The east end: the push lamp's beam straight along the track through
 	# its gate and the splitter; the pull lamp's from the south, through
 	# its gate, turned onto the track's line by the splitter.
-	var join := add_piece("splitter", at.call(2.7, 0.0, h), 0.0, 0.0) as OpticElement
+	var join := add_piece("splitter", at.call(half + 0.7, 0.0, h), 0.0, 0.0) as OpticElement
 	join.aim_along(Vector3(-1.0, 0.0, 1.0))
-	var push := add_piece("push_lamp", at.call(3.6, 0.0, h), 0.0, 0.0) as LumenPart
-	var pull := add_piece("pull_lamp", at.call(2.7, 1.0, h), 0.0, 0.0) as LumenPart
+	var push := add_piece("push_lamp", at.call(half + 1.6, 0.0, h), 0.0, 0.0) as LumenPart
+	var pull := add_piece("pull_lamp", at.call(half + 0.7, 1.0, h), 0.0, 0.0) as LumenPart
 	_demo_aim(push, join)
 	_demo_aim(pull, join)
+	var lens := add_piece("lens", at.call(half + 0.3, 0.0, h), 0.0, 0.0) as OpticElement
+	lens.aim_along(Vector3(1.0, 0.0, 0.0))
 	# The latch, and which of its sides each end's crystal strikes.
 	# The latch stands west of the crystals' line, so the line of its own
 	# beam passes between them and they strike it from opposite sides.
 	var latch_at: Vector3 = at.call(-3.0, -4.0, 1.7)
-	var push_gate_at: Vector3 = at.call(3.15, 0.0, h)
-	var pull_gate_at: Vector3 = at.call(2.7, 0.5, h)
+	var push_gate_at: Vector3 = at.call(half + 1.15, 0.0, h)
+	var pull_gate_at: Vector3 = at.call(half + 0.7, 0.5, h)
 	var push_bulb := push_gate_at + Vector3(0, 0.27, 0)
 	var pull_bulb := pull_gate_at + Vector3(0, 0.27, 0)
 	var fork_at := latch_at.lerp(push_bulb, 0.85)
-	var east_crystal_at: Vector3 = at.call(1.6, -1.3, h)
+	var east_crystal_at: Vector3 = at.call(half - 0.4, -1.3, h)
 	var right := (fork_at - latch_at).normalized().cross(Vector3.UP)
 	var east_sets := (latch_at - east_crystal_at).normalized().dot(right) > 0.0
 	# Lit, the latch means the cart is to go west: the push gate open and
@@ -449,7 +470,7 @@ func build_demo() -> void:
 	links[fork] = {"piece": pull_gate, "sensor": true, "point": pull_bulb}
 	# The beams across the track near its ends, and the NOT crystals that
 	# light when the cart's ball blocks them.
-	for u: float in [-1.6, 1.6]:
+	for u: float in [-half + 0.4, half - 0.4]:
 		var lamp := add_piece("lantern", at.call(u, 1.3, h), 0.0, 0.0) as LumenPart
 		var crystal := add_piece("not", at.call(u, -1.3, h), 0.0, 0.0) as LumenPart
 		lamp.condition = true
@@ -651,8 +672,8 @@ func _find_track(p: Vector3, n: Vector3, c: Object) -> bool:
 	var along := Basis(Vector3.UP, _yaw) * Vector3.RIGHT
 	var lo := INF
 	var hi := -INF
-	for k in 5:
-		var q := p + along * BeamCart.LENGTH * (k / 4.0 - 0.5)
+	for k in 9:
+		var q := p + along * BeamCart.LENGTH * (k / 8.0 - 0.5)
 		var h := island.height(q.x, q.z)
 		lo = minf(lo, h)
 		hi = maxf(hi, h)
@@ -661,7 +682,7 @@ func _find_track(p: Vector3, n: Vector3, c: Object) -> bool:
 	# Drafts.
 	if lo < 0.12:
 		_why = "Not over the water."
-	elif not c is FloorTile and hi - lo > 0.5:
+	elif not c is FloorTile and hi - lo > 0.8:
 		_why = "The ground is too steep for a track here."
 	elif _blocked(_at + Vector3(0, 0.75, 0), Vector3(BeamCart.LENGTH, 1.2, 0.5), Basis(Vector3.UP, _yaw)):
 		_why = "Something stands in the way."
@@ -1160,6 +1181,10 @@ func _physics_process(dt: float) -> void:
 		if r.powered and not bool(b[0]):
 			BeachSite._play(b[1] as AudioStreamPlayer3D, 1.0)
 		b[0] = r.powered
+		# The vanes' whir, as loud and high as they spin.
+		var whir := b[2] as AudioStreamPlayer3D
+		whir.volume_db = linear_to_db(clampf(r.spin, 0.0001, 1.0)) - 6.0
+		whir.pitch_scale = 0.6 + 0.6 * r.spin
 
 
 func _process(delta: float) -> void:
@@ -1381,7 +1406,7 @@ func _save() -> void:
 		list.append(entry)
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file != null:
-		file.store_string(JSON.stringify({"floor": floor_list, "pieces": list, "demo": _demo_built}))
+		file.store_string(JSON.stringify({"floor": floor_list, "pieces": list, "demo": DEMO_VERSION if _demo_built else 0}))
 
 
 func _load() -> void:
@@ -1394,7 +1419,7 @@ func _load() -> void:
 	if not parsed is Dictionary:
 		return
 	var data := parsed as Dictionary
-	_demo_built = bool(data.get("demo", false))
+	_demo_built = int(data.get("demo", 0)) >= DEMO_VERSION
 	if data.get("floor") is Array:
 		for f: Variant in data["floor"]:
 			if f is Array and (f as Array).size() >= 4:
