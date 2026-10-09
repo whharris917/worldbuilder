@@ -20,6 +20,12 @@ extends Node3D
 ## cannot go. Shift and the wheel raise and lower it; X takes away what
 ## the crosshair is on; T changes an hourglass's or afterglow's delay.
 ##
+## G on a piece or a tile, building or not, takes it up to move it: it
+## leaves its place (a tile taking the pieces standing on it), its copy
+## follows the crosshair as a new one would, and a left click sets it
+## down there with its aim, delay and shutter as they were. Esc, B or
+## choosing something else puts it back where it stood.
+##
 ## A crosshair shows whenever the player looks about, gold when it is on
 ## a piece within REACH; the line above it then says what can be done.
 ## At any time: E on a lantern opens or closes it; E on any other piece
@@ -113,6 +119,9 @@ var _ghost: Node3D = null
 var _ghost_key := ""
 var _ghost_rod: MeshInstance3D = null
 var _ghost_red := false
+# Something picked up to move, gone from where it stood until set down.
+var _carried: Node3D = null
+var _riders: Array[Node3D] = []         # pieces standing on a carried tile
 var _red := StandardMaterial3D.new()
 var _ui := CanvasLayer.new()
 var _cross := Label.new()
@@ -392,6 +401,8 @@ func _find_tile(p: Vector3, n: Vector3, c: Object) -> bool:
 	else:
 		var best := SETTLE
 		for t in tiles:
+			if t == _carried:
+				continue
 			for b in t.beside():
 				var gap := Vector2(b.x - p.x, b.z - p.z).length()
 				if gap < best:
@@ -419,7 +430,7 @@ func _find_tile(p: Vector3, n: Vector3, c: Object) -> bool:
 		_why = "The ground stands higher than that; raise it with Shift and the wheel."
 	elif top > hi + MAX_TILE_RISE:
 		_why = "Too high above the ground."
-	elif _blocked(xf * Vector3(0, -0.025, 0), Vector3(FloorTile.SIZE - 0.1, 0.04, FloorTile.SIZE - 0.1), turn):
+	elif _meets_tile(xf):
 		_why = "Another floor is there."
 	elif _blocked(xf * Vector3(0, 0.95, 0), Vector3(FloorTile.SIZE - 0.05, 1.8, FloorTile.SIZE - 0.05), turn):
 		_why = "Something stands in the way."
@@ -448,7 +459,7 @@ func _find_spot(p: Vector3, n: Vector3, c: Object) -> bool:
 		_why = "Too high."
 	else:
 		for other in pieces:
-			if other.global_position.distance_to(_at) < CLEAR:
+			if other != _carried and other.global_position.distance_to(_at) < CLEAR:
 				_why = "Too close to another piece."
 				break
 	if _why == "" and _blocked(_at, Vector3(0.3, 0.36, 0.3)):
@@ -470,6 +481,21 @@ func _blocked(at: Vector3, size: Vector3, turn := Basis.IDENTITY) -> bool:
 	return not get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
 
 
+## Whether a tile placed at `xf` would overlap another (touching edge to
+## edge is allowed).
+func _meets_tile(xf: Transform3D) -> bool:
+	var box := BoxShape3D.new()
+	box.size = Vector3(FloorTile.SIZE - 0.1, FloorTile.THICK - 0.02, FloorTile.SIZE - 0.1)
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = box
+	q.transform = Transform3D(xf.basis, xf * Vector3(0, -FloorTile.THICK * 0.5, 0))
+	q.collision_mask = 1
+	for found: Dictionary in get_world_3d().direct_space_state.intersect_shape(q, 16):
+		if found["collider"] is FloorTile:
+			return true
+	return false
+
+
 ## Whether the player stands within the square of a tile placed at
 ## `xf`, below its top and within their height of it.
 func _under_player(xf: Transform3D) -> bool:
@@ -481,11 +507,87 @@ func _under_player(xf: Transform3D) -> bool:
 func _place() -> void:
 	if not _ok:
 		return
-	if _held_key() == "floor":
+	if _carried != null:
+		_put_down()
+	elif _held_key() == "floor":
 		add_tile(_at, _yaw)
 	else:
 		add_piece(_held_key(), _at, _yaw, 0.0)
 	changed()
+
+
+## ---- moving what is built ----------------------------------------------------
+
+## `n` (a piece or a tile) taken up to move: out of sight, out of the
+## light and out of the way of rays until set down or put back.
+func _take_up(n: Node3D) -> void:
+	_riders.clear()
+	if n is FloorTile:
+		var tile := n as FloorTile
+		if _under_player(tile.global_transform):
+			return
+		for piece in pieces:
+			var local := tile.to_local(piece.global_position)
+			if absf(local.x) < FloorTile.SIZE * 0.5 and absf(local.z) < FloorTile.SIZE * 0.5 \
+					and local.y > 0.0 and local.y < 5.0:
+				_riders.append(piece)
+	if not building:
+		_set_building(true)
+	for i in ITEMS.size():
+		if ITEMS[i][0] == ("floor" if n is FloorTile else n.get_meta("piece")):
+			_pick(i)
+	lift = 0.0
+	_carried = n
+	for m: Node3D in [n] + _riders:
+		_hide(m, true)
+
+
+func _hide(n: Node3D, away: bool) -> void:
+	n.visible = not away
+	var body := n as CollisionObject3D
+	if n is FloorTile:
+		body.collision_layer = 0 if away else 1
+	else:
+		body.collision_layer = 0 if away else 4
+		if away:
+			light.remove(n)
+		else:
+			light.add(n)
+
+
+## The carried thing set down where its copy stands: a piece moved there
+## as it was aimed; a tile made again there (for its legs), the pieces on
+## it carried with it.
+func _put_down() -> void:
+	if _carried is FloorTile:
+		var old := _carried as FloorTile
+		var before := old.global_transform
+		tiles.erase(old)
+		old.queue_free()
+		var tile := add_tile(_at, _yaw)
+		var move := tile.global_transform * before.affine_inverse()
+		var turn := _yaw - before.basis.get_euler().y
+		for r in _riders:
+			r.global_position = move * r.global_position
+			r.call("aim", float(r.get("yaw")) + turn, float(r.get("pitch")))
+			_hide(r, false)
+	else:
+		_carried.global_position = _at
+		_hide(_carried, false)
+	_carried = null
+	_riders.clear()
+	_rods_due = true
+	changed()
+
+
+## The carried thing back where it stood.
+func _put_back() -> void:
+	if _carried == null:
+		return
+	for m: Node3D in [_carried] + _riders:
+		_hide(m, false)
+	_carried = null
+	_riders.clear()
 
 
 ## ---- the see-through copy -----------------------------------------------------
@@ -516,7 +618,10 @@ func _show_ghost() -> void:
 	_ghost.visible = true
 	if not tile:
 		_ghost.global_position = _at
-		_ghost.call("aim", _yaw, 0.0)
+		if _carried != null:
+			_ghost.call("aim", float(_carried.get("yaw")), float(_carried.get("pitch")))
+		else:
+			_ghost.call("aim", _yaw, 0.0)
 		var top := _at.y - (0.2 if _ghost is OpticElement else 0.13)
 		var rod := CylinderMesh.new()
 		rod.top_radius = 0.016
@@ -586,6 +691,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	var click := event as InputEventMouseButton
 	if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_B:
 		_set_building(not building)
+	elif _carried != null and event.is_action_pressed("ui_cancel"):
+		_put_back()
+	elif key != null and key.pressed and not key.echo and key.physical_keycode == KEY_G and _aiming == null:
+		if _carried != null:
+			return
+		var hit := _look_hit()
+		if hit.is_empty() or not (is_piece(hit["collider"]) or hit["collider"] is FloorTile):
+			return
+		_take_up(hit["collider"] as Node3D)
+	elif _carried != null and click != null and click.button_index == MOUSE_BUTTON_RIGHT:
+		pass
 	elif _aiming != null:
 		if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
 			_end_aim()
@@ -643,6 +759,8 @@ func _build_input(event: InputEvent) -> bool:
 		return false
 	match key.physical_keycode:
 		KEY_X:
+			if _carried != null:
+				return true
 			var hit := _look_hit()
 			if hit.is_empty():
 				return true
@@ -671,6 +789,7 @@ func _build_input(event: InputEvent) -> bool:
 
 
 func _pick(i: int) -> void:
+	_put_back()
 	if (str(ITEMS[i][0]) == "floor") != (_held_key() == "floor"):
 		lift = 0.0
 	item = i
@@ -683,6 +802,7 @@ func _pick(i: int) -> void:
 func _set_building(on: bool) -> void:
 	building = on
 	if not on:
+		_put_back()
 		_drop_ghost()
 
 
@@ -746,17 +866,22 @@ func _hint_text() -> String:
 	if not building:
 		var p := _on_piece as LumenPart
 		if p != null and p.kind == LumenPart.Kind.LANTERN:
-			return "Right click: aim it     E: open or close it"
+			return "Right click: aim it     E: open or close it     G: move it"
 		if p != null and p.kind == LumenPart.Kind.RADIOMETER:
-			return ""
-		return "Right click: aim it     E: look through it"
+			return "G: move it"
+		return "Right click: aim it     E: look through it     G: move it"
+	if _carried != null:
+		var put := "Click: set it down here" if _ok else _why
+		if put == "":
+			put = "Look at the ground, a floor or a piece"
+		return "%s\nShift and wheel: higher, lower     Esc: put it back where it was" % put
 	var place := ("Click: place the %s" % str(ITEMS[item][1]).to_lower()) if _ok else _why
 	if place == "":
 		place = "Look at the ground, a floor or a piece"
 	var height := ""
 	if not is_zero_approx(lift):
 		height = "     %+.2f m" % lift
-	return "%s%s\nWheel: choose     Shift and wheel: higher, lower     X: take away     Right click a piece: aim it     B: stop building" % [place, height]
+	return "%s%s\nWheel: choose     Shift and wheel: higher, lower     G: move     X: take away     Right click a piece: aim it     B: stop building" % [place, height]
 
 
 ## ---- the screen ------------------------------------------------------------------
