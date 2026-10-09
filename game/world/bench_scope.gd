@@ -1,13 +1,12 @@
 class_name BenchScope
 extends Node3D
-## Looking through a workbench piece to aim it (Workshop), as at the beam
+## Looking through a piece the player built to aim it (Workshop), as at the beam
 ## range (OpticBench): from a crystal's or lantern's lens along its beam;
 ## from a mirror or splitter along the beam it sends on, so steering the
 ## view turns the glass to send the beam there; from a lens along its
 ## axis. The mouse aims (finer as the view narrows), the wheel zooms, a
-## glowing spot marks where the beam strikes; E or Esc looks out again,
-## to wherever the view was before (the player's eyes, or the bench
-## seen from above). A beam passing within SNAP metres of the middle of
+## glowing spot marks where the beam strikes; E or Esc looks out again
+## through the player's eyes. A beam passing within SNAP metres of the middle of
 ## another piece settles there with a click; a firm push frees it.
 
 const SNAP := 0.2

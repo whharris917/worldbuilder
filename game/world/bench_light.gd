@@ -1,12 +1,12 @@
 class_name BenchLight
 extends Node3D
-## The light on the workbenches (Workshop). Every piece that sends a beam
+## The light of the pieces the player builds (Workshop). Every piece that sends a beam
 ## sends it from its lens straight ahead, traced through the world each
 ## physics step as the beam range traces its own (OpticBench): turned by
 ## a mirror's face (a tenth of its reach lost; a mirror's back stops it),
 ## sent on and aside by a splitter (half its reach each), given twice its
 ## remaining reach by a lens it passes along the axis of, read by the
-## workbench part it strikes, lost on anything else. A beam reaches REACH
+## built part it strikes, lost on anything else. A beam reaches REACH
 ## metres at most.
 ##
 ## Light here travels slowly, at SPEED, as along the works' fixed beams:
