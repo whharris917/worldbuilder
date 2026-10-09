@@ -1381,13 +1381,15 @@ func _draw_flowers(key: Vector2i) -> void:
 func _kept_clear(p: Vector3) -> bool:
 	for area: Array in _clear:
 		var local := (area[0] as Transform3D).affine_inverse() * p
-		if absf(local.x) < float(area[1]) and absf(local.z) < float(area[1]):
+		var across := float(area[2]) if area.size() > 2 else float(area[1])
+		if absf(local.x) < float(area[1]) and absf(local.z) < across:
 			return true
 	return false
 
 
-## Ground kept clear of flowers, as [transform, half size] squares (the
-## player's workbenches), the flowers drawn again round them.
+## Ground kept clear of flowers, as [transform, half size] squares or
+## [transform, half length, half width] oblongs (what the player builds),
+## the flowers drawn again round them.
 func clear_ground(areas: Array) -> void:
 	var touched := {}
 	for area: Array in _clear + areas:

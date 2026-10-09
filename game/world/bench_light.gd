@@ -19,6 +19,13 @@ extends Node3D
 ## stops it while shut; a beam striking its sensor is read by it, and
 ## each step it opens or shuts at once on whether any lit beam struck it.
 ##
+## Beams are of three kinds, by the meta "beam" of the part sending them:
+## light (gold, the signal), push (red) and pull (green). Glass and gates
+## treat all three alike; only light is read by parts and gates' bulbs.
+## A push or pull beam striking a cart's handle (BeamCart) drives the
+## cart along its track, away from the beam's source or toward it, by as
+## much of the beam as runs along the track, while lit.
+##
 ## What a part reads: every beam striking it, lit or dark, for an AND, an
 ## OR and a radiometer; for a latch, any lit beam striking it from its
 ## left sets it and any from its right resets it; the other kinds read
@@ -35,10 +42,13 @@ const REACH := 25.0
 const MAX_BOUNCES := 10
 const HISTORY := 30.0
 const BEAM := Color(1.0, 0.72, 0.22)
+const PUSH := Color(1.0, 0.24, 0.18)
+const PULL := Color(0.3, 0.95, 0.4)
 
 var parts: Array[LumenPart] = []
 var elements: Array[OpticElement] = []
 var gates: Array[LightGate] = []
+var carts: Array[BeamCart] = []
 ## The first beam reaching each glass this step: glass -> [point, direction].
 var arrivals := {}
 ## A piece whose beam's landing is wanted (the one being aimed), and
@@ -52,6 +62,7 @@ var spot_size := 0.05
 var _clock := 0.0
 var _history := {}                      # part -> Array of [time, out]
 var _landed := {}                       # part -> Array of OpticArrival, this step
+var _forces := {}                       # cart -> the push and pull on its handle, this step
 var _segments: Array = []               # [a, b, s at a, s at b, reach at a, source, held's]
 var _mesh := ImmediateMesh.new()
 var _mat: StandardMaterial3D
@@ -81,6 +92,8 @@ func add(piece: Node3D) -> void:
 		elements.append(piece as OpticElement)
 	elif piece is LightGate:
 		gates.append(piece as LightGate)
+	elif piece is BeamCart:
+		carts.append(piece as BeamCart)
 
 
 func remove(piece: Node3D) -> void:
@@ -90,6 +103,9 @@ func remove(piece: Node3D) -> void:
 		elements.erase(piece)
 	elif piece is LightGate:
 		gates.erase(piece)
+	elif piece is BeamCart:
+		carts.erase(piece)
+		_forces.erase(piece)
 	_history.erase(piece)
 	_landed.erase(piece)
 	arrivals.erase(piece)
@@ -129,6 +145,9 @@ func step(dt: float) -> void:
 			on = on or h.delivered
 		g.sense(on)
 	_landed.clear()
+	for cart in carts:
+		cart.drive(float(_forces.get(cart, 0.0)), dt)
+	_forces.clear()
 	for p in parts:
 		p.evaluate(dt)
 		_record(p)
@@ -183,7 +202,10 @@ func _trace(source: LumenPart, origin: Vector3, dir: Vector3, reach: float, excl
 		reach -= d
 		s += d
 		var c: Object = hit["collider"]
+		var kind: String = source.get_meta("beam", "light")
 		if c is LumenPart and parts.has(c):
+			if kind != "light":
+				return
 			var part := c as LumenPart
 			var right := part.global_transform.basis * (Basis.from_euler(Vector3(part.pitch, part.yaw, 0.0)) * Vector3.RIGHT)
 			if not _landed.has(part):
@@ -198,9 +220,15 @@ func _trace(source: LumenPart, origin: Vector3, dir: Vector3, reach: float, excl
 			skip = [(c as LightGate).get_rid()]
 			depth += 1
 			continue
-		if c is StaticBody3D and (c as Node).has_meta("gate_of"):
-			var gate: Object = (c as Node).get_meta("gate_of")
-			if gates.has(gate):
+		if c is StaticBody3D and (c as Node).has_meta("part_of"):
+			var owner_part: Object = (c as Node).get_meta("part_of")
+			if owner_part is BeamCart and carts.has(owner_part):
+				if kind != "light" and _shown(source, _clock - s / SPEED):
+					var along := dir.dot((owner_part as BeamCart).axis())
+					_forces[owner_part] = float(_forces.get(owner_part, 0.0)) + (along if kind == "push" else -along)
+				return
+			var gate: Object = owner_part
+			if kind == "light" and gates.has(gate):
 				if not _landed.has(gate):
 					_landed[gate] = []
 				(_landed[gate] as Array).append(OpticArrival.new(_shown(source, _clock - s / SPEED), false))
@@ -291,8 +319,9 @@ func _process(_delta: float) -> void:
 				continue
 			var opacity := 0.95 if lit else 0.3
 			var side := cross.normalized() * (0.022 if lit else 0.01)
-			var ca := Color(BEAM, opacity * smoothstep(0.0, 6.0, float(seg[4]) - (u0 - s0)))
-			var cb := Color(BEAM, opacity * smoothstep(0.0, 6.0, float(seg[4]) - (u1 - s0)))
+			var hue: Color = {"push": PUSH, "pull": PULL}.get(source.get_meta("beam", "light"), BEAM)
+			var ca := Color(hue, opacity * smoothstep(0.0, 6.0, float(seg[4]) - (u0 - s0)))
+			var cb := Color(hue, opacity * smoothstep(0.0, 6.0, float(seg[4]) - (u1 - s0)))
 			points.append_array([pa - side, pa + side, pb + side, pa - side, pb + side, pb - side])
 			colours.append_array([ca, ca, cb, ca, cb, cb])
 	if spot != Vector3.INF:

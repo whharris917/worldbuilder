@@ -9,7 +9,7 @@ extends StaticBody3D
 ##
 ## Beams are told apart by what they strike: the ring's plate (this
 ## body) is the way through; the bulb is a body of its own (`sensor`,
-## carrying meta "gate_of" back to the gate). The ring faces along its
+## carrying meta "part_of" back to the gate). The ring faces along its
 ## head's -z, turned by `aim` as a glass is.
 
 var closing := false
@@ -110,7 +110,7 @@ func _init(at: Vector3, brass: Material, leaf_metal: Material, glass: Material, 
 	_shape.shape = plate_shape
 	add_child(_shape)
 	# The sensor's own body.
-	sensor.set_meta("gate_of", self)
+	sensor.set_meta("part_of", self)
 	sensor.set_meta("view", self)
 	var catch := CollisionShape3D.new()
 	var ball := SphereShape3D.new()

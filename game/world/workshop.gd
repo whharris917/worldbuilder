@@ -53,6 +53,11 @@ extends Node3D
 ## crosshair is on. From these an AND is gates in a row along one beam,
 ## a NOT a closing gate.
 ##
+## Push and pull lamps are lanterns whose beams are red and green; a
+## track and cart (BeamCart) is placed as a piece, along the view, and
+## its cart is driven by those beams striking the copper ball on its
+## pole (see BenchLight).
+##
 ## The light is one for every piece (BenchLight), travelling slowly. A
 ## radiometer rings its bell when its vanes start. Everything built is
 ## kept in SAVE_PATH.
@@ -70,13 +75,17 @@ const CLEAR := 0.4                      # pieces' middles kept this far apart
 const ITEMS := [["floor", "Floor"], ["lantern", "Lantern"], ["gate", "Opening gate"],
 		["closing_gate", "Closing gate"], ["and", "AND"], ["or", "OR"], ["not", "NOT"], ["latch", "Latch"],
 		["on_delay", "Hourglass"], ["off_delay", "Afterglow"], ["rise", "Rising spark"], ["fall", "Falling spark"],
-		["radiometer", "Radiometer"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"]]
+		["radiometer", "Radiometer"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"],
+		["push_lamp", "Push lamp"], ["pull_lamp", "Pull lamp"], ["track", "Track and cart"]]
+const BEAMS := {"push_lamp": "push", "pull_lamp": "pull"}   # lamps sending force beams, by kind
+const TRACK_COLOUR := Color(0.6, 0.45, 0.32)
 const GATES := {"gate": false, "closing_gate": true}   # key -> closing
 const GATE_COLOUR := Color(0.92, 0.72, 0.34)
 const KINDS := {"lantern": LumenPart.Kind.LANTERN, "and": LumenPart.Kind.AND, "or": LumenPart.Kind.OR,
 		"not": LumenPart.Kind.NOT, "latch": LumenPart.Kind.LATCH, "on_delay": LumenPart.Kind.TON,
 		"off_delay": LumenPart.Kind.TOF, "rise": LumenPart.Kind.RISE, "fall": LumenPart.Kind.FALL,
-		"radiometer": LumenPart.Kind.RADIOMETER}
+		"radiometer": LumenPart.Kind.RADIOMETER, "push_lamp": LumenPart.Kind.LANTERN,
+		"pull_lamp": LumenPart.Kind.LANTERN}
 const GLASS := {"mirror": OpticElement.Kind.MIRROR, "splitter": OpticElement.Kind.SPLITTER,
 		"lens": OpticElement.Kind.LENS}
 ## Each kind's cut and setting (LumenPart's `look`); a metal by name.
@@ -86,6 +95,8 @@ const LOOKS := {
 	"or": {"design": "orb", "setting": "cage", "metal": "silver"},
 	"not": {"design": "obelisk", "setting": "collar", "metal": "copper"},
 	"off_delay": {"design": "cluster", "setting": "cup", "metal": "copper"},
+	"push_lamp": {"lamp": "drum", "metal": "copper", "colour": Color(1.0, 0.3, 0.22)},
+	"pull_lamp": {"lamp": "drum", "metal": "silver", "colour": Color(0.35, 1.0, 0.45)},
 }
 const FLOOR_COLOUR := Color(0.85, 0.7, 0.5)
 const GLASS_COLOUR := Color(0.85, 0.9, 1.0)
@@ -105,6 +116,9 @@ const NOTES := {
 	"radiometer": "Radiometer\nIts vanes spin in the light; a bell rings as they start.",
 	"gate": "Opening gate\nLets a beam through its ring while a lit beam strikes the bulb above it.",
 	"closing_gate": "Closing gate\nStops a beam at its ring while a lit beam strikes the bulb above it.",
+	"push_lamp": "Push lamp\nIts red beam on a cart's copper ball pushes the cart along its track, away from the lamp.\nE: open or close it.",
+	"pull_lamp": "Pull lamp\nIts green beam on a cart's copper ball pulls the cart along its track, toward the lamp.\nE: open or close it.",
+	"track": "Track and cart\nPush and pull beams on the copper ball drive the cart along the track.",
 	"mirror": "Mirror\nTurns a beam off its silvered face; a little of its reach is lost.",
 	"splitter": "Splitter\nSends a beam on through and aside as well, each with half its reach.",
 	"lens": "Lens\nA beam passing through it reaches twice as far again.",
@@ -157,7 +171,7 @@ var _ui := CanvasLayer.new()
 var _cross := Label.new()
 var _on_piece: Node3D = null            # the piece the crosshair is on, within reach
 var _hint := Label.new()
-var _tray := HBoxContainer.new()
+var _tray := HFlowContainer.new()
 var _tray_cells: Array[PanelContainer] = []
 var _picked := StyleBoxFlat.new()
 var _plain := StyleBoxFlat.new()
@@ -240,11 +254,15 @@ func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0)
 		piece.add_child(bell)
 		_bells[piece] = [false, bell]
 	_rods_due = true
+	if piece is BeamCart:
+		_clear_ground()
 	return piece
 
 
 ## A piece of `key` at `at`, not yet placed.
 func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
+	if key == "track":
+		return BeamCart.new(at, wood, timber, brass, copper)
 	if GATES.has(key):
 		return LightGate.new(at, brass, copper if GATES[key] else brass, glass, GATES[key])
 	if GLASS.has(key):
@@ -254,14 +272,19 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 	look.merge(LOOKS.get(key, {}))
 	if look.has("metal"):
 		look["metal"] = get(look["metal"])
-	return LumenPart.new(kind, "", at, at.y, timber, brass,
+	var part := LumenPart.new(kind, "", at, at.y, timber, brass,
 			delay if kind == LumenPart.Kind.TON or kind == LumenPart.Kind.TOF else 0.0, look)
+	if BEAMS.has(key):
+		part.set_meta("beam", BEAMS[key])
+	return part
 
 
 ## A piece (a gate's sensor too) on collision layer `layer`.
 func _set_layer(n: Node3D, layer: int) -> void:
 	if n is LightGate:
 		(n as LightGate).set_layer(layer)
+	elif n is BeamCart:
+		(n as BeamCart).set_layer(layer)
 	else:
 		(n as CollisionObject3D).collision_layer = layer
 
@@ -282,6 +305,8 @@ func remove_piece(piece: Node3D) -> void:
 			target.erase("sensor")
 	piece.queue_free()
 	_rods_due = true
+	if piece is BeamCart:
+		_clear_ground()
 
 
 func relabel(piece: Node3D) -> void:
@@ -300,6 +325,8 @@ func relabel(piece: Node3D) -> void:
 		(piece as OpticElement).relabel(text + AIM_NOTE)
 	elif piece is LightGate:
 		(piece as LightGate).relabel(text + "\nRight click: turn its ring to face what you look at.")
+	elif piece is BeamCart:
+		(piece as BeamCart).relabel(text)
 
 
 func is_piece(n: Object) -> bool:
@@ -358,9 +385,13 @@ func toggle(lantern: LumenPart) -> void:
 	changed()
 
 
-## No flowers growing up through a floor laid near the ground.
+## No flowers growing up through a floor laid near the ground, or a
+## track.
 func _clear_ground() -> void:
 	var areas: Array = []
+	for piece in pieces:
+		if piece is BeamCart:
+			areas.append([piece.global_transform, BeamCart.LENGTH * 0.5 + 0.1, 0.3])
 	for t in tiles:
 		var low := INF
 		for u: float in [-1.0, 1.0]:
@@ -377,6 +408,8 @@ func _clear_ground() -> void:
 func _place_rods() -> void:
 	var space := get_world_3d().direct_space_state
 	for piece in pieces:
+		if piece is BeamCart:
+			continue
 		var glass_piece := piece is OpticElement
 		var from := piece.global_position - Vector3(0, 0.24 if glass_piece else 0.16, 0)
 		var q := PhysicsRayQueryParameters3D.create(from, from - Vector3(0, 12.0, 0), 1 | 4)
@@ -425,8 +458,8 @@ func _look_hit(exclude: Array[RID] = []) -> Dictionary:
 	skip.append_array(exclude)
 	q.exclude = skip
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	if not hit.is_empty() and (hit["collider"] as Node).has_meta("gate_of"):
-		hit["collider"] = (hit["collider"] as Node).get_meta("gate_of")
+	if not hit.is_empty() and (hit["collider"] as Node).has_meta("part_of"):
+		hit["collider"] = (hit["collider"] as Node).get_meta("part_of")
 		hit["sensor"] = true
 	return hit
 
@@ -448,7 +481,12 @@ func _find_place() -> void:
 		var p: Vector3 = hit["position"]
 		var n: Vector3 = hit["normal"]
 		var c: Object = hit["collider"]
-		shown = _find_tile(p, n, c) if _held_key() == "floor" else _find_spot(p, n, c)
+		if _held_key() == "floor":
+			shown = _find_tile(p, n, c)
+		elif _held_key() == "track":
+			shown = _find_track(p, n, c)
+		else:
+			shown = _find_spot(p, n, c)
 	if not shown:
 		if _ghost != null:
 			_ghost.visible = false
@@ -515,10 +553,38 @@ func _find_tile(p: Vector3, n: Vector3, c: Object) -> bool:
 	return true
 
 
+## A track: on the floor or ground where the crosshair is, running away
+## from the view, level at the highest ground along it. Whether there is
+## anything to show.
+func _find_track(p: Vector3, n: Vector3, c: Object) -> bool:
+	if n.y < 0.7 or is_piece(c):
+		return false
+	_yaw += PI * 0.5
+	var along := Basis(Vector3.UP, _yaw) * Vector3.RIGHT
+	var lo := INF
+	var hi := -INF
+	for k in 5:
+		var q := p + along * BeamCart.LENGTH * (k / 4.0 - 0.5)
+		var h := island.height(q.x, q.z)
+		lo = minf(lo, h)
+		hi = maxf(hi, h)
+	_at = Vector3(p.x, p.y if c is FloorTile else maxf(hi, p.y), p.z)
+	_support = _at.y
+	# Drafts.
+	if lo < 0.12:
+		_why = "Not over the water."
+	elif not c is FloorTile and hi - lo > 0.5:
+		_why = "The ground is too steep for a track here."
+	elif _blocked(_at + Vector3(0, 0.75, 0), Vector3(BeamCart.LENGTH, 1.2, 0.5), Basis(Vector3.UP, _yaw)):
+		_why = "Something stands in the way."
+	_ok = _why == ""
+	return true
+
+
 ## A piece: over the point the crosshair is on, or over the piece looked
 ## at. Whether there is anything to show.
 func _find_spot(p: Vector3, n: Vector3, c: Object) -> bool:
-	if is_piece(c):
+	if is_piece(c) and not c is BeamCart:
 		var under := c as Node3D
 		var over := 0.33 if under is LightGate else 0.2
 		_support = under.global_position.y + over
@@ -661,8 +727,8 @@ func _target_of(piece: Node3D) -> Dictionary:
 	if hit.is_empty():
 		return {"point": origin + dir * 20.0}
 	var c: Object = hit["collider"]
-	if (c as Node).has_meta("gate_of"):
-		return {"piece": (c as Node).get_meta("gate_of"), "sensor": true, "point": hit["position"]}
+	if (c as Node).has_meta("part_of"):
+		return {"piece": (c as Node).get_meta("part_of"), "sensor": true, "point": hit["position"]}
 	if is_piece(c):
 		return {"piece": c, "point": hit["position"]}
 	return _point_target(c, hit["position"])
@@ -680,7 +746,7 @@ func _target_point(target: Dictionary) -> Vector3:
 	var piece: Variant = target.get("piece")
 	if piece != null and is_instance_valid(piece) and pieces.has(piece):
 		if target.get("sensor", false):
-			return (piece as LightGate).sensor_point()
+			return (piece as Node3D).call("sensor_point")
 		return (piece as Node3D).global_position
 	var tile: Variant = target.get("tile")
 	if tile != null and is_instance_valid(tile) and tiles.has(tile):
@@ -731,6 +797,7 @@ func _put_down() -> void:
 	_carried = null
 	_riders.clear()
 	_rods_due = true
+	_clear_ground()
 	changed()
 
 
@@ -761,8 +828,9 @@ func _show_ghost() -> void:
 			_ghost = FloorTile.new(self, _at, _yaw)
 		else:
 			_ghost = _make(key, _at)
-			_ghost_rod = MeshInstance3D.new()
-			_ghost.add_child(_ghost_rod)
+			if key != "track":
+				_ghost_rod = MeshInstance3D.new()
+				_ghost.add_child(_ghost_rod)
 		if tile:
 			(_ghost as CollisionObject3D).collision_layer = 0
 		else:
@@ -780,6 +848,7 @@ func _show_ghost() -> void:
 			_ghost.call("aim", float(_carried.get("yaw")), float(_carried.get("pitch")))
 		else:
 			_ghost.call("aim", _yaw, 0.0)
+	if not tile and _ghost_rod != null:
 		var top := _at.y - (0.2 if _ghost is OpticElement else 0.13)
 		var rod := CylinderMesh.new()
 		rod.top_radius = 0.016
@@ -834,7 +903,7 @@ func _follow_aim() -> void:
 		var c: Object = hit["collider"]
 		_aim_target = _point_target(c, point)
 		if hit.get("sensor", false):
-			point = (c as LightGate).sensor_point()
+			point = (c as Node3D).call("sensor_point")
 			_aim_target = {"piece": c, "sensor": true, "point": point}
 		elif is_piece(c):
 			point = (c as Node3D).global_position
@@ -1025,6 +1094,8 @@ func _process(delta: float) -> void:
 	_cross.visible = looking
 	_cross.add_theme_color_override("font_color", Color(1.0, 0.82, 0.35, 1.0) if _on_piece != null else Color(1, 1, 1, 0.7))
 	_tray.get_parent().visible = building and free
+	# The hint sits just above the tray, however many rows it takes.
+	_hint.offset_bottom = -((_tray.get_parent() as Control).size.y + 20.0) if building else -40.0
 	_hint.visible = looking and (building or _aiming != null or _on_piece != null)
 	if _hint.visible:
 		_hint.text = _hint_text()
@@ -1056,6 +1127,8 @@ func _hint_text() -> String:
 			return "G: move it     X: take it away"
 		if p != null and (p.kind == LumenPart.Kind.TON or p.kind == LumenPart.Kind.TOF):
 			return "Right click: aim it     E: look through it     T: change the time     G: move it     X: take it away"
+		if _on_piece is BeamCart:
+			return "G: move it     X: take it away"
 		if _on_piece is LightGate:
 			return "Right click: turn it     G: move it     X: take it away"
 		return "Right click: aim it     E: look through it     G: move it     X: take it away"
@@ -1104,14 +1177,17 @@ func _build_ui() -> void:
 	style.set_corner_radius_all(6)
 	style.set_content_margin_all(5)
 	frame.add_theme_stylebox_override("panel", style)
-	frame.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	frame.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	frame.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	frame.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	frame.offset_left = 150.0
+	frame.offset_right = -150.0
 	frame.offset_bottom = -10.0
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.visible = false
 	root.add_child(frame)
-	_tray.add_theme_constant_override("separation", 3)
+	_tray.add_theme_constant_override("h_separation", 3)
+	_tray.add_theme_constant_override("v_separation", 3)
+	_tray.alignment = FlowContainer.ALIGNMENT_CENTER
 	_tray.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.add_child(_tray)
 	_plain.bg_color = Color(1, 1, 1, 0.05)
@@ -1135,8 +1211,18 @@ func _build_ui() -> void:
 		swatch.custom_minimum_size = Vector2(28, 5)
 		swatch.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		swatch.color = FLOOR_COLOUR if key == "floor" else (LumenPart.COLOURS[KINDS[key]] if KINDS.has(key)
-				else (GATE_COLOUR if GATES.has(key) else GLASS_COLOUR))
+		var shade: Color = GLASS_COLOUR
+		if key == "floor":
+			shade = FLOOR_COLOUR
+		elif key == "track":
+			shade = TRACK_COLOUR
+		elif LOOKS.get(key, {}).has("colour"):
+			shade = LOOKS[key]["colour"]
+		elif KINDS.has(key):
+			shade = LumenPart.COLOURS[KINDS[key]]
+		elif GATES.has(key):
+			shade = GATE_COLOUR
+		swatch.color = shade
 		col.add_child(swatch)
 		var name_label := Label.new()
 		name_label.text = str(ITEMS[i][1])
@@ -1190,6 +1276,8 @@ func _save() -> void:
 				entry["delay"] = part.delay
 			if part.kind == LumenPart.Kind.LANTERN:
 				entry["on"] = part.condition
+		if piece is BeamCart:
+			entry["along"] = (piece as BeamCart).along
 		if links.has(piece):
 			var l: Dictionary = links[piece]
 			var at: Vector3 = _target_point(l)
@@ -1233,7 +1321,8 @@ func _load() -> void:
 			var d := entry as Dictionary
 			var key := str(d.get("kind", ""))
 			var at: Variant = d.get("at")
-			if not (KINDS.has(key) or GLASS.has(key) or GATES.has(key)) or not at is Array or (at as Array).size() < 3:
+			if not (KINDS.has(key) or GLASS.has(key) or GATES.has(key) or key == "track") or not at is Array \
+					or (at as Array).size() < 3:
 				continue
 			var aim := [0.0, 0.0]
 			var a: Variant = d.get("aim")
@@ -1243,6 +1332,8 @@ func _load() -> void:
 					float(d.get("delay", 2.0)))
 			if piece is LumenPart and bool(d.get("on", false)):
 				(piece as LumenPart).condition = true
+			if piece is BeamCart:
+				(piece as BeamCart).place_cart(float(d.get("along", 0.0)))
 			if d.get("link") is Dictionary:
 				saved_links[piece] = d["link"]
 		# Links name pieces and tiles by their place in the lists.
@@ -1257,7 +1348,7 @@ func _load() -> void:
 			var local: Variant = l.get("local")
 			if to >= 0 and to < pieces.size():
 				target["piece"] = pieces[to]
-				target["sensor"] = bool(l.get("sensor", false)) and pieces[to] is LightGate
+				target["sensor"] = bool(l.get("sensor", false)) and (pieces[to] is LightGate or pieces[to] is BeamCart)
 			elif tile_at >= 0 and tile_at < tiles.size() and local is Array and (local as Array).size() >= 3:
 				target["tile"] = tiles[tile_at]
 				target["local"] = Vector3(float(local[0]), float(local[1]), float(local[2]))
