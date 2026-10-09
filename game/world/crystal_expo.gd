@@ -100,6 +100,7 @@ func _ready() -> void:
 	add_child(OpticBench.new(self))
 	add_child(ApparatusHall.new(self))
 	add_child(LinkageHall.new(self))
+	add_child(ExpoPier.new(self))
 
 
 func _materials() -> void:
@@ -140,10 +141,17 @@ func _booth(bearing: float, index: int, inland: float, title: String, note: Stri
 	var g_front := island.height(front.x, front.z)
 	var g_back := island.height(back.x, back.z)
 	var top := (g_front + g_back) * 0.5 + 0.08
+	return booth_at(Transform3D(Basis(along, Vector3.UP, -d), Vector3(centre.x, top, centre.z)), index, title, note, top - g_front, _site)
+
+
+## A booth whose frame (x along its front, y up from the stage's top, z
+## back from the front) is `xf` (world), its stage `step` over the floor
+## at its front, under `parent`; built as `_booth` describes.
+func booth_at(xf: Transform3D, index: int, title: String, note: String, step: float, parent: Node3D) -> Node3D:
 	var booth := Node3D.new()
 	booth.name = "Booth%d" % index
-	_site.add_child(booth)
-	booth.global_transform = Transform3D(Basis(along, Vector3.UP, -d), Vector3(centre.x, top, centre.z))
+	parent.add_child(booth)
+	booth.global_transform = xf
 	var accent: Color = STRIPES[index % STRIPES.size()]
 	var m := CozyMesh.new()
 	var rng := RandomNumberGenerator.new()
@@ -156,7 +164,7 @@ func _booth(bearing: float, index: int, inland: float, title: String, note: Stri
 		var x := -STAGE.x * 0.5 + 0.1 + k * 0.2
 		m.box(Vector3(0.185, 0.05, STAGE.z), CozyMesh.at(Vector3(x, -0.025, 0)), (tones[rng.randi() % tones.size()] as Color).lightened(rng.randf_range(-0.05, 0.05)))
 	# A step along the front, half the stage's height.
-	m.box(Vector3(STAGE.x * 0.7, 0.05, 0.45), CozyMesh.at(Vector3(0, -(top - g_front) * 0.5, -STAGE.z * 0.5 - 0.22)), Color(0.8, 0.7, 0.56))
+	m.box(Vector3(STAGE.x * 0.7, 0.05, 0.45), CozyMesh.at(Vector3(0, -step * 0.5, -STAGE.z * 0.5 - 0.22)), Color(0.8, 0.7, 0.56))
 	# The awning: four slim poles, a striped canopy sloping to the front, a
 	# scalloped valance.
 	var poles := [Vector3(-3.0, 0, -2.3), Vector3(3.0, 0, -2.3), Vector3(-3.0, 0, 2.3), Vector3(3.0, 0, 2.3)]
@@ -202,7 +210,7 @@ func _booth(bearing: float, index: int, inland: float, title: String, note: Stri
 	solid.shape = box
 	solid.position = Vector3(0, -STAGE.y * 0.5, 0)
 	body.add_child(solid)
-	var rise := top - g_front + 0.02
+	var rise := step + 0.02
 	var ramp := CollisionShape3D.new()
 	var plank := BoxShape3D.new()
 	plank.size = Vector3(STAGE.x * 0.7, 0.04, sqrt(1.0 + rise * rise))

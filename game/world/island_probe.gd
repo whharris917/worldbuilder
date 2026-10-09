@@ -46,6 +46,20 @@ const VIEWS := [
 	["tide_gov", 60.0, Vector3(-10.0, 2.3, 5.6), Vector3(-12.0, 2.1, 7.7), "tide"],
 	["tide_pot", 60.0, Vector3(-2.2, 1.8, 2.0), Vector3(0.0, 1.0, 5.0), "tide"],
 	["tide_air", 55.0, Vector3(-22.0, 22.0, -28.0), Vector3(0.0, 0.0, 0.0), "tide"],
+	["pier_prism", 60.0, Vector3(-1.0, 2.0, 6.6), Vector3(5.0, 1.3, 9.2), "pier"],
+	["pier_gov", 60.0, Vector3(-1.0, 2.0, 14.2), Vector3(5.0, 1.3, 16.8), "pier"],
+	["pier_beam", 60.0, Vector3(-1.0, 2.0, 21.8), Vector3(5.0, 1.3, 24.4), "pier"],
+	["pier_balance", 60.0, Vector3(-1.0, 2.0, 37.0), Vector3(5.0, 1.3, 39.6), "pier"],
+	["pier_mirrors", 60.0, Vector3(-1.0, 2.0, 52.2), Vector3(5.0, 1.3, 54.8), "pier"],
+	["pier_clock", 60.0, Vector3(1.0, 2.0, 67.4), Vector3(-5.0, 1.3, 70.0), "pier"],
+	["pier_float", 60.0, Vector3(1.0, 2.0, 6.6), Vector3(-5.0, 1.3, 9.2), "pier"],
+	["pier_pelton", 60.0, Vector3(-1.0, 2.0, 67.4), Vector3(5.0, 1.3, 70.0), "pier"],
+	["pier_land", 60.0, Vector3(0.0, 1.7, -8.0), Vector3(0.0, 1.5, 20.0), "pier"],
+	["pier_walk", 66.0, Vector3(0.0, 1.7, 20.0), Vector3(0.0, 1.2, 50.0), "pier"],
+	["pier_left", 62.0, Vector3(1.5, 1.7, 9.0), Vector3(-5.0, 1.2, 12.0), "pier"],
+	["pier_right", 62.0, Vector3(-1.5, 1.7, 32.0), Vector3(5.0, 1.2, 35.0), "pier"],
+	["pier_far", 62.0, Vector3(1.5, 1.7, 55.0), Vector3(-5.0, 1.2, 58.0), "pier"],
+	["pier_air", 55.0, Vector3(-40.0, 30.0, -20.0), Vector3(0.0, 0.0, 40.0), "pier"],
 	["forge_air", 55.0, Vector3(-40.0, 34.0, -50.0), Vector3(0.0, 6.0, 0.0), "forge"],
 	["forge_walk", 62.0, Vector3(0.0, 1.0, -40.0), Vector3(0.0, 8.0, 0.0), "forge"],
 	["forge_deck", 66.0, Vector3(-6.0, 1.7, -16.0), Vector3(0.0, 8.0, 0.0), "forge"],
@@ -161,7 +175,12 @@ func _run() -> void:
 		var eye: Vector3 = v[2]
 		var target: Vector3 = v[3]
 		if v.size() > 4 and v[4] != "":
-			if str(v[4]) == "forge":
+			if str(v[4]) == "pier":
+				var pier := _world.find_children("*", "ExpoPier", true, false)[0] as ExpoPier
+				var frame3: Node3D = pier.get("_frame")
+				eye = frame3.to_global(eye)
+				target = frame3.to_global(target)
+			elif str(v[4]) == "forge":
 				var forge := _world.find_children("*", "SunForge", true, false)[0] as SunForge
 				var frame2: Node3D = forge.get("_site")
 				eye = frame2.to_global(eye)
