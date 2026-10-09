@@ -25,7 +25,9 @@ extends Node3D
 ## G on a piece or a tile, building or not, takes it up to move it: it
 ## leaves its place (a tile taking the pieces standing on it), its copy
 ## follows the crosshair as a new one would, and a left click sets it
-## down there with its aim, delay and shutter as they were. Esc, B or
+## down there with its delay and shutter as they were, still aimed at
+## what its beam struck before it was taken up (a piece, a gate's bulb,
+## or the point struck), as are the pieces carried on a tile. Esc, B or
 ## choosing something else puts it back where it stood.
 ##
 ## A crosshair shows whenever the player looks about, gold when it is on
@@ -134,6 +136,8 @@ var _ghost_red := false
 # Something picked up to move, gone from where it stood until set down.
 var _carried: Node3D = null
 var _riders: Array[Node3D] = []         # pieces standing on a carried tile
+var _targets := {}                      # carried piece -> what its beam struck when taken up
+var _reaim: Array = []                  # [piece, target, steps left]: aimed again as the light settles
 var _red := StandardMaterial3D.new()
 var _ui := CanvasLayer.new()
 var _cross := Label.new()
@@ -576,8 +580,54 @@ func _take_up(n: Node3D) -> void:
 			_pick(i)
 	lift = 0.0
 	_carried = n
+	_targets.clear()
+	for m: Node3D in [n] + _riders:
+		if sends(m):
+			_targets[m] = _target_of(m)
 	for m: Node3D in [n] + _riders:
 		_hide(m, true)
+
+
+## What a piece's beam strikes first, to aim at again once moved: a
+## piece (or a gate's bulb) by name, or the point struck (on the carried
+## tile, kept in its frame), or a point 20 m on.
+func _target_of(piece: Node3D) -> Dictionary:
+	var origin := piece.global_position
+	var dir := Vector3.FORWARD
+	if piece is LumenPart:
+		origin = (piece as LumenPart).lens_point()
+		dir = (piece as LumenPart).forward()
+	else:
+		var e := piece as OpticElement
+		dir = e.normal()
+		if e.kind != OpticElement.Kind.LENS and light.arrivals.has(e):
+			var arrival: Array = light.arrivals[e]
+			var incoming: Vector3 = arrival[1]
+			origin = arrival[0]
+			dir = (incoming - 2.0 * incoming.dot(dir) * dir).normalized()
+	var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * BenchLight.REACH)
+	q.exclude = [(piece as CollisionObject3D).get_rid(), island.player.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return {"point": origin + dir * 20.0}
+	var c: Object = hit["collider"]
+	if (c as Node).has_meta("gate_of"):
+		return {"piece": (c as Node).get_meta("gate_of"), "sensor": true, "point": hit["position"]}
+	if is_piece(c):
+		return {"piece": c, "point": hit["position"]}
+	if c == _carried:
+		return {"on_tile": (c as Node3D).to_local(hit["position"]), "point": hit["position"]}
+	return {"point": hit["position"]}
+
+
+## Where a kept target now is.
+func _target_point(target: Dictionary) -> Vector3:
+	var piece: Variant = target.get("piece")
+	if piece != null and is_instance_valid(piece) and pieces.has(piece):
+		if target.get("sensor", false):
+			return (piece as LightGate).sensor_point()
+		return (piece as Node3D).global_position
+	return target["point"]
 
 
 func _hide(n: Node3D, away: bool) -> void:
@@ -609,9 +659,16 @@ func _put_down() -> void:
 			r.global_position = move * r.global_position
 			r.call("aim", float(r.get("yaw")) + turn, float(r.get("pitch")))
 			_hide(r, false)
+		for target: Dictionary in _targets.values():
+			if target.has("on_tile"):
+				target["point"] = tile.global_transform * (target["on_tile"] as Vector3)
 	else:
 		_carried.global_position = _at
 		_hide(_carried, false)
+	for piece: Node3D in _targets:
+		aim_at(piece, _target_point(_targets[piece]))
+		_reaim.append([piece, _targets[piece], 6])
+	_targets.clear()
 	_carried = null
 	_riders.clear()
 	_rods_due = true
@@ -626,6 +683,7 @@ func _put_back() -> void:
 		_hide(m, false)
 	_carried = null
 	_riders.clear()
+	_targets.clear()
 
 
 ## ---- the see-through copy -----------------------------------------------------
@@ -860,6 +918,16 @@ func _physics_process(dt: float) -> void:
 		_rods_due = false
 		_place_rods()
 	light.step(dt)
+	# Moved pieces aimed again for a few steps, as the beams reaching
+	# moved mirrors settle.
+	for i in range(_reaim.size() - 1, -1, -1):
+		var r: Array = _reaim[i]
+		if is_instance_valid(r[0]) and pieces.has(r[0]):
+			aim_at(r[0], _target_point(r[1]))
+		r[2] = int(r[2]) - 1
+		if int(r[2]) <= 0:
+			_reaim.remove_at(i)
+			changed()
 	for r: LumenPart in _bells:
 		var b: Array = _bells[r]
 		if r.powered and not bool(b[0]):
