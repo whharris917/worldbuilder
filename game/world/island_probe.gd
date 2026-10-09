@@ -30,6 +30,13 @@ const VIEWS := [
 	["hall4", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.4, -0.4), "hall4"],
 	["hall5", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.4, -0.4), "hall5"],
 	["hall_walk", 64.0, Vector3(-5.0, 1.6, -6.0), Vector3(14.0, 1.4, -4.0), "hall1"],
+	["link0", 62.0, Vector3(0.0, 1.6, -4.4), Vector3(0.0, 1.3, -0.2), "link0"],
+	["link1", 62.0, Vector3(0.0, 1.6, -4.4), Vector3(0.0, 1.3, -0.2), "link1"],
+	["link2", 62.0, Vector3(0.0, 1.6, -4.4), Vector3(0.0, 1.3, -0.2), "link2"],
+	["link3", 62.0, Vector3(0.0, 1.6, -4.4), Vector3(0.0, 1.3, -0.2), "link3"],
+	["link4", 62.0, Vector3(0.0, 1.6, -4.4), Vector3(0.0, 1.3, -0.2), "link4"],
+	["link5", 62.0, Vector3(0.0, 1.6, -4.4), Vector3(0.0, 1.3, -0.2), "link5"],
+	["link_walk", 64.0, Vector3(-5.0, 1.6, -6.0), Vector3(14.0, 1.4, -4.0), "link1"],
 	["expo", 60.0, Vector3(-6.0, 7.0, -22.0), Vector3(14.0, 1.0, 0.0), "booth2"],
 	["expo_walk", 66.0, Vector3(-4.0, 1.6, -10.5), Vector3(20.0, 1.6, -3.0), "booth3"],
 	["island", 55.0, Vector3(60.0, 330.0, 420.0), Vector3(0.0, 0.0, -10.0), ""],
@@ -139,7 +146,12 @@ func _run() -> void:
 		var eye: Vector3 = v[2]
 		var target: Vector3 = v[3]
 		if v.size() > 4 and v[4] != "":
-			if str(v[4]).begins_with("hall"):
+			if str(v[4]).begins_with("link"):
+				var links := _world.find_children("*", "LinkageHall", true, false)[0] as LinkageHall
+				var stand: Node3D = links.booths[int(str(v[4]).substr(4))]
+				eye = stand.to_global(eye)
+				target = stand.to_global(target)
+			elif str(v[4]).begins_with("hall"):
 				var hall := _world.find_children("*", "ApparatusHall", true, false)[0] as ApparatusHall
 				var stand: Node3D = hall.booths[int(str(v[4]).substr(4))]
 				eye = stand.to_global(eye)

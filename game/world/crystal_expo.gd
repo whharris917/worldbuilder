@@ -25,8 +25,9 @@ extends BeachSite
 ##   meet, lit from its middle.
 ## - The Cutting Room: each new cut of crystal under its own glass dome.
 ## Behind them, along a second boardwalk, the hall of apparatus
-## (ApparatusHall): vessels, pipes and mechanisms. The booth names and
-## notes are drafts.
+## (ApparatusHall): vessels, pipes and mechanisms; behind that, along a
+## third, mechanical linkages (LinkageHall). The booth names and notes
+## are drafts.
 
 const BEARING := 203.0
 const SPREAD := 14.0                    # degrees either side the booths span
@@ -35,6 +36,9 @@ const WALK_IN := 9.5                    # the promenade's middle
 const HALL_IN := 31.5                   # the second row's booths, for the apparatus hall
 const WALK2_IN := 25.0                  # the second promenade, between the rows
 const HALL_SPREAD := 13.0
+const ROW3_IN := 47.5                   # the third row, mechanical linkages
+const WALK3_IN := 41.0
+const ROW3_SPREAD := 11.5
 const WALK_W := 2.4
 const STAGE := Vector3(6.4, 0.6, 5.0)
 const EXHIBIT_SCALE := 1.25
@@ -95,6 +99,7 @@ func _ready() -> void:
 	_place_beams()
 	add_child(OpticBench.new(self))
 	add_child(ApparatusHall.new(self))
+	add_child(LinkageHall.new(self))
 
 
 func _materials() -> void:

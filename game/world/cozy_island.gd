@@ -81,7 +81,7 @@ const SPITS := [Vector3(-112.0, 183.0, 70.0), Vector3(-98.0, 194.0, 80.0)]   # b
 # the exposition (CrystalExpo).
 const WIDE_BEARING := 203.0
 const WIDE_HALF := 17.0                 # degrees either side, fading over 8 more
-const WIDE_BEACH := 46.0
+const WIDE_BEACH := 62.0
 const FIRE_BEARING := 105.0            # degrees round from +x toward +z
 const LANTERNS := 5
 const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", "Outlines",
@@ -500,8 +500,10 @@ func height(x: float, z: float) -> float:
 		var flat := 0.04 * minf(s, WIDE_BEACH) + 4.4 * tanh(maxf(s - WIDE_BEACH, 0.0) / 55.0)
 		h = lerpf(h, flat, wide)
 	var inland := smoothstep(WIDE_BEACH * wide, 40.0 + WIDE_BEACH * wide, s)
+	# The hills stand back from the wide beach's flat, rising behind it.
+	var hills := 1.0 - wide * smoothstep(WIDE_BEACH + 12.0, WIDE_BEACH - 4.0, s)
 	for hill: Vector4 in HILLS:
-		h += hill.z * exp(-((x - hill.x) ** 2 + (z - hill.y) ** 2) / (hill.w * hill.w))
+		h += hills * hill.z * exp(-((x - hill.x) ** 2 + (z - hill.y) ** 2) / (hill.w * hill.w))
 	h += inland * (2.2 * _roll_noise.get_noise_2d(x, z) + 0.7 * _hump_noise.get_noise_2d(x, z))
 	# The lagoon: in its sector the seabed holds at a shallow sand floor
 	# out to a sandbar whose crest just breaks the surface.
