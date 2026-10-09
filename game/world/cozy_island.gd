@@ -133,6 +133,10 @@ var _clock := 0.0
 var _was_debanding := false
 var _was_soft := 0
 var _place_left := 3.0
+var _good: Array[Vector4] = []          # recent places stood freely on the ground: x, y, z, facing
+var _good_left := 0.0
+var _wedged := 0.0                      # seconds found inside something
+var _probe_capsule := CapsuleShape3D.new()
 
 
 func _ready() -> void:
@@ -925,6 +929,7 @@ func _process(delta: float) -> void:
 	if _place_left <= 0.0:
 		_place_left = 3.0
 		_save_place()
+	_keep_free(delta)
 	# Ripples drift with the breeze; the foam swells over ten seconds.
 	_sea_mat.uv1_offset = Vector3(_clock * 0.012, _clock * 0.007, 0.0)
 	var swell := sin(_clock * TAU / 10.0)
@@ -946,16 +951,66 @@ func _process(delta: float) -> void:
 
 ## ---- where the player stands -------------------------------------------
 
+## Keeps the player from being trapped. Twice a second, a place where
+## they stand on the ground and inside nothing is remembered (the last
+## eight). A player found inside something (a body slightly smaller than
+## theirs overlapping a solid) for half a second is put back where they
+## stood freely a few seconds before. R takes them back to the dock.
+func _keep_free(delta: float) -> void:
+	if MouseMode.probe or player == null:
+		return
+	var inside := _player_inside()
+	_good_left -= delta
+	if _good_left <= 0.0:
+		_good_left = 0.5
+		if player.is_on_floor() and not inside:
+			_good.append(Vector4(player.position.x, player.position.y, player.position.z, player.rotation.y))
+			if _good.size() > 8:
+				_good.remove_at(0)
+	_wedged = _wedged + delta if inside else 0.0
+	if _wedged > 0.5:
+		_wedged = 0.0
+		var back := _good[0] if not _good.is_empty() else Vector4(DOCK_X, DOCK_Y + 0.05, _dock_z1 - 1.0, 0.0)
+		_put_player(Vector3(back.x, back.y + 0.2, back.z), back.w)
+	if Input.is_physical_key_pressed(KEY_R) and player.look_held_by == null and not player.input_locked:
+		_put_player(Vector3(DOCK_X, DOCK_Y + 0.25, _dock_z1 - 1.0), 0.0)
+
+
+## Whether the player's body, made 6 cm thinner, overlaps any solid.
+func _player_inside() -> bool:
+	_probe_capsule.radius = 0.29
+	_probe_capsule.height = 1.6
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = _probe_capsule
+	q.transform = Transform3D(Basis.IDENTITY, player.global_position + Vector3(0, 0.95, 0))
+	q.collision_mask = 1
+	q.exclude = [player.get_rid()]
+	return not get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
+
+
+func _put_player(at: Vector3, facing: float) -> void:
+	player.global_position = at
+	player.rotation.y = facing
+	player.velocity = Vector3.ZERO
+	_good.clear()
+	_save_place()
+
+
 func _save_place() -> void:
-	# Not for the probes, which park the player out of sight; nor from
-	# under the world.
-	if MouseMode.probe or player == null or player.position.y < -3.0:
+	# Not for the probes, which park the player out of sight. The place
+	# written is the last one where they stood freely, so a player wedged
+	# somewhere is never brought back to it.
+	if MouseMode.probe or player == null:
+		return
+	var at := Vector4(player.position.x, player.position.y, player.position.z, player.rotation.y)
+	if not _good.is_empty():
+		at = _good[-1]
+	elif player.position.y < -3.0:
 		return
 	var file := FileAccess.open(PLACE_PATH, FileAccess.WRITE)
 	if file == null:
 		return
-	var p := player.position
-	file.store_string(JSON.stringify({"player": [p.x, p.y, p.z, player.rotation.y]}))
+	file.store_string(JSON.stringify({"player": [at.x, at.y, at.z, at.w]}))
 
 
 func _load_place() -> void:

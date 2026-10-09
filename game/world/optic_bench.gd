@@ -155,6 +155,10 @@ func _part(title: String, kind: LumenPart.Kind, at: Vector3, look: Dictionary) -
 	l["aimed"] = true
 	var p := LumenPart.new(kind, title, at, at.y - HEIGHT, expo.get("_wood"), expo.get("_brass"), 0.0, l)
 	p.name = title.replace(" ", "")
+	# Seen and aimed by the player's look (layer 4) and struck by beams,
+	# but no solid to walk into: a part turned against the player cannot
+	# trap them.
+	p.collision_layer = 4
 	add_child(p)
 	parts.append(p)
 	return p
@@ -164,6 +168,7 @@ func _element(title: String, kind: OpticElement.Kind, at: Vector3, wood: Materia
 		silver: Material, glass: Material) -> OpticElement:
 	var e := OpticElement.new(kind, at, at.y - HEIGHT, wood, frame, silver, glass)
 	e.name = title.replace(" ", "")
+	e.collision_layer = 4
 	add_child(e)
 	elements.append(e)
 	return e
