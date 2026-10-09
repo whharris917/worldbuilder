@@ -17,8 +17,10 @@ extends Node3D
 ## join. A piece stands HEAD metres over the point the crosshair is on
 ## (on a floor or the ground), or half a metre over a piece looked at,
 ## on a brass rod down to what is under it. The copy shows red where it
-## cannot go. Shift and the wheel raise and lower it; X takes away what
-## the crosshair is on; T changes an hourglass's or afterglow's delay.
+## cannot go. Shift and the wheel raise and lower it.
+##
+## Building or not: X takes away the piece or tile the crosshair is on;
+## T changes an hourglass's or afterglow's delay.
 ##
 ## G on a piece or a tile, building or not, takes it up to move it: it
 ## leaves its place (a tile taking the pieces standing on it), its copy
@@ -337,7 +339,7 @@ func _clear_ground() -> void:
 func _place_rods() -> void:
 	var space := get_world_3d().direct_space_state
 	for piece in pieces:
-		var glass_piece := piece is OpticElement or piece is LightGate
+		var glass_piece := piece is OpticElement
 		var from := piece.global_position - Vector3(0, 0.24 if glass_piece else 0.16, 0)
 		var q := PhysicsRayQueryParameters3D.create(from, from - Vector3(0, 12.0, 0), 1 | 4)
 		q.exclude = [(piece as CollisionObject3D).get_rid(), island.player.get_rid()]
@@ -661,7 +663,7 @@ func _show_ghost() -> void:
 			_ghost.call("aim", float(_carried.get("yaw")), float(_carried.get("pitch")))
 		else:
 			_ghost.call("aim", _yaw, 0.0)
-		var top := _at.y - (0.2 if (_ghost is OpticElement or _ghost is LightGate) else 0.13)
+		var top := _at.y - (0.2 if _ghost is OpticElement else 0.13)
 		var rod := CylinderMesh.new()
 		rod.top_radius = 0.016
 		rod.bottom_radius = 0.022
@@ -743,6 +745,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_take_up(hit["collider"] as Node3D)
 	elif _carried != null and click != null and click.button_index == MOUSE_BUTTON_RIGHT:
 		pass
+	elif key != null and key.pressed and not key.echo and key.physical_keycode in [KEY_X, KEY_T] \
+			and _carried == null and _aiming == null:
+		_change(key.physical_keycode)
 	elif _aiming != null:
 		if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
 			_end_aim()
@@ -799,34 +804,35 @@ func _build_input(event: InputEvent) -> bool:
 	if key == null or not key.pressed or key.echo:
 		return false
 	match key.physical_keycode:
-		KEY_X:
-			if _carried != null:
-				return true
-			var hit := _look_hit()
-			if hit.is_empty():
-				return true
-			var c: Object = hit["collider"]
-			if is_piece(c):
-				remove_piece(c as Node3D)
-				changed()
-			elif c is FloorTile:
-				remove_tile(c as FloorTile)
-				changed()
-		KEY_T:
-			var hit := _look_hit()
-			if not hit.is_empty() and hit["collider"] is LumenPart and is_piece(hit["collider"]):
-				var p := hit["collider"] as LumenPart
-				if p.kind == LumenPart.Kind.TON or p.kind == LumenPart.Kind.TOF:
-					var i := DELAYS.find(p.delay)
-					p.delay = DELAYS[(i + 1) % DELAYS.size()]
-					relabel(p)
-					changed()
 		_:
 			if key.physical_keycode >= KEY_0 and key.physical_keycode <= KEY_9:
 				_pick(9 if key.physical_keycode == KEY_0 else key.physical_keycode - KEY_1)
 			else:
 				return false
 	return true
+
+
+## X: the piece or tile the crosshair is on taken away. T: an
+## hourglass's or afterglow's delay stepped on.
+func _change(code: Key) -> void:
+	var hit := _look_hit()
+	if hit.is_empty():
+		return
+	var c: Object = hit["collider"]
+	if code == KEY_X:
+		if is_piece(c):
+			remove_piece(c as Node3D)
+			changed()
+		elif c is FloorTile:
+			remove_tile(c as FloorTile)
+			changed()
+	elif c is LumenPart and is_piece(c):
+		var p := c as LumenPart
+		if p.kind == LumenPart.Kind.TON or p.kind == LumenPart.Kind.TOF:
+			var i := DELAYS.find(p.delay)
+			p.delay = DELAYS[(i + 1) % DELAYS.size()]
+			relabel(p)
+			changed()
 
 
 func _pick(i: int) -> void:
@@ -907,12 +913,14 @@ func _hint_text() -> String:
 	if not building:
 		var p := _on_piece as LumenPart
 		if p != null and p.kind == LumenPart.Kind.LANTERN:
-			return "Right click: aim it     E: open or close it     G: move it"
+			return "Right click: aim it     E: open or close it     G: move it     X: take it away"
 		if p != null and p.kind == LumenPart.Kind.RADIOMETER:
-			return "G: move it"
+			return "G: move it     X: take it away"
+		if p != null and (p.kind == LumenPart.Kind.TON or p.kind == LumenPart.Kind.TOF):
+			return "Right click: aim it     E: look through it     T: change the time     G: move it     X: take it away"
 		if _on_piece is LightGate:
-			return "Right click: turn it     G: move it"
-		return "Right click: aim it     E: look through it     G: move it"
+			return "Right click: turn it     G: move it     X: take it away"
+		return "Right click: aim it     E: look through it     G: move it     X: take it away"
 	if _carried != null:
 		var put := "Click: set it down here" if _ok else _why
 		if put == "":
