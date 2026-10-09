@@ -444,9 +444,12 @@ func _build_deck() -> void:
 	_site.add_child(body)
 	# Rails: brass posts and two ropes round the edge, a wall within them
 	# so no one walks off; open at the entrance.
+	# Open at the entrance, and on the seaward side where the walkway
+	# leaves for the Sunforge.
+	var exit_x := SunForge.EXIT_X
 	var edge: Array[Array] = [[Vector3(-HALF.x, 0, -HALF.y), Vector3(-1.3, 0, -HALF.y)], [Vector3(1.3, 0, -HALF.y), Vector3(HALF.x, 0, -HALF.y)],
-			[Vector3(HALF.x, 0, -HALF.y), Vector3(HALF.x, 0, HALF.y)], [Vector3(HALF.x, 0, HALF.y), Vector3(-HALF.x, 0, HALF.y)],
-			[Vector3(-HALF.x, 0, HALF.y), Vector3(-HALF.x, 0, -HALF.y)]]
+			[Vector3(HALF.x, 0, -HALF.y), Vector3(HALF.x, 0, HALF.y)], [Vector3(HALF.x, 0, HALF.y), Vector3(exit_x + 1.3, 0, HALF.y)],
+			[Vector3(exit_x - 1.3, 0, HALF.y), Vector3(-HALF.x, 0, HALF.y)], [Vector3(-HALF.x, 0, HALF.y), Vector3(-HALF.x, 0, -HALF.y)]]
 	for e: Array in edge:
 		var p: Vector3 = e[0]
 		var q: Vector3 = e[1]

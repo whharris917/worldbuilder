@@ -175,7 +175,7 @@ func _ready() -> void:
 	_build_campfire()
 	_build_lanterns()
 	_works.append_array([SaltWorks.new(self), ColourWorks.new(self), BalloonWorks.new(self),
-			LagoonWorks.new(self), SkyWorks.new(self), CrystalExpo.new(self), TideWorks.new(self)])
+			LagoonWorks.new(self), SkyWorks.new(self), CrystalExpo.new(self), TideWorks.new(self), SunForge.new(self)])
 	for works in _works:
 		add_child(works)
 	var wharf := LagoonWorks.pier(self)
