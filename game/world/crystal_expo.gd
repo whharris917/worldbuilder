@@ -87,6 +87,7 @@ func _ready() -> void:
 	for end: float in [-1.0, 1.0]:
 		_build_arch(deg_to_rad(BEARING + end * (SPREAD + 5.0)))
 	_place_beams()
+	add_child(OpticBench.new(self))
 
 
 func _materials() -> void:

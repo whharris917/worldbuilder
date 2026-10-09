@@ -21,6 +21,8 @@ const VIEWS := [
 	["booth5", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth5"],
 	["booth6", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth6"],
 	["booth7", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth7"],
+	["bench", 60.0, Vector3(-7.0, 2.4, -10.0), Vector3(4.0, 1.0, -14.5), "booth2"],
+	["bench_close", 55.0, Vector3(1.5, 1.7, -12.3), Vector3(5.5, 1.2, -15.5), "booth4"],
 	["expo", 60.0, Vector3(-6.0, 7.0, -22.0), Vector3(14.0, 1.0, 0.0), "booth2"],
 	["expo_walk", 66.0, Vector3(-4.0, 1.6, -10.5), Vector3(20.0, 1.6, -3.0), "booth3"],
 	["island", 55.0, Vector3(60.0, 330.0, 420.0), Vector3(0.0, 0.0, -10.0), ""],

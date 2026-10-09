@@ -33,7 +33,11 @@ extends StaticBody3D
 ## is a crystal rather than an hourglass; "setting" holds the crystal
 ## (prongs, cage, cup, coil, collar, hook) in "metal"; "lamp" is the
 ## lantern's body (box, or drum: a round drum with a round shutter);
-## "colour" is its light's colour in place of its kind's.
+## "colour" is its light's colour in place of its kind's; "aimed" makes
+## it a part the player aims (see OpticBench): a brass lens on its front
+## that its beam leaves from, straight ahead, and a copper intake ring on
+## its back (and for two-input kinds a silver one on its right side) that
+## take the beams landing on them, in place of fixed LumenBeams.
 
 enum Kind { LANTERN, AND, OR, NOT, LATCH, TON, TOF, RISE, FALL, RADIOMETER }
 
@@ -58,7 +62,11 @@ var condition := false                  # a lantern's
 var out := false
 var powered := false                    # a radiometer's: light reaching it
 var spin := 0.0                         # a radiometer's vanes, 0 to 1
-var inputs: Array[LumenBeam] = []
+var inputs: Array = []                  # LumenBeams, or an aimed part's OpticIntakes: each has `delivered`
+var aimed := false
+var intakes: Array[OpticIntake] = []
+var yaw := 0.0                          # an aimed part's head
+var pitch := 0.0
 
 var _acc := 0.0
 var _last_in := false
@@ -116,6 +124,8 @@ func _init(part_kind: Kind, part_title: String, at: Vector3, ground: float,
 		_:
 			_build_crystal(look.get("design", "point"))
 			_build_setting(look.get("setting", ""), metal)
+	if look.get("aimed", false):
+		_build_ports(metal, look.get("intake_metal", metal) as Material, look.get("second_metal", metal) as Material)
 	_label = Label3D.new()
 	_label.text = describe()
 	_label.font_size = 26
@@ -187,6 +197,17 @@ func show_label(on: bool) -> void:
 
 ## What a player looking at it is told. Drafts.
 func describe() -> String:
+	if aimed:
+		var how := "\nHold E and move the mouse to aim it."
+		if intakes.size() > 1:
+			how += " Its first way in is the copper ring at the back, its second the silver ring on its right."
+		elif intakes.size() == 1:
+			how += " Beams come in through the ring at its back."
+		return _describe_kind() + how
+	return _describe_kind()
+
+
+func _describe_kind() -> String:
 	match kind:
 		Kind.LANTERN:
 			return "Lantern: %s\nIts shutter is open while this holds." % title
@@ -208,6 +229,95 @@ func describe() -> String:
 			return "Falling spark: %s\nOne flash when its beam goes dark." % title
 		_:
 			return "Radiometer: %s\nIts vanes spin in the light and drive the machine." % title
+
+
+## ---- aiming ------------------------------------------------------------------
+
+## The head turned to `y` (about the upright) and `p` (up and down).
+func aim(y: float, p: float) -> void:
+	yaw = y
+	pitch = clampf(p, -1.0, 1.0)
+	_head.basis = Basis.from_euler(Vector3(pitch, yaw, 0.0))
+
+
+## Turned by the mouse while held.
+func turn_by(motion: Vector2) -> void:
+	aim(yaw - motion.x * 0.004, pitch - motion.y * 0.004)
+
+
+## The head turned to look along `dir` (world).
+func aim_along(dir: Vector3) -> void:
+	var local := global_transform.basis.inverse() * dir.normalized()
+	aim(atan2(-local.x, -local.z), asin(clampf(local.y, -1.0, 1.0)))
+
+
+## Which way its beam leaves.
+func forward() -> Vector3:
+	return -(_head.global_transform.basis.z).normalized()
+
+
+## Where its beam leaves: the lens.
+func lens_point() -> Vector3:
+	return _head.to_global(Vector3(0, 0, -0.2))
+
+
+## The intake a beam travelling along `dir` comes in through (the one it
+## meets most squarely, within sixty degrees), or null.
+func intake_for(dir: Vector3) -> OpticIntake:
+	var best: OpticIntake = null
+	var best_dot := 0.5
+	for it in intakes:
+		var d := dir.dot(_head.global_transform.basis * it.enter)
+		if d > best_dot:
+			best_dot = d
+			best = it
+	return best
+
+
+func intake_point(it: OpticIntake) -> Vector3:
+	return _head.to_global(it.at)
+
+
+## The lens and the intake rings of an aimed part.
+func _build_ports(lens_metal: Material, ring_metal: Material, second_metal: Material) -> void:
+	aimed = true
+	# The head turns: kept out of the island's joining of still pieces.
+	_head.set_meta(StaticMerge.MOVES, true)
+	if kind != Kind.RADIOMETER:
+		var tube := CylinderMesh.new()
+		tube.top_radius = 0.045
+		tube.bottom_radius = 0.055
+		tube.height = 0.08
+		tube.material = lens_metal
+		_add(tube, Vector3(0, 0, -0.17)).rotation.x = PI * 0.5
+		var glass := CylinderMesh.new()
+		glass.top_radius = 0.038
+		glass.bottom_radius = 0.038
+		glass.height = 0.01
+		glass.material = _glow
+		_add(glass, Vector3(0, 0, -0.215)).rotation.x = PI * 0.5
+	if kind == Kind.LANTERN:
+		return
+	var ring := TorusMesh.new()
+	ring.inner_radius = 0.045
+	ring.outer_radius = 0.065
+	ring.rings = 16
+	ring.ring_segments = 6
+	ring.material = ring_metal
+	_add(ring, Vector3(0, 0, 0.17)).rotation.x = PI * 0.5
+	intakes.append(OpticIntake.new(Vector3.FORWARD, Vector3(0, 0, 0.18)))
+	if kind in [Kind.AND, Kind.OR, Kind.LATCH]:
+		var second := TorusMesh.new()
+		second.inner_radius = 0.045
+		second.outer_radius = 0.065
+		second.rings = 16
+		second.ring_segments = 6
+		second.material = second_metal
+		_add(second, Vector3(0.17, 0, 0)).rotation.z = PI * 0.5
+		intakes.append(OpticIntake.new(Vector3.LEFT, Vector3(0.18, 0, 0)))
+	inputs.clear()
+	for it in intakes:
+		inputs.append(it)
 
 
 ## One step of the logic, from the beams as they stand.

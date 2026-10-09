@@ -108,6 +108,9 @@ func _ready() -> void:
 ## polls Input directly rather than going through the event queue, so a
 ## panel cannot stop the player walking just by marking events handled.
 var input_locked: bool = false
+## Set while something in the world takes the mouse (a part being aimed
+## with E held): mouse movement goes to its `turn_by` instead of the view.
+var look_held_by: Object = null
 
 
 ## Space is taken before the interface sees it, so a button left
@@ -125,6 +128,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var motion := event as InputEventMouseMotion
+		if look_held_by != null:
+			look_held_by.call("turn_by", motion.relative)
+			return
 		var sens := MOUSE_SENS * camera.fov / FOV_DEFAULT
 		rotate_y(-motion.relative.x * sens)
 		camera.rotation.x = clampf(camera.rotation.x - motion.relative.y * sens,
