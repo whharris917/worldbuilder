@@ -400,7 +400,8 @@ func _build_deck() -> void:
 		wall.shape = box
 		wall.transform = Transform3D(Basis(Vector3.UP, atan2(-(q - p).z, (q - p).x)), (p + q) * 0.5 + Vector3(0, 0.7, 0))
 		body.add_child(wall)
-	_note(Vector3(0, 2.0, -HALF.y + 0.5), Vector3(3.0, 1.5, 0.6),
+	# Its note on the name board, up out of the way of heads.
+	_note(Vector3(0, 2.85, -HALF.y + 0.15), Vector3(3.2, 0.6, 0.3),
 			"The Tideworks\nSea water made into bottles of essence, powered by the swell and run by light.")
 
 
