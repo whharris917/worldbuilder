@@ -6,7 +6,8 @@ extends Node3D
 ## stand on it.
 ##
 ## B starts and stops building. While building, a tray along the bottom
-## shows what is in hand (ITEMS: the number keys, or the wheel, choose)
+## shows what is in hand (ITEMS: the number keys choose, or Tab and
+## Shift and Tab step through them)
 ## and a see-through copy of it, whole, stands where it would go, at
 ## what the crosshair is on within REACH metres, turned square to the
 ## view; a left click puts it there. Nothing keeps to a grid. A floor
@@ -916,11 +917,12 @@ func _build_input(event: InputEvent) -> bool:
 			MOUSE_BUTTON_LEFT:
 				_place()
 			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN:
+				# The wheel alone zooms the view, as always; with Shift it
+				# raises and lowers what is in hand.
+				if not click.shift_pressed:
+					return false
 				var up := click.button_index == MOUSE_BUTTON_WHEEL_UP
-				if click.shift_pressed:
-					lift = clampf(lift + (LIFT_STEP if up else -LIFT_STEP), -0.5, MAX_TILE_RISE)
-				else:
-					_pick((item + (-1 if up else 1) + ITEMS.size()) % ITEMS.size())
+				lift = clampf(lift + (LIFT_STEP if up else -LIFT_STEP), -0.5, MAX_TILE_RISE)
 			_:
 				return false
 		return true
@@ -931,6 +933,8 @@ func _build_input(event: InputEvent) -> bool:
 		_:
 			if key.physical_keycode >= KEY_0 and key.physical_keycode <= KEY_9:
 				_pick(9 if key.physical_keycode == KEY_0 else key.physical_keycode - KEY_1)
+			elif key.physical_keycode == KEY_TAB:
+				_pick((item + (-1 if key.shift_pressed else 1) + ITEMS.size()) % ITEMS.size())
 			else:
 				return false
 	return true
@@ -1066,7 +1070,7 @@ func _hint_text() -> String:
 	var height := ""
 	if not is_zero_approx(lift):
 		height = "     %+.2f m" % lift
-	return "%s%s\nWheel: choose     Shift and wheel: higher, lower     G: move     X: take away     Right click a piece: aim it     B: stop building" % [place, height]
+	return "%s%s\n1 to 0, Tab: choose     Shift and wheel: higher, lower     G: move     X: take away     Right click a piece: aim it     B: stop building" % [place, height]
 
 
 ## ---- the screen ------------------------------------------------------------------
