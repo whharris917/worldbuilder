@@ -24,17 +24,33 @@ extends BeachSite
 ## - Distilling: once it boils, its vapour rises into a hood and an onion
 ##   head, runs down a swan-neck arm into a coil in a tub, and drips into
 ##   the flask under the spout.
-## - Bottling: the flasks stand on a carousel turned by a Geneva drive; on
-##   the index radiometer's word it steps a quarter turn. The flask on the
-##   far side, if full, tips into a glass carboy's funnel; the carboy full,
-##   its tap is opened into crates, and the tally goes up.
+## - Collecting: the flasks stand on a carousel turned by a Geneva drive;
+##   on the index radiometer's word it steps a quarter turn. The flask on
+##   the far side, if full, tips into a glass carboy's funnel.
+## - Tinting: the carboy full and the reactor empty, its tap lets the
+##   essence along a pipe into the reactor (glass in brass bands under a
+##   copper dome, stirred by a geared motor, warmed by a glowing coil).
+##   Chebyshev's straight-line linkage carries a brass ladle level from a
+##   basin of reagent to the reactor's funnel, tips it in, and lifts back
+##   over the top of its path; each dose turns a counting wheel a quarter,
+##   and the essence turns from blue to gold. Dosed three times and
+##   stirred a while, the reactor's tap fills a crate with gold bottles,
+##   the tally goes up and the wheel comes round to the start.
 ##
-## The logic (lanterns in a cabinet by the entrance watch the process;
-## crystals on the exposition's mountings decide):
+## The logic: each lantern stands at what it watches, its shutter worked
+## by that machine: the governor's collar lifts with the shaft's speed; a
+## float rod rises out of the tank, the carboy and the reactor (the last
+## working two lanterns, one low, one high); a float on a lever tips as
+## the cauldron's brew drops; a copper coil winds round as the fire heats
+## and turns a pointer; a float arm in the flask under the spout rises as
+## it fills; a cam on the counting wheel lifts on the third dose. Their
+## beams run to crystals on the exposition's mountings:
 ##   VALVE   = the tank has water AND the cauldron wants filling   (a column by the valve)
 ##   BELLOWS = the shaft is turning AND NOT the cauldron boils     (hung from the hood's chandelier)
 ##   INDEX   = TON 1 s ( the flask under the spout is full )       (on a rail on the carousel's mast)
-##   DRAIN   = TON 2 s ( the carboy is full )                      (on a branch by the carboy)
+##   DRAIN   = TON 2 s ( the carboy is full ) AND NOT the reactor holds essence   (on a branch by the carboy)
+##   DOSE    = the reactor is full AND NOT it is dosed               (on the linkage's beam)
+##   BOTTLE  = TON 5 s ( it is dosed )                               (hung from the linkage's beam)
 ##
 ## The name board and notes are drafts.
 
@@ -56,6 +72,12 @@ const CAULDRON := Vector3(2.5, 0.0, 1.0)
 const TANK := Vector3(-1.5, 0.0, 2.8)
 const CAROUSEL := Vector3(6.6, 0.0, -2.4)
 const TUB := Vector3(5.6, 0.0, -1.0)
+const LS := 0.27                         # the linkage's unit, m: ground 2, crank 1, rocker 2.5, coupler 5
+const LINK_Y := 0.81                     # its ground pivots over the deck
+const LADLE_DROP := 0.22
+const OFFSET := 0.65                     # the linkage plane beside the reactor's line
+const GOLD := Color(1.0, 0.72, 0.22)
+const BLUE := Color(0.55, 0.9, 1.0)
 
 var _centre := Vector3.ZERO
 var _pontoons: Array[AnimatableBody3D] = []
@@ -84,6 +106,11 @@ var _carboy := 0.0
 var _draining := false
 var _crates := 0
 var _was_follower := 0.0
+var _reactor := 0.0                      # its contents, 0 to 1
+var _doses := 0
+var _wheel := 0.0                        # the counting wheel's quarters turned, eased
+var _crank := 0.0                        # the linkage's crank angle
+var _bottling := false
 
 var _copper: StandardMaterial3D
 var _silver: StandardMaterial3D
@@ -133,6 +160,31 @@ var _tap_stream: MeshInstance3D
 var _pendulum: Node3D
 var _crate_nodes: Array[Node3D] = []
 var _digits: Array[Label3D] = []
+var _reactor_at := Vector3.ZERO
+var _q := Vector3.ZERO                   # along the linkage's straight line, from the reactor to the basin
+var _side := Vector3.ZERO
+var _plane := Vector3.ZERO               # the linkage plane's origin: the crank's pivot
+var _tint: StandardMaterial3D
+var _coil_glow: StandardMaterial3D
+var _reactor_fill: Node3D
+var _stirrer: Node3D
+var _motor_gear: Node3D
+var _link_crank: MeshInstance3D
+var _link_rocker: MeshInstance3D
+var _link_coupler: MeshInstance3D
+var _ladle: Node3D
+var _ladle_arm: MeshInstance3D
+var _count_wheel: Node3D
+var _count_cam: Node3D
+var _gov_collar: Node3D
+var _gov_lever: MeshInstance3D
+var _tank_rod: Node3D
+var _cauldron_arm: Node3D
+var _coil_pointer: Node3D
+var _flask_arm: Node3D
+var _carboy_rod: Node3D
+var _reactor_rod: Node3D
+var _snd_dose: AudioStreamPlayer3D
 
 var _l := {}
 var _r := {}
@@ -170,6 +222,7 @@ func _ready() -> void:
 	_build_cauldron()
 	_build_still()
 	_build_carousel()
+	_build_reactor()
 	_build_circuit()
 	_place_beams()
 	_build_sounds()
@@ -737,25 +790,88 @@ func _build_carousel() -> void:
 	_put(funnel, carboy + Vector3(0, 1.45, 0) + to_tub * 0.1, false, Vector3.ZERO, null)
 	_funnel_stream = _link(0.02, _essence)
 	_funnel_stream.visible = false
+	# Its tap at the foot, a pipe along to the reactor's foot.
 	var tap := carboy + Vector3(0, 0.38, 0) + side * 0.5
 	_rod(carboy + Vector3(0, 0.38, 0) + side * 0.42, tap, 0.03, _brass, 8)
-	_tap_stream = _link(0.02, _essence)
+	_cyl(0.035, 0.035, 0.1, tap + Vector3(0, 0.06, 0), _brass, 8, false)
+	_reactor_at = carboy + side * 1.7
+	_rod(tap, _reactor_at + Vector3(0, 0.38, 0) - side * 0.42, 0.035, _copper, 8)
+	# The carboy's float rod, rising out of its neck as it fills.
+	_carboy_rod = _pivot(carboy + Vector3(0, 1.3, 0) - side * 0.04)
+	_cyl(0.01, 0.01, 0.6, Vector3(0, 0.0, 0), _brass, 6, false, _carboy_rod)
+	_box(Vector3(0.16, 0.02, 0.02), Vector3(0, 0.3, 0) - side * 0.08, _brass, false, _carboy_rod)
+	# The clockwork on the carousel's mast: a pendulum that swings while it
+	# steps.
+	var mast := c - side * 0.9
+	_cyl(0.05, 0.06, 2.6, mast + Vector3(0, 1.3, 0), _brass, 10, true)
+	_box(Vector3(0.36, 0.36, 0.12), mast + Vector3(0, 2.1, -0.08), _wood, false)
+	_pendulum = _pivot(mast + Vector3(0, 2.0, -0.16))
+	_rod(Vector3.ZERO, Vector3(0, -0.6, 0), 0.008, _brass, 4, _pendulum)
+	_cyl(0.06, 0.06, 0.02, Vector3(0, -0.63, 0), _brass, 12, false, _pendulum).basis = Basis(Vector3.RIGHT, PI * 0.5)
+	_note(c + Vector3(0, 1.1, 0), Vector3(1.5, 1.2, 1.5), "The carousel\nWhen the flask under the spout is full, the Geneva drive steps it on a quarter turn; full flasks are tipped into the carboy.")
+	_note(carboy + Vector3(0, 0.8, 0), Vector3(1.1, 1.6, 1.1), "The carboy\nWhen it is full and the reactor empty, its tap lets the essence along to the reactor.")
+
+
+## ---- the reactor and the straight-line linkage ----------------------------
+
+func _build_reactor() -> void:
+	var to_tub := Vector3(TUB.x - CAROUSEL.x, 0, TUB.z - CAROUSEL.z).normalized()
+	_side = to_tub.cross(Vector3.UP).normalized()
+	_q = _side.cross(Vector3.UP).normalized()
+	var r := _reactor_at
+	_tint = _glowing(BLUE, 1.0)
+	_coil_glow = _glowing(Color(1.0, 0.45, 0.12), 0.2)
+	_coil_glow.albedo_color = Color(0.6, 0.32, 0.2)
+	# The reactor: glass in brass bands on a brass stand, a copper dome, a
+	# funnel, a geared motor turning a stirrer, a glowing coil round its foot.
+	_cyl(0.42, 0.48, 0.3, r + Vector3(0, 0.15, 0), _brass, 24, true)
+	_cyl(0.4, 0.4, 1.0, r + Vector3(0, 0.8, 0), _glass, 24, false)
+	for y: float in [0.32, 0.8, 1.28]:
+		_ring(0.39, 0.44, r + Vector3(0, y, 0), _brass)
+	_reactor_fill = _pivot(r + Vector3(0, 0.31, 0))
+	_cyl(0.37, 0.37, 1.0, Vector3(0, 0.5, 0), _tint, 24, false, _reactor_fill)
+	_sphere(0.42, r + Vector3(0, 1.3, 0), _copper, null, Vector3(1, 0.4, 1))
+	var funnel := CylinderMesh.new()
+	funnel.top_radius = 0.16
+	funnel.bottom_radius = 0.04
+	funnel.height = 0.2
+	funnel.material = _copper
+	_put(funnel, r + Vector3(0, 1.55, 0), false, Vector3.ZERO, null)
+	for k in 4:
+		_ring(0.42 + k * 0.035, 0.45 + k * 0.035, r + Vector3(0, 0.38 + k * 0.05, 0), _coil_glow)
+	var motor := r + Vector3(0, 1.5, 0) + _side * 0.22
+	_box(Vector3(0.16, 0.16, 0.16), motor, _brass, false)
+	_motor_gear = _pivot(motor + Vector3(0, 0.12, 0))
+	_cyl(0.07, 0.07, 0.02, Vector3.ZERO, _copper, 12, false, _motor_gear)
+	_stirrer = _pivot(r + Vector3(0, 1.4, 0))
+	_cyl(0.012, 0.012, 1.1, Vector3(0, -0.45, 0), _iron, 6, false, _stirrer)
+	_box(Vector3(0.5, 0.12, 0.02), Vector3(0, -0.9, 0), _brass, false, _stirrer)
+	_cyl(0.06, 0.06, 0.02, Vector3(0, 0.06, 0), _copper, 12, false, _stirrer)
+	# Its float rod, out of the dome beside the funnel, working two
+	# lanterns: one low (it holds essence), one high (it is full).
+	_reactor_rod = _pivot(r + Vector3(0, 1.36, 0) - _side * 0.2)
+	_cyl(0.01, 0.01, 0.9, Vector3(0, -0.2, 0), _brass, 6, false, _reactor_rod)
+	_box(Vector3(0.02, 0.02, 0.16), Vector3(0, 0.25, 0) - _q * 0.06, _brass, false, _reactor_rod)
+	# The tap at the foot, toward the crates.
+	var tap := r + Vector3(0, 0.38, 0) + _side * 0.5
+	_rod(r + Vector3(0, 0.38, 0) + _side * 0.42, tap, 0.03, _brass, 8)
+	_tap_stream = _link(0.02, _tint)
 	_place(_tap_stream, tap + Vector3(0, -0.04, 0), tap + Vector3(0, -0.3, 0))
 	_tap_stream.visible = false
 	for k in 6:
-		var crate := _pivot(tap + side * 0.55 + Vector3(0.0, 0.0, 0.0) + side * float(k % 3) * 0.48 + Vector3(0, 0.36 * (k / 3), 0) - Vector3(0, 0.38, 0))
+		var crate := _pivot(tap + _side * (0.55 + 0.48 * (k % 3)) + Vector3(0, 0.36 * (k / 3), 0) - Vector3(0, 0.38, 0))
 		var m := CozyMesh.new()
 		m.box(Vector3(0.44, 0.34, 0.44), CozyMesh.at(Vector3(0, 0.17, 0)), Color(0.72, 0.56, 0.38))
 		for bx: float in [-0.1, 0.1]:
 			for bz: float in [-0.1, 0.1]:
-				m.cyl(0.05, 0.05, 0.2, 8, CozyMesh.at(Vector3(bx, 0.42, bz)), Color(0.55, 0.85, 0.95))
+				m.cyl(0.05, 0.05, 0.2, 8, CozyMesh.at(Vector3(bx, 0.42, bz)), Color(1.0, 0.78, 0.3))
+				m.cyl(0.02, 0.02, 0.05, 6, CozyMesh.at(Vector3(bx, 0.55, bz)), Color(0.85, 0.6, 0.3))
 		var v := MeshInstance3D.new()
 		v.mesh = m.commit(island.cozy_material())
 		crate.add_child(v)
 		crate.visible = false
 		_crate_nodes.append(crate)
-	# The tally on a brass plate by the crates.
-	var plate_at := tap + side * 1.0 + Vector3(0, 0.9, 0)
+	var plate_at := tap + _side * 1.0 + Vector3(0, 0.9, 0) - _q * 0.6
 	_box(Vector3(0.46, 0.2, 0.04), plate_at, _brass, false)
 	for k in 3:
 		var dgt := Label3D.new()
@@ -767,16 +883,75 @@ func _build_carousel() -> void:
 		dgt.rotation.y = PI
 		_site.add_child(dgt)
 		_digits.append(dgt)
-	# The clockwork on the carousel's mast: a pendulum that swings while it
-	# steps.
-	var mast := c - side * 0.9
-	_cyl(0.05, 0.06, 2.6, mast + Vector3(0, 1.3, 0), _brass, 10, true)
-	_box(Vector3(0.36, 0.36, 0.12), mast + Vector3(0, 2.1, -0.08), _wood, false)
-	_pendulum = _pivot(mast + Vector3(0, 2.0, -0.16))
-	_rod(Vector3.ZERO, Vector3(0, -0.6, 0), 0.008, _brass, 4, _pendulum)
-	_cyl(0.06, 0.06, 0.02, Vector3(0, -0.63, 0), _brass, 12, false, _pendulum).basis = Basis(Vector3.RIGHT, PI * 0.5)
-	_note(c + Vector3(0, 1.1, 0), Vector3(1.5, 1.2, 1.5), "The carousel\nWhen the flask under the spout is full, the Geneva drive steps it on a quarter turn; full flasks are tipped into the carboy.")
-	_note(carboy + Vector3(0, 0.8, 0), Vector3(1.1, 1.6, 1.1), "The carboy\nWhen it is full its tap is opened, and the essence is bottled into crates.")
+	# The basin of reagent at the far end of the straight line, on a
+	# pedestal, and a rack of reagent jars behind it.
+	var basin := r + _q * (4.54 * LS)
+	_cyl(0.06, 0.1, 1.45, basin + Vector3(0, 0.725, 0), _brass, 10, true)
+	var bowl := SphereMesh.new()
+	bowl.radius = 0.24
+	bowl.height = 0.24
+	bowl.is_hemisphere = true
+	bowl.material = _copper
+	_put(bowl, basin + Vector3(0, 1.62, 0), false, Vector3.ZERO, null).basis = Basis(Vector3.RIGHT, PI)
+	var reagent := _glowing(GOLD, 1.0)
+	_cyl(0.22, 0.22, 0.02, basin + Vector3(0, 1.56, 0), reagent, 20, false)
+	var rack := basin + _q * 0.6
+	_box(Vector3(0.12, 1.3, 0.12), rack + _side * 0.5 + Vector3(0, 0.65, 0), _wood, false)
+	_box(Vector3(0.12, 1.3, 0.12), rack - _side * 0.5 + Vector3(0, 0.65, 0), _wood, false)
+	for y: float in [0.6, 1.1]:
+		var shelf := _box(Vector3(1.1, 0.04, 0.3), rack + Vector3(0, y, 0), _wood, false)
+		shelf.basis = Basis(Vector3.UP, atan2(-_side.z, _side.x))
+		for k in 4:
+			var jar := rack + Vector3(0, y + 0.02, 0) + _side * (-0.36 + 0.24 * k)
+			_cyl(0.07, 0.07, 0.2, jar + Vector3(0, 0.1, 0), _glass, 12, false)
+			_cyl(0.06, 0.06, 0.12, jar + Vector3(0, 0.06, 0), _glowing(GOLD.lerp(Color(1.0, 0.5, 0.3), k / 3.0), 0.7), 12, false)
+			_cyl(0.04, 0.05, 0.04, jar + Vector3(0, 0.22, 0), _brass, 10, false)
+	# The linkage: two posts holding the ground pivots in a plane beside
+	# the line from basin to reactor, a beam across their tops for its
+	# crystals, a clockwork motor at the crank.
+	_plane = r - _q * (0.27 * LS) * -1.0 + _q * 0.0 + _side * -OFFSET
+	_plane = r + _q * (0.27 * LS) - _side * OFFSET + Vector3(0, LINK_Y, 0)
+	var a_pivot := _plane
+	var d_pivot := _plane + _q * (2.0 * LS)
+	for pv: Vector3 in [a_pivot, d_pivot]:
+		_box(Vector3(0.1, pv.y + 1.6, 0.1), Vector3(pv.x, (pv.y + 1.6) * 0.5, pv.z) - _side * 0.12, _wood, true)
+		_ball(0.04, pv, _iron)
+	var beam := _box(Vector3(0.12, 0.12, 2.0 * LS + 0.6), (a_pivot + d_pivot) * 0.5 + Vector3(0, 1.6, 0) - _side * 0.12, _wood, false)
+	beam.basis = Basis(Vector3.UP, atan2(_q.x, _q.z))
+	_box(Vector3(0.24, 0.24, 0.2), a_pivot - _side * 0.24, _brass, false)
+	_link_crank = _link(0.02, _brass)
+	_link_rocker = _link(0.02, _brass)
+	_link_coupler = _link(0.018, _copper)
+	_ladle_arm = _link(0.014, _brass)
+	_ladle = _pivot(Vector3.ZERO)
+	_box(Vector3(0.03, 0.03, 0.03), Vector3.ZERO, _brass, false, _ladle)
+	var cup := SphereMesh.new()
+	cup.radius = 0.08
+	cup.height = 0.08
+	cup.is_hemisphere = true
+	cup.material = _brass
+	_put(cup, Vector3(0, -LADLE_DROP, 0), false, Vector3.ZERO, _ladle).basis = Basis(Vector3.RIGHT, PI)
+	_rod(Vector3.ZERO, Vector3(0, -LADLE_DROP, 0), 0.01, _brass, 4, _ladle)
+	# The counting wheel by the crank: a quarter turn a dose, a cam on it.
+	var wheel_at := a_pivot - _side * 0.35 + Vector3(0, -0.35, 0)
+	_count_wheel = _pivot(wheel_at)
+	var notched := MeshInstance3D.new()
+	notched.mesh = LinkageHall._plate(func(ang: float) -> float: return 0.12 + 0.03 * signf(cos(ang * 4.0)), 0.04, 64)
+	notched.material_override = _brass
+	notched.basis = Basis(Vector3.UP, atan2(_side.x, _side.z))
+	_count_wheel.add_child(notched)
+	_count_cam = _pivot(Vector3.ZERO, _count_wheel)
+	# Set so that three quarter turns bring it upright, under the lantern.
+	_count_cam.basis = Basis(_side, PI * 1.5)
+	_box(Vector3(0.03, 0.18, 0.03), Vector3(0, 0.12, 0), _copper, false, _count_cam)
+	_note(r + Vector3(0, 0.9, 0), Vector3(1.0, 1.8, 1.0), "The reactor\nThe essence is stirred and warmed here while the reagent is dosed in; three doses turn it gold.")
+	_note((a_pivot + d_pivot) * 0.5 + Vector3(0, 0.5, 0), Vector3(1.2, 1.2, 0.5) , "The straight-line linkage\nChebyshev's linkage carries the ladle level from the basin to the reactor, so nothing spills, and lifts it back over the top.")
+
+
+## A point of the linkage's plane: `u` along its straight line (toward
+## the basin), `v` up from its ground pivots.
+func _in_plane(p: Vector2) -> Vector3:
+	return _plane + _q * p.x + Vector3(0, p.y, 0)
 
 
 ## ---- the logic --------------------------------------------------------------------
@@ -792,20 +967,64 @@ func _mount(kind: LumenPart.Kind, title: String, pos: Vector3, look: Dictionary,
 
 
 func _build_circuit() -> void:
-	# The cabinet of lanterns by the entrance, facing in.
-	var cab := Vector3(-5.0, 0.0, -6.0)
-	_box(Vector3(2.4, 1.9, 0.05), cab + Vector3(0, 1.35, -0.18), _velvet, false)
-	for x: float in [-1.24, 1.24]:
-		_box(Vector3(0.08, 2.0, 0.4), cab + Vector3(x, 1.3, 0), _wood, false)
-	for y: float in [0.38, 2.33]:
-		_box(Vector3(2.56, 0.08, 0.42), cab + Vector3(0, y, 0), _wood, false)
-	_box(Vector3(2.6, 2.1, 0.5), cab + Vector3(0, 1.3, 0), _wood, true).visible = false
-	var titles := [["swell", "the line shaft is turning"], ["tank", "the header tank has water"], ["low", "the cauldron wants filling"],
-			["hot", "the cauldron is boiling"], ["full", "the flask under the spout is full"], ["carboy", "the carboy is full"]]
-	for k in titles.size():
-		var at := cab + Vector3(-0.75 + 0.75 * (k % 3), 1.85 - 0.75 * (k / 3), 0.05)
-		_box(Vector3(0.12, 0.04, 0.14), at + Vector3(0, -0.16, 0.08), _brass, false)
-		_l[titles[k][0]] = _mount(LumenPart.Kind.LANTERN, titles[k][1], at, {"lamp": "drum", "metal": _brass})
+	var lamp := {"lamp": "drum", "metal": _brass}
+	var to_tub := Vector3(TUB.x - CAROUSEL.x, 0, TUB.z - CAROUSEL.z).normalized()
+	var side := to_tub.cross(Vector3.UP).normalized()
+	var carboy := CAROUSEL - to_tub * 1.25
+	# The shaft turning: the governor's collar rises with its speed and
+	# lifts a lever to the lantern.
+	var gov_at := _zy(-5.5, SHAFT + Vector2(0, 0.1))
+	_gov_collar = _pivot(Vector3(0, 0.3, 0), _gov)
+	_ring(0.03, 0.06, Vector3.ZERO, _brass, _gov_collar)
+	_box(Vector3(0.06, 0.06, 0.06), gov_at + Vector3(0, 0.75, -0.5), _brass, false)
+	_box(Vector3(0.05, 2.25 - 0.05, 0.05), Vector3(gov_at.x, (2.25 - 0.05) * 0.5, gov_at.z - 0.5), _iron, false)
+	_l["swell"] = _mount(LumenPart.Kind.LANTERN, "the line shaft is turning", gov_at + Vector3(0, 0.95, -0.5), lamp)
+	_gov_lever = _link(0.012, _brass)
+	# The tank has water: a float rod rising out of its lid.
+	_tank_rod = _pivot(TANK + Vector3(0.25, 2.5, 0.25))
+	_cyl(0.01, 0.01, 0.8, Vector3(0, -0.2, 0), _brass, 6, false, _tank_rod)
+	_box(Vector3(0.02, 0.02, 0.2), Vector3(0, 0.2, -0.1), _brass, false, _tank_rod)
+	_box(Vector3(0.05, 0.7, 0.05), TANK + Vector3(0.25, 2.95, 0.05), _iron, false)
+	_l["tank"] = _mount(LumenPart.Kind.LANTERN, "the header tank has water", TANK + Vector3(0.25, 3.42, 0.05), lamp)
+	# The cauldron wants filling: a float on a lever arm over its rim; the
+	# arm's outer end rises as the brew drops.
+	_cauldron_arm = _pivot(CAULDRON + Vector3(-0.66, 1.3, 0.3))
+	_rod(Vector3(-0.4, 0, 0), Vector3(0.36, 0, 0), 0.012, _brass, 6, _cauldron_arm)
+	_sphere(0.07, Vector3(0.38, 0, 0), _copper, _cauldron_arm)
+	_box(Vector3(0.05, 1.3, 0.05), CAULDRON + Vector3(-0.66, 0.65, 0.3), _iron, false)
+	_box(Vector3(0.05, 0.5, 0.05), CAULDRON + Vector3(-1.1, 1.25, 0.3), _iron, false)
+	_l["low"] = _mount(LumenPart.Kind.LANTERN, "the cauldron wants filling", CAULDRON + Vector3(-1.1, 1.62, 0.3), lamp)
+	# Boiling: a copper coil on the hearth's face winds round as it heats,
+	# turning a pointer up toward the lantern.
+	var coil_at := CAULDRON + Vector3(0.4, 0.3, -0.82)
+	for k in 4:
+		_ring(0.03 + k * 0.025, 0.04 + k * 0.025, coil_at, _copper, null, Basis(Vector3.RIGHT, PI * 0.5))
+	_coil_pointer = _pivot(coil_at + Vector3(0, 0, -0.03))
+	_box(Vector3(0.012, 0.2, 0.01), Vector3(0, 0.1, 0), _brass, false, _coil_pointer)
+	_box(Vector3(0.05, 0.4, 0.05), coil_at + Vector3(0.0, 0.4, -0.06), _iron, false)
+	_l["hot"] = _mount(LumenPart.Kind.LANTERN, "the cauldron is boiling", coil_at + Vector3(0.0, 0.72, -0.1), lamp)
+	# The flask under the spout is full: a little float arm dipping into
+	# its neck, rising as it fills.
+	var spout := CAROUSEL - to_tub * 0.45 + Vector3(0, 1.45, 0)
+	_flask_arm = _pivot(spout + side * 0.18 + Vector3(0, 0.05, 0))
+	_rod(Vector3.ZERO, -side * 0.18 + Vector3(0, -0.22, 0), 0.006, _brass, 4, _flask_arm)
+	_sphere(0.025, -side * 0.18 + Vector3(0, -0.23, 0), _copper, _flask_arm)
+	_rod(Vector3.ZERO, side * 0.16 + Vector3(0, 0.05, 0), 0.006, _brass, 4, _flask_arm)
+	_box(Vector3(0.04, spout.y + 0.05, 0.04), Vector3(spout.x, (spout.y + 0.05) * 0.5, spout.z) + side * 0.34, _iron, false)
+	_l["full"] = _mount(LumenPart.Kind.LANTERN, "the flask under the spout is full", spout + side * 0.34 + Vector3(0, 0.22, 0), lamp)
+	# The carboy is full: its float rod out of the neck.
+	_box(Vector3(0.04, 1.75, 0.04), carboy - side * 0.3 + Vector3(0, 0.875, 0), _iron, false)
+	_l["carboy"] = _mount(LumenPart.Kind.LANTERN, "the carboy is full", carboy - side * 0.3 + Vector3(0, 1.92, 0), lamp)
+	# The reactor holds essence, and is full: its float rod's two lanterns.
+	var rr := _reactor_at - _side * 0.2 - _q * 0.25
+	_box(Vector3(0.04, 2.2, 0.04), rr + Vector3(0, 1.1, 0), _iron, false)
+	_l["holds"] = _mount(LumenPart.Kind.LANTERN, "the reactor holds essence", rr + Vector3(0, 1.72, 0), lamp)
+	_l["rfull"] = _mount(LumenPart.Kind.LANTERN, "the reactor is full", rr + Vector3(0, 2.1, 0), lamp)
+	# Dosed: the counting wheel's cam.
+	var cam_lamp := _count_wheel.position - _side * 0.05 + Vector3(0, 0.36, 0) - _q * 0.25
+	_box(Vector3(0.04, cam_lamp.y - 0.12, 0.04), Vector3(cam_lamp.x, (cam_lamp.y - 0.12) * 0.5, cam_lamp.z), _iron, false)
+	_l["dosed"] = _mount(LumenPart.Kind.LANTERN, "the essence is dosed", cam_lamp, lamp)
+
 	# VALVE: a column of crystals by the valve.
 	var col := TANK + Vector3(1.0, 0.0, -0.9)
 	_cyl(0.05, 0.065, 2.3, col + Vector3(0, 1.15, 0), _brass, 10, true)
@@ -833,8 +1052,6 @@ func _build_circuit() -> void:
 	_wire(not_hot, bellows_and)
 	_wire(bellows_and, _r["bellows"])
 	# INDEX: crystals on a silver rail on the carousel's mast.
-	var to_tub := Vector3(TUB.x - CAROUSEL.x, 0, TUB.z - CAROUSEL.z).normalized()
-	var side := to_tub.cross(Vector3.UP).normalized()
 	var rail := CAROUSEL - side * 0.9 - to_tub * 0.25
 	for dx: float in [-0.05, 0.05]:
 		_rod(rail + Vector3(dx, 0.4, 0), rail + Vector3(dx, 2.4, 0), 0.014, _silver, 6)
@@ -846,16 +1063,33 @@ func _build_circuit() -> void:
 	_wire(_l["full"], index_ton)
 	_wire(index_ton, _r["index"])
 	# DRAIN: a branch by the carboy.
-	var carboy := CAROUSEL - to_tub * 1.25
 	var br := carboy - side * 0.9
 	_cyl(0.04, 0.05, 1.8, br + Vector3(0, 0.9, 0), _copper, 10, true)
-	_rod(br + Vector3(0, 1.8, -0.5), br + Vector3(0, 1.8, 0.5), 0.025, _copper, 8)
-	var drain_ton := _mount(LumenPart.Kind.TON, "a full carboy, a moment", br + Vector3(0, 2.0, -0.35), {"design": "gem", "setting": "cup", "metal": _copper}, 2.0)
-	_r["drain"] = _mount(LumenPart.Kind.RADIOMETER, "opens the carboy's tap", br + Vector3(0, 2.0, 0.35), {})
+	_rod(br + Vector3(0, 1.8, -0.6), br + Vector3(0, 1.8, 0.6), 0.025, _copper, 8)
+	var drain_ton := _mount(LumenPart.Kind.TON, "a full carboy, a moment", br + Vector3(0, 2.0, -0.45), {"design": "gem", "setting": "cup", "metal": _copper}, 2.0)
+	var not_holds := _mount(LumenPart.Kind.NOT, "the reactor is empty", br + Vector3(0, 2.0, -0.05), {"design": "gem", "setting": "cup", "metal": _copper})
+	var drain_and := _mount(LumenPart.Kind.AND, "let the carboy down", br + Vector3(0, 2.0, 0.35), {"design": "gem", "setting": "cup", "metal": _copper})
+	_r["drain"] = _mount(LumenPart.Kind.RADIOMETER, "opens the carboy's tap", carboy + side * 0.5 + Vector3(0, 0.62, 0), {})
 	_wire(_l["carboy"], drain_ton)
-	_wire(drain_ton, _r["drain"])
-	_note(cab + Vector3(0, 1.3, 0), Vector3(2.6, 2.0, 0.6),
-			"The watch cabinet\nSix lanterns watch the process; their beams run to the crystals that work the valve, the bellows, the carousel and the carboy.")
+	_wire(_l["holds"], not_holds)
+	_wire(drain_ton, drain_and)
+	_wire(not_holds, drain_and)
+	_wire(drain_and, _r["drain"])
+	# DOSE and BOTTLE: crystals on the linkage's beam, one hung beneath it.
+	var top := (_plane + _q * LS) + Vector3(0, 1.6 - LINK_Y + 0.0, 0) - _side * 0.12
+	top.y = LINK_Y + 1.6
+	var not_dosed := _mount(LumenPart.Kind.NOT, "not yet dosed", top + Vector3(0, 0.22, 0) - _q * 0.35, {"design": "prism", "setting": "coil", "metal": _copper})
+	var dose_and := _mount(LumenPart.Kind.AND, "dose the reactor", top + Vector3(0, 0.22, 0) + _q * 0.05, {"design": "prism", "setting": "coil", "metal": _copper})
+	_rod(top + _q * 0.45, top + _q * 0.45 - Vector3(0, 0.2, 0), 0.006, _brass, 4)
+	var bottle_ton := _mount(LumenPart.Kind.TON, "dosed, and stirred a while", top + _q * 0.45 - Vector3(0, 0.42, 0), {"design": "obelisk", "setting": "hook", "metal": _brass}, 5.0)
+	_r["dose"] = _mount(LumenPart.Kind.RADIOMETER, "runs the linkage", _plane - _side * 0.24 + Vector3(0, 0.3, 0), {})
+	_r["bottle"] = _mount(LumenPart.Kind.RADIOMETER, "opens the reactor's tap", _reactor_at + _side * 0.5 + Vector3(0, 0.62, 0), {})
+	_wire(_l["dosed"], not_dosed)
+	_wire(_l["rfull"], dose_and)
+	_wire(not_dosed, dose_and)
+	_wire(dose_and, _r["dose"])
+	_wire(_l["dosed"], bottle_ton)
+	_wire(bottle_ton, _r["bottle"])
 
 
 ## ---- sound ------------------------------------------------------------------------
@@ -865,7 +1099,8 @@ func _build_sounds() -> void:
 	_snd_chuff = _speaker("res://audio/chuff.wav", false, _zy(-1.5, SHAFT + Vector2(0, 0.9)), 6.0)
 	_snd_bubble = _speaker("res://audio/bubble_loop.wav", true, CAULDRON + Vector3(0, 1.2, 0), 5.0)
 	_snd_clank = _speaker("res://audio/clank_2.wav", false, CAROUSEL + Vector3(0, 0.8, 0), 5.0)
-	_snd_chime = _speaker("res://audio/chime.wav", false, CAROUSEL + Vector3(0, 1.0, 0), 6.0)
+	_snd_chime = _speaker("res://audio/chime.wav", false, _reactor_at + Vector3(0, 1.0, 0), 6.0)
+	_snd_dose = _speaker("res://audio/clank_1.wav", false, _reactor_at + Vector3(0, 1.6, 0), 4.0)
 
 
 ## ---- running -----------------------------------------------------------------------
@@ -956,14 +1191,33 @@ func _physics_process(dt: float) -> void:
 		if _pouring >= 4.0:
 			_pouring = -1.0
 			_flasks[2] = 0.0
-	# The carboy's tap, opened by its radiometer, bottles it.
+	# The carboy's tap, opened by its radiometer, lets it into the reactor.
 	var tap := (_r["drain"] as LumenPart).spin
 	if tap > 0.5 and _carboy > 0.0:
 		_draining = true
 	if _draining:
-		_carboy = maxf(_carboy - 0.25 * dt, 0.0)
+		var moved := minf(0.25 * dt, _carboy)
+		_carboy -= moved
+		_reactor = minf(_reactor + moved, 1.0)
 		if _carboy <= 0.0:
 			_draining = false
+	# The linkage runs while its radiometer spins; a dose each time the
+	# ladle tips over the funnel.
+	var run := (_r["dose"] as LumenPart).spin
+	var was := fposmod(rad_to_deg(_crank), 360.0)
+	_crank += 1.1 * run * dt
+	var now := fposmod(rad_to_deg(_crank), 360.0)
+	if run > 0.05 and was < 300.0 and now >= 300.0 and _doses < 3 and _reactor > 0.5:
+		_doses += 1
+		_play(_snd_dose, randf_range(1.1, 1.3))
+	# The reactor's tap, opened by its radiometer, bottles the gold.
+	if (_r["bottle"] as LumenPart).spin > 0.5 and _reactor > 0.0 and _doses >= 3:
+		_bottling = true
+	if _bottling:
+		_reactor = maxf(_reactor - 0.2 * dt, 0.0)
+		if _reactor <= 0.0:
+			_bottling = false
+			_doses = 0
 			_crates = (_crates + 1) % 1000
 			_play(_snd_chime, 1.2)
 			for k in 3:
@@ -975,6 +1229,9 @@ func _physics_process(dt: float) -> void:
 	(_l["hot"] as LumenPart).condition = _hot
 	(_l["full"] as LumenPart).condition = float(_flasks[0]) >= 1.0 and _stepping < 0.0
 	(_l["carboy"] as LumenPart).condition = _carboy >= 0.999 and not _draining
+	(_l["holds"] as LumenPart).condition = _reactor > 0.02
+	(_l["rfull"] as LumenPart).condition = _reactor >= 0.98
+	(_l["dosed"] as LumenPart).condition = _wheel >= 2.9 and _doses >= 3
 	_step_circuit(dt)
 
 
@@ -1067,6 +1324,47 @@ func _process(_delta: float) -> void:
 		var carboy := CAROUSEL - to_tub * 1.25
 		_place(_funnel_stream, CAROUSEL - to_tub * 0.75 + Vector3(0, 1.25, 0), carboy + Vector3(0, 1.45, 0) + to_tub * 0.1)
 	_carboy_fill.scale = Vector3(1, maxf(_carboy, 0.02), 1)
-	_tap_stream.visible = _draining
+	_carboy_rod.position.y = 1.3 + 0.32 * _carboy
 	for k in _crate_nodes.size():
 		_crate_nodes[k].visible = k < (_crates % 7)
+	# The sensors.
+	var speed := clampf(_shaft_w / 1.2, 0.0, 1.0)
+	_gov_collar.position.y = 0.25 + 0.45 * speed
+	var gov_at := _zy(-5.5, SHAFT + Vector2(0, 0.1))
+	_place(_gov_lever, gov_at + Vector3(0, _gov_collar.position.y, -0.05), gov_at + Vector3(0, 0.78 + 0.12 * speed, -0.45))
+	_tank_rod.position.y = 2.5 + 0.45 * _tank
+	var float_y := 1.15 - 0.5 + 0.42 * _brew_level
+	_cauldron_arm.rotation.z = clampf(atan2(float_y - 1.3, 0.38), -0.9, 0.3)
+	_coil_pointer.rotation.z = 2.2 - 2.6 * _heat
+	var flask_fill: float = _flasks[0] if _stepping < 0.0 else 0.0
+	_flask_arm.rotation.x = -0.5 + 0.5 * flask_fill if _stepping < 0.0 else -0.9
+	_reactor_rod.position.y = 1.36 + 0.6 * _reactor
+	# The reactor: its contents, their colour, the stirrer and its motor,
+	# the glowing coil, the tap's stream.
+	_reactor_fill.scale = Vector3(1, maxf(_reactor * 0.95, 0.01), 1)
+	_wheel = move_toward(_wheel, float(_doses) if _doses > 0 or _wheel < 3.0 else 4.0, get_process_delta_time() * 1.5)
+	if _wheel >= 4.0:
+		_wheel = 0.0
+	var gold := clampf(_wheel / 3.0, 0.0, 1.0)
+	var colour := BLUE.lerp(GOLD, gold)
+	_tint.albedo_color = colour.darkened(0.2)
+	_tint.emission = colour
+	var stirring := _reactor > 0.02
+	_stirrer.rotation.y += (2.5 if stirring else 0.0) * get_process_delta_time()
+	_motor_gear.rotation.y = -_stirrer.rotation.y * 2.0
+	_coil_glow.emission_energy_multiplier = 0.2 + (1.8 if stirring else 0.0) * (0.85 + 0.15 * sin(t * 3.0))
+	_tap_stream.visible = _bottling
+	# The linkage, by Chebyshev's geometry, and the ladle at its end.
+	var b2 := Vector2(cos(_crank), sin(_crank)) * LS
+	var c2 := LinkageHall._meet(b2, 2.5 * LS, Vector2(2.0 * LS, 0.0), 2.5 * LS, true)
+	var p2 := b2 + (c2 - b2) * 2.0
+	_place(_link_crank, _in_plane(Vector2.ZERO), _in_plane(b2))
+	_place(_link_rocker, _in_plane(Vector2(2.0 * LS, 0.0)), _in_plane(c2))
+	_place(_link_coupler, _in_plane(b2), _in_plane(p2))
+	var deg := fposmod(rad_to_deg(_crank), 360.0)
+	var tip := smoothstep(280.0, 300.0, deg) * (1.0 - smoothstep(318.0, 345.0, deg))
+	_ladle.position = _in_plane(p2) + _side * OFFSET
+	_place(_ladle_arm, _in_plane(p2), _ladle.position)
+	_ladle.basis = Basis(_side, tip * 1.7)
+	# The counting wheel, a quarter turn a dose; its cam up on the third.
+	_count_wheel.basis = Basis(_side, -_wheel * PI * 0.5)
