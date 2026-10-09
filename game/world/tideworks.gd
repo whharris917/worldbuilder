@@ -57,21 +57,30 @@ extends BeachSite
 const BEARING := 198.0
 const OUT := 55.0                        # the barge's middle beyond the shore, m
 const DECK_Y := 0.8                      # its deck over the sea
-const HALF := Vector2(12.0, 9.0)         # half its deck, along and out
+const HALF := Vector2(18.0, 11.0)        # half its deck, along and out
 const PONTOON_Y := 0.4
 const SWELL := 6.5                       # seconds a swell
 const RATIO := 6.0                       # line shaft turns to the countershaft's
 const TEETH := 16
-const SHAFT := Vector2(6.0, 1.5)         # the line shaft's z, y
-const COUNTER := Vector2(6.0, 0.8)       # the countershaft's z, y
-const SEESAW := Vector2(8.6, 1.0)        # the see-saw's pivot z, y
+const SHAFT := Vector2(8.0, 1.5)         # the line shaft's z, y
+const COUNTER := Vector2(8.0, 0.8)       # the countershaft's z, y
+const SEESAW := Vector2(10.6, 1.0)       # the see-saw's pivot z, y
+# Where along the barge the machines on the line shaft stand.
+const ENGINE_X := -16.5
+const FLY_X := -14.5
+const GOV_X := -12.0
+const PUMP_X := -6.0
+const BELLOWS_X := 1.5
+const SHAFT_FROM := -16.0
+const SHAFT_TO := 6.0
 const ARM := 3.8                         # its long arm to the float
 const STUB := 1.0                        # its short arm
 const LEVER := 0.7
-const CAULDRON := Vector3(2.5, 0.0, 1.0)
-const TANK := Vector3(-1.5, 0.0, 2.8)
-const CAROUSEL := Vector3(6.6, 0.0, -2.4)
-const TUB := Vector3(5.6, 0.0, -1.0)
+const CAULDRON := Vector3(0.0, 0.0, 5.2)
+const TANK := Vector3(-6.0, 0.0, 4.0)
+const CAROUSEL := Vector3(5.8, 0.0, -1.6)
+const TUB := Vector3(3.6, 0.0, 1.6)
+const REACTOR_OFF := 3.0                 # the reactor from the carboy
 const LS := 0.27                         # the linkage's unit, m: ground 2, crank 1, rocker 2.5, coupler 5
 const LINK_Y := 0.81                     # its ground pivots over the deck
 const LADLE_DROP := 0.22
@@ -461,7 +470,7 @@ func _build_deck() -> void:
 ## ---- power from the swell -----------------------------------------------------
 
 func _build_power() -> void:
-	var x := -9.2
+	var x := ENGINE_X
 	# The see-saw: its pivot on a post at the deck's edge, the float out
 	# on the sea at its long end.
 	_box(Vector3(0.2, SEESAW.y, 0.2), _zy(x, Vector2(SEESAW.x, SEESAW.y * 0.5)), _iron, false)
@@ -492,11 +501,11 @@ func _build_power() -> void:
 	big_view.basis = Basis(Vector3.UP, PI * 0.5)
 	_big_gear.add_child(big_view)
 	# The line shaft, on posts, from the gear to the far machines.
-	for px: float in [-8.5, -4.0, 1.0, 6.5]:
+	for px: float in [-15.8, -10.0, -2.0, 5.5]:
 		_box(Vector3(0.18, SHAFT.y, 0.24), _zy(px, Vector2(SHAFT.x, SHAFT.y * 0.5)), _iron, true)
 	var shaft := _pivot(_zy(0.0, SHAFT))
 	_cams.append(shaft)
-	var bar := _cyl(0.04, 0.04, 16.6, Vector3(-0.9, 0, 0), _iron, 8, false, shaft)
+	var bar := _cyl(0.04, 0.04, SHAFT_TO - SHAFT_FROM, Vector3((SHAFT_FROM + SHAFT_TO) * 0.5, 0, 0), _iron, 8, false, shaft)
 	bar.basis = Basis(Vector3.BACK, PI * 0.5)
 	_small_gear = _pivot(_zy(x + 0.18, SHAFT))
 	var small := LinkageHall._plate(func(a: float) -> float: return 0.1 + 0.025 * signf(sin(a * 8.0)), 0.05, 64)
@@ -506,7 +515,7 @@ func _build_power() -> void:
 	small_view.basis = Basis(Vector3.UP, PI * 0.5)
 	_small_gear.add_child(small_view)
 	# The flywheel.
-	_flywheel = _pivot(_zy(-7.2, SHAFT))
+	_flywheel = _pivot(_zy(FLY_X, SHAFT))
 	var rim := TorusMesh.new()
 	rim.inner_radius = 0.72
 	rim.outer_radius = 0.82
@@ -520,7 +529,7 @@ func _build_power() -> void:
 		_rod(Vector3.ZERO, Vector3(0, sin(a), cos(a)) * 0.74, 0.03, _iron, 6, _flywheel)
 	_sphere(0.09, Vector3.ZERO, _brass, _flywheel)
 	# The governor: a spindle up from a bracket on the shaft.
-	var gov_at := _zy(-5.5, SHAFT + Vector2(0, 0.1))
+	var gov_at := _zy(GOV_X, SHAFT + Vector2(0, 0.1))
 	_box(Vector3(0.2, 0.1, 0.2), gov_at, _brass, false)
 	_gov = _pivot(gov_at)
 	_cyl(0.02, 0.02, 1.0, Vector3(0, 0.5, 0), _brass, 8, false, _gov)
@@ -530,7 +539,7 @@ func _build_power() -> void:
 		_ball(0.07, Vector3(0, -0.42, 0), _brass, arm)
 		arm.set_meta("side", side)
 		_gov_arms.append(arm)
-	_note(_zy(x, Vector2(7.2, 1.2)), Vector3(1.6, 2.2, 4.0),
+	_note(_zy(x, Vector2(SEESAW.x - 1.4, 1.2)), Vector3(1.6, 2.2, 4.0),
 			"The swell engine\nThe float rides the swell; its arm rocks the lever, whose pawl drives the ratchet one way only. The gears turn the line shaft six times as fast; the flywheel carries it between swells.")
 	# The see-saw's mid position fixes the rod's length.
 	var mid := asin(clampf((-DECK_Y - SEESAW.y) / ARM, -1.0, 1.0))
@@ -553,7 +562,7 @@ func _band(parent: Node3D) -> void:
 ## ---- the pump and the tank ------------------------------------------------------
 
 func _build_pump() -> void:
-	var x := -1.5
+	var x := PUMP_X
 	var cam_mesh := LinkageHall._plate(func(a: float) -> float: return 0.08 * cos(a) + sqrt(0.15 * 0.15 - pow(0.08 * sin(a), 2.0)), 0.06)
 	var cam := MeshInstance3D.new()
 	cam.mesh = cam_mesh
@@ -603,16 +612,18 @@ func _build_tank() -> void:
 	_rod(gauge - Vector3(0, 0.45, 0), TANK + Vector3(0, 1.6, -0.5), 0.015, _brass, 6)
 	_tank_gauge = _pivot(gauge - Vector3(0, 0.46, 0))
 	_cyl(0.032, 0.032, 1.0, Vector3(0, 0.5, 0), _sea_water, 10, false, _tank_gauge)
-	# Down to the cauldron through the valve.
+	# Down through the valve beside the tank, up and over head height to
+	# the cauldron, so the way between them stays clear.
 	var out := TANK + Vector3(0, 1.55, 0)
-	var bend := Vector3(TANK.x, 1.1, TANK.z)
-	_rod(out, bend, 0.04, _copper, 8)
-	var over := Vector3(CAULDRON.x - 0.3, 1.1, TANK.z)
-	_rod(bend, over, 0.04, _copper, 8)
-	var spout := CAULDRON + Vector3(-0.3, 1.45, -0.0)
-	_rod(over, Vector3(over.x, 1.45, over.z), 0.04, _copper, 8)
-	_rod(Vector3(over.x, 1.45, over.z), spout, 0.04, _copper, 8)
-	var valve := (bend + over) * 0.5
+	var low := TANK + Vector3(0, 1.1, 0)
+	var rise := TANK + Vector3(1.2, 1.1, 0)
+	var high := TANK + Vector3(1.2, 2.5, 0)
+	var across := Vector3(CAULDRON.x - 1.0, 2.5, CAULDRON.z)
+	var spout := CAULDRON + Vector3(-0.3, 1.45, 0.0)
+	for leg: Array in [[out, low], [low, rise], [rise, high], [high, across], [across, Vector3(across.x, 1.45, across.z)], [Vector3(across.x, 1.45, across.z), spout]]:
+		_rod(leg[0], leg[1], 0.04, _copper, 8)
+		_sphere(0.055, leg[1], _copper)
+	var valve := TANK + Vector3(0.65, 1.1, 0)
 	_cyl(0.08, 0.08, 0.18, valve, _brass, 12, false).basis = Basis(Vector3.BACK, PI * 0.5)
 	_valve_wheel = _pivot(valve + Vector3(0, 0.2, 0))
 	_ring(0.12, 0.14, Vector3.ZERO, _iron, _valve_wheel)
@@ -683,10 +694,10 @@ func _build_cauldron() -> void:
 	var cam := MeshInstance3D.new()
 	cam.mesh = cam_mesh
 	cam.material_override = _brass
-	cam.position = Vector3(3.5, 0, 0)
+	cam.position = Vector3(BELLOWS_X, 0, 0)
 	cam.basis = Basis(Vector3.UP, PI * 0.5)
 	_cams[0].add_child(cam)
-	_bellows_follower = _pivot(_zy(3.5, SHAFT))
+	_bellows_follower = _pivot(_zy(BELLOWS_X, SHAFT))
 	_cyl(0.015, 0.015, 0.5, Vector3(0, 0.25, 0), _iron, 6, false, _bellows_follower)
 	_cyl(0.03, 0.03, 0.03, Vector3(0, 0.01, 0), _brass, 10, false, _bellows_follower)
 	_bellows_rod = _link(0.02, _iron)
@@ -794,7 +805,7 @@ func _build_carousel() -> void:
 	var tap := carboy + Vector3(0, 0.38, 0) + side * 0.5
 	_rod(carboy + Vector3(0, 0.38, 0) + side * 0.42, tap, 0.03, _brass, 8)
 	_cyl(0.035, 0.035, 0.1, tap + Vector3(0, 0.06, 0), _brass, 8, false)
-	_reactor_at = carboy + side * 1.7
+	_reactor_at = carboy + side * REACTOR_OFF
 	_rod(tap, _reactor_at + Vector3(0, 0.38, 0) - side * 0.42, 0.035, _copper, 8)
 	# The carboy's float rod, rising out of its neck as it fills.
 	_carboy_rod = _pivot(carboy + Vector3(0, 1.3, 0) - side * 0.04)
@@ -973,7 +984,7 @@ func _build_circuit() -> void:
 	var carboy := CAROUSEL - to_tub * 1.25
 	# The shaft turning: the governor's collar rises with its speed and
 	# lifts a lever to the lantern.
-	var gov_at := _zy(-5.5, SHAFT + Vector2(0, 0.1))
+	var gov_at := _zy(GOV_X, SHAFT + Vector2(0, 0.1))
 	_gov_collar = _pivot(Vector3(0, 0.3, 0), _gov)
 	_ring(0.03, 0.06, Vector3.ZERO, _brass, _gov_collar)
 	_box(Vector3(0.06, 0.06, 0.06), gov_at + Vector3(0, 0.75, -0.5), _brass, false)
@@ -1095,8 +1106,8 @@ func _build_circuit() -> void:
 ## ---- sound ------------------------------------------------------------------------
 
 func _build_sounds() -> void:
-	_snd_click = _speaker("res://audio/ratchet.wav", false, _zy(-9.2, COUNTER), 6.0)
-	_snd_chuff = _speaker("res://audio/chuff.wav", false, _zy(-1.5, SHAFT + Vector2(0, 0.9)), 6.0)
+	_snd_click = _speaker("res://audio/ratchet.wav", false, _zy(ENGINE_X, COUNTER), 6.0)
+	_snd_chuff = _speaker("res://audio/chuff.wav", false, _zy(PUMP_X, SHAFT + Vector2(0, 0.9)), 6.0)
 	_snd_bubble = _speaker("res://audio/bubble_loop.wav", true, CAULDRON + Vector3(0, 1.2, 0), 5.0)
 	_snd_clank = _speaker("res://audio/clank_2.wav", false, CAROUSEL + Vector3(0, 0.8, 0), 5.0)
 	_snd_chime = _speaker("res://audio/chime.wav", false, _reactor_at + Vector3(0, 1.0, 0), 6.0)
@@ -1239,10 +1250,10 @@ func _process(_delta: float) -> void:
 	var t := _clock
 	# The swell engine.
 	_seesaw_node.rotation.x = -_seesaw
-	_float_node.position = _zy(-9.2, SEESAW + Vector2(cos(_seesaw), sin(_seesaw)) * ARM)
+	_float_node.position = _zy(ENGINE_X, SEESAW + Vector2(cos(_seesaw), sin(_seesaw)) * ARM)
 	var back := SEESAW - Vector2(cos(_seesaw), sin(_seesaw)) * STUB
 	var end := COUNTER + Vector2(cos(_lever), sin(_lever)) * LEVER
-	_place(_rod_link, _zy(-9.25, back), _zy(-9.25, end))
+	_place(_rod_link, _zy(ENGINE_X - 0.05, back), _zy(ENGINE_X - 0.05, end))
 	_lever_node.rotation.x = -_lever
 	_ratchet.rotation.x = -_counter
 	_big_gear.rotation.x = -_counter
@@ -1255,11 +1266,11 @@ func _process(_delta: float) -> void:
 		arm.rotation.z = float(arm.get_meta("side")) * (0.15 + 0.5 * clampf(_shaft_w / 1.2, 0.0, 1.0))
 	# The pump.
 	var lift := 0.08 * cos(PI * 0.5 - _shaft) + sqrt(0.15 * 0.15 - pow(0.08 * sin(PI * 0.5 - _shaft), 2.0))
-	_pump_follower.position = _zy(-1.5, SHAFT + Vector2(0, lift))
-	_plunger.position = _zy(-1.5, SHAFT + Vector2(0, 0.85 - 0.25 + lift * 1.2))
+	_pump_follower.position = _zy(PUMP_X, SHAFT + Vector2(0, lift))
+	_plunger.position = _zy(PUMP_X, SHAFT + Vector2(0, 0.85 - 0.25 + lift * 1.2))
 	for k in _slugs.size():
 		var f := fposmod(_shaft * 0.5 + k / 3.0, 1.0)
-		_slugs[k].position = _zy(-1.5, SHAFT + Vector2(0, 0.85 + 0.36 + 0.36 * f))
+		_slugs[k].position = _zy(PUMP_X, SHAFT + Vector2(0, 0.85 + 0.36 + 0.36 * f))
 	_tank_gauge.scale = Vector3(1, maxf(_tank * 0.92, 0.01), 1)
 	# The valve and its stream.
 	var open := (_r["valve"] as LumenPart).spin
@@ -1286,11 +1297,11 @@ func _process(_delta: float) -> void:
 	var engaged := (_r["bellows"] as LumenPart).spin
 	var cam := 0.1 + 0.07 * pow(maxf(cos(PI * 0.5 - _shaft), 0.0), 2.0)
 	var breath := (cam - 0.1) / 0.07 * engaged
-	_bellows_follower.position = _zy(3.5, SHAFT + Vector2(0, lerpf(0.2, cam, engaged)))
+	_bellows_follower.position = _zy(BELLOWS_X, SHAFT + Vector2(0, lerpf(0.2, cam, engaged)))
 	var angle := 0.05 + 0.25 * (1.0 - breath)
 	_bellows_top.rotation.z = -angle
 	_bellows_leather.scale = Vector3(1.0 - 0.15 * (1.0 - breath), maxf(sin(angle) * 0.85, 0.01), 1.0)
-	_place(_bellows_rod, _zy(3.5, SHAFT + Vector2(0, lerpf(0.2, cam, engaged) + 0.5)), CAULDRON + Vector3(1.75, 0.55 + 0.2 * (1.0 - breath), 0))
+	_place(_bellows_rod, _zy(BELLOWS_X, SHAFT + Vector2(0, lerpf(0.2, cam, engaged) + 0.5)), CAULDRON + Vector3(1.75, 0.55 + 0.2 * (1.0 - breath), 0))
 	# The drip, every 0.8 s while it boils.
 	var f := fmod(t, 0.8)
 	var fall := 0.5 * 9.8 * f * f
@@ -1330,7 +1341,7 @@ func _process(_delta: float) -> void:
 	# The sensors.
 	var speed := clampf(_shaft_w / 1.2, 0.0, 1.0)
 	_gov_collar.position.y = 0.25 + 0.45 * speed
-	var gov_at := _zy(-5.5, SHAFT + Vector2(0, 0.1))
+	var gov_at := _zy(GOV_X, SHAFT + Vector2(0, 0.1))
 	_place(_gov_lever, gov_at + Vector3(0, _gov_collar.position.y, -0.05), gov_at + Vector3(0, 0.78 + 0.12 * speed, -0.45))
 	_tank_rod.position.y = 2.5 + 0.45 * _tank
 	var float_y := 1.15 - 0.5 + 0.42 * _brew_level

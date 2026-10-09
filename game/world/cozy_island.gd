@@ -133,6 +133,7 @@ var _clock := 0.0
 var _was_debanding := false
 var _was_soft := 0
 var _place_left := 3.0
+var _labels := true                     # floating labels on what the player looks at
 var _good: Array[Vector4] = []          # recent places stood freely on the ground: x, y, z, facing
 var _good_left := 0.0
 var _wedged := 0.0                      # seconds found inside something
@@ -283,6 +284,7 @@ func _build_panels() -> void:
 
 	var isle := _panel.panel("Island")
 	_panel.switch(isle, "Works and machines", true, func(v: bool) -> void: _set_works(v))
+	_panel.switch(isle, "Floating labels", true, func(v: bool) -> void: _labels = v)
 	_panel.note(isle, "All the works and the exposition, their machines, beams and sounds. Off, the island is left to itself: the beaches, the dunes and the bay, the cabin, the campfire and the lanterns.")
 
 	var wx := _panel.panel("Weather")
@@ -941,8 +943,9 @@ func _process(delta: float) -> void:
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:
 		sky.follow(camera.global_position)
-	# What the player looks at tells what it is (the salt works' parts).
-	var view: Node = player.look_view()
+	# What the player looks at tells what it is (the salt works' parts),
+	# unless the floating labels are switched off.
+	var view: Node = player.look_view() if _labels else null
 	if view != _hovered:
 		if _hovered != null and is_instance_valid(_hovered) and _hovered.has_method("show_label"):
 			_hovered.call("show_label", false)
