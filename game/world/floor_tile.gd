@@ -2,37 +2,25 @@ class_name FloorTile
 extends StaticBody3D
 ## A square of plank floor SIZE metres across that the player builds
 ## (Workshop) to give a level place to stand pieces on, on legs down to
-## the ground. Tiles lie on a world grid SIZE metres apart, so neighbours
-## join into one floor, their tops at whole steps of STEP; each of its four
-## boards is one row of places for pieces (Workshop.SLOT).
+## the ground. It stands wherever it was put, turned about the upright;
+## one put close beside another settles flush against its edge, level
+## with it, so floors join.
 
 const SIZE := 2.0
-const STEP := 0.25
 const THICK := 0.1
 
 var workshop: Workshop
-var cell := Vector2i.ZERO
 var top := 0.0
 
 
-## The tile in grid `at`, its top at `top_y`.
-func _init(shop: Workshop, at: Vector2i, top_y: float) -> void:
+## A tile with the middle of its top at `at`, turned `yaw`.
+func _init(shop: Workshop, at: Vector3, yaw: float) -> void:
 	workshop = shop
-	cell = at
-	top = top_y
+	top = at.y
 	name = "FloorTile"
-	position = centre(at, top_y)
+	position = at
+	rotation.y = yaw
 	collision_layer = 1
-
-
-## The middle of the top of the tile in grid `at`, at height `y`.
-static func centre(at: Vector2i, y: float) -> Vector3:
-	return Vector3((at.x + 0.5) * SIZE, y, (at.y + 0.5) * SIZE)
-
-
-## The grid square holding the point `p`.
-static func cell_of(p: Vector3) -> Vector2i:
-	return Vector2i(floori(p.x / SIZE), floori(p.z / SIZE))
 
 
 func _ready() -> void:
@@ -43,12 +31,13 @@ func _ready() -> void:
 	shape.shape = box
 	shape.position.y = -THICK * 0.5
 	add_child(shape)
-	var boards := int(SIZE / Workshop.SLOT)
+	var boards := 4
+	var width := SIZE / boards
 	for n in boards:
 		var board := BoxMesh.new()
-		board.size = Vector3(SIZE - 0.01, 0.035, Workshop.SLOT - 0.014)
+		board.size = Vector3(SIZE - 0.01, 0.035, width - 0.014)
 		board.material = workshop.wood
-		_view(board, Vector3(0, -0.0175, -half + (n + 0.5) * Workshop.SLOT))
+		_view(board, Vector3(0, -0.0175, -half + (n + 0.5) * width))
 	for side: float in [-1.0, 1.0]:
 		var bearer := BoxMesh.new()
 		bearer.size = Vector3(0.1, THICK - 0.035, SIZE - 0.02)
@@ -73,3 +62,12 @@ func _view(mesh: Mesh, at: Vector3) -> void:
 	m.mesh = mesh
 	m.position = at
 	add_child(m)
+
+
+## The middles of the places beside it, where a tile put close settles:
+## off each edge, level with it.
+func beside() -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for d: Vector3 in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
+		out.append(global_transform * (d * SIZE))
+	return out

@@ -7,18 +7,18 @@ extends Node3D
 ##
 ## B starts and stops building. While building, a tray along the bottom
 ## shows what is in hand (ITEMS: the number keys, or the wheel, choose)
-## and a pale copy of it stands where it would go, at what the crosshair
-## is on within REACH metres; a left click puts it there. A floor tile
-## goes in the grid square under the crosshair, its top a step above the
-## highest ground under it, or level with the highest floor beside it
-## where that clears the ground; looking at the edge or side of a tile
-## puts the next one beside it at the same height. A piece stands HEAD metres
-## over what the crosshair is on (a tile, at the middle of the nearest
-## place on it, SLOT metres apart; the ground, where it is), or half a
-## metre over a piece looked at, on a brass rod down to what is under
-## it. The pale copy shows red where it cannot go. Shift and the wheel
-## raise and lower it in steps; X takes away what the crosshair is on; T
-## changes an hourglass's or afterglow's delay.
+## and a see-through copy of it, whole, stands where it would go, at
+## what the crosshair is on within REACH metres, turned square to the
+## view; a left click puts it there. Nothing keeps to a grid. A floor
+## tile is centred where the crosshair meets the ground, its top just
+## clear of the highest ground under it; brought within SETTLE metres of
+## the place beside a tile already down (or looked at on that tile's
+## edge or side) it settles there, flush and level with it, so floors
+## join. A piece stands HEAD metres over the point the crosshair is on
+## (on a floor or the ground), or half a metre over a piece looked at,
+## on a brass rod down to what is under it. The copy shows red where it
+## cannot go. Shift and the wheel raise and lower it; X takes away what
+## the crosshair is on; T changes an hourglass's or afterglow's delay.
 ##
 ## At any time: E on a lantern opens or closes it; E on any other piece
 ## but a radiometer looks through it to aim it (BenchScope); a right click
@@ -33,8 +33,8 @@ extends Node3D
 const SAVE_PATH := "user://cozy_island_build.json"
 const REACH := 8.0
 const HEAD := 1.0                       # a piece's height over what it stands on, to begin
-const SLOT := 0.5
-const LIFT_STEP := 0.25
+const LIFT_STEP := 0.1
+const SETTLE := 1.0                     # m from the place beside a tile within which a tile settles there
 const MAX_TILE_RISE := 6.0              # a tile's top over the highest ground under it, at most
 const CLEAR := 0.4                      # pieces' middles kept this far apart
 
@@ -83,7 +83,7 @@ const AIM_NOTE := "\nE: look through it.  Right click: aim it at what you look a
 var island: CozyIsland
 var light := BenchLight.new()
 var scope: BenchScope
-var tiles := {}                         # Vector2i -> FloorTile
+var tiles: Array[FloorTile] = []
 var pieces: Array[Node3D] = []
 var wood: StandardMaterial3D            # floor boards
 var timber: StandardMaterial3D          # bearers and legs
@@ -104,10 +104,14 @@ var _save_in := -1.0
 var _ok := false
 var _why := ""
 var _at := Vector3.ZERO                 # a piece's middle, or a tile's top middle
-var _tile_cell := Vector2i.ZERO
-var _ghost_tile := MeshInstance3D.new()
-var _ghost_piece := MeshInstance3D.new()
-var _ghost_mat := StandardMaterial3D.new()
+var _yaw := 0.0                         # how it is turned
+var _support := 0.0                     # the height a piece's rod goes down to
+# The see-through copy of what is in hand.
+var _ghost: Node3D = null
+var _ghost_key := ""
+var _ghost_rod: MeshInstance3D = null
+var _ghost_red := false
+var _red := StandardMaterial3D.new()
 var _ui := CanvasLayer.new()
 var _cross := Label.new()
 var _hint := Label.new()
@@ -139,7 +143,9 @@ func _ready() -> void:
 	add_child(light)
 	scope = BenchScope.new(self)
 	add_child(scope)
-	_build_ghosts()
+	_red.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_red.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_red.albedo_color = Color(1.0, 0.2, 0.15, 0.55)
 	_build_ui()
 	if not MouseMode.probe:
 		_load()
@@ -152,18 +158,18 @@ func _exit_tree() -> void:
 
 ## ---- building ----------------------------------------------------------------
 
-## A floor tile in grid `cell` with its top at `top`.
-func add_tile(cell: Vector2i, top: float) -> FloorTile:
-	var t := FloorTile.new(self, cell, top)
+## A floor tile with the middle of its top at `at`, turned `yaw`.
+func add_tile(at: Vector3, yaw: float) -> FloorTile:
+	var t := FloorTile.new(self, at, yaw)
 	add_child(t)
-	tiles[cell] = t
+	tiles.append(t)
 	_clear_ground()
 	_rods_due = true
 	return t
 
 
 func remove_tile(t: FloorTile) -> void:
-	tiles.erase(t.cell)
+	tiles.erase(t)
 	t.queue_free()
 	_clear_ground()
 	_rods_due = true
@@ -172,21 +178,8 @@ func remove_tile(t: FloorTile) -> void:
 ## A piece of `key` with its middle at `at`, its head turned to `yaw`
 ## and `pitch`.
 func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0) -> Node3D:
-	var piece: Node3D
-	if GLASS.has(key):
-		var e := OpticElement.new(GLASS[key], at, 0.0, timber, brass, silver, glass, false)
-		e.collision_layer = 4
-		piece = e
-	else:
-		var kind: LumenPart.Kind = KINDS[key]
-		var look := {"post": false, "aimed": true, "catch": 0.22}
-		look.merge(LOOKS.get(key, {}))
-		if look.has("metal"):
-			look["metal"] = get(look["metal"])
-		var p := LumenPart.new(kind, "", at, at.y, timber, brass,
-				delay if kind == LumenPart.Kind.TON or kind == LumenPart.Kind.TOF else 0.0, look)
-		p.collision_layer = 4
-		piece = p
+	var piece := _make(key, at, delay)
+	(piece as CollisionObject3D).collision_layer = 4
 	piece.set_meta("piece", key)
 	add_child(piece)
 	piece.call("aim", yaw, pitch)
@@ -201,6 +194,19 @@ func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0)
 		_bells[piece] = [false, bell]
 	_rods_due = true
 	return piece
+
+
+## A piece of `key` at `at`, not yet placed.
+func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
+	if GLASS.has(key):
+		return OpticElement.new(GLASS[key], at, 0.0, timber, brass, silver, glass, false)
+	var kind: LumenPart.Kind = KINDS[key]
+	var look := {"post": false, "aimed": true, "catch": 0.22}
+	look.merge(LOOKS.get(key, {}))
+	if look.has("metal"):
+		look["metal"] = get(look["metal"])
+	return LumenPart.new(kind, "", at, at.y, timber, brass,
+			delay if kind == LumenPart.Kind.TON or kind == LumenPart.Kind.TOF else 0.0, look)
 
 
 func remove_piece(piece: Node3D) -> void:
@@ -272,14 +278,14 @@ func toggle(lantern: LumenPart) -> void:
 ## No flowers growing up through a floor laid near the ground.
 func _clear_ground() -> void:
 	var areas: Array = []
-	for t: FloorTile in tiles.values():
+	for t in tiles:
 		var low := INF
 		for u: float in [-1.0, 1.0]:
 			for v: float in [-1.0, 1.0]:
-				var c := t.position + Vector3(u, 0.0, v) * FloorTile.SIZE * 0.5
+				var c := t.global_transform * (Vector3(u, 0.0, v) * FloorTile.SIZE * 0.5)
 				low = minf(low, t.top - island.height(c.x, c.z))
 		if low < 0.6:
-			areas.append([Transform3D(Basis.IDENTITY, t.position), FloorTile.SIZE * 0.5 + 0.05])
+			areas.append([t.global_transform, FloorTile.SIZE * 0.5 + 0.05])
 	island.clear_ground(areas)
 
 
@@ -342,106 +348,100 @@ func _held_key() -> String:
 	return str(ITEMS[item][0])
 
 
-## Where the thing in hand would go and whether it can; the pale copy
-## put there.
+## Where the thing in hand would go and whether it can; its copy put
+## there, red where it cannot go.
 func _find_place() -> void:
 	var hit := _look_hit()
 	_ok = false
 	_why = ""
-	_ghost_tile.visible = false
-	_ghost_piece.visible = false
-	if hit.is_empty():
+	var f := -island.player.camera.global_basis.z
+	_yaw = atan2(-f.x, -f.z)
+	var shown := false
+	if not hit.is_empty():
+		var p: Vector3 = hit["position"]
+		var n: Vector3 = hit["normal"]
+		var c: Object = hit["collider"]
+		shown = _find_tile(p, n, c) if _held_key() == "floor" else _find_spot(p, n, c)
+	if not shown:
+		if _ghost != null:
+			_ghost.visible = false
 		return
-	var p: Vector3 = hit["position"]
-	var n: Vector3 = hit["normal"]
-	var c: Object = hit["collider"]
-	if _held_key() == "floor":
-		_find_tile(p, n, c)
-	else:
-		_find_spot(p, n, c)
-	_ghost_mat.albedo_color = Color(_ghost_mat.albedo_color, 0.4) if _ok else Color(1.0, 0.25, 0.2, 0.4)
+	_show_ghost()
 
 
-func _find_tile(p: Vector3, n: Vector3, c: Object) -> void:
-	var cell := FloorTile.cell_of(p)
-	var top := 0.0
-	var base := false
+## A tile: where the crosshair meets the ground, or settled beside a tile
+## near it. Whether there is anything to show.
+func _find_tile(p: Vector3, n: Vector3, c: Object) -> bool:
+	var at := p
+	var yaw := _yaw
+	var level := -INF
 	if c is FloorTile:
 		# Beside the tile looked at: off the side it is looked at by, or
-		# off its nearest edge when looked at from above, at its height.
+		# off its nearest edge when looked at from above.
 		var t := c as FloorTile
-		var d := Vector2(n.x, n.z)
-		if n.y > 0.7:
-			var off := Vector2(p.x - t.position.x, p.z - t.position.z)
-			d = Vector2(signf(off.x), 0.0) if absf(off.x) > absf(off.y) else Vector2(0.0, signf(off.y))
-		elif absf(d.x) > absf(d.y):
-			d = Vector2(signf(d.x), 0.0)
-		else:
-			d = Vector2(0.0, signf(d.y))
-		cell = t.cell + Vector2i(roundi(d.x), roundi(d.y))
-		top = t.top
+		var local := t.to_local(p)
+		var ln := t.global_basis.inverse() * n
+		var d := Vector3(ln.x, 0.0, ln.z) if n.y < 0.7 else Vector3(local.x, 0.0, local.z)
+		d = Vector3(signf(d.x), 0.0, 0.0) if absf(d.x) > absf(d.z) else Vector3(0.0, 0.0, signf(d.z))
+		at = t.global_transform * (d * FloorTile.SIZE)
+		yaw = t.rotation.y
+		level = t.top
 	else:
-		base = true
+		var best := SETTLE
+		for t in tiles:
+			for b in t.beside():
+				var gap := Vector2(b.x - p.x, b.z - p.z).length()
+				if gap < best:
+					best = gap
+					at = b
+					yaw = t.rotation.y
+					level = t.top
+	var turn := Basis(Vector3.UP, yaw)
 	var lo := INF
 	var hi := -INF
-	var centre := FloorTile.centre(cell, 0.0)
 	for a in 3:
 		for b in 3:
-			var q := centre + Vector3(a - 1.0, 0.0, b - 1.0) * FloorTile.SIZE * 0.5
+			var q := Vector3(at.x, 0.0, at.z) + turn * (Vector3(a - 1.0, 0.0, b - 1.0) * FloorTile.SIZE * 0.5)
 			var h := island.height(q.x, q.z)
 			lo = minf(lo, h)
 			hi = maxf(hi, h)
-	if base:
-		# A step over the ground, or level with the highest floor beside
-		# it when that clears the ground too.
-		top = ceilf((hi + 0.05) / FloorTile.STEP) * FloorTile.STEP
-		var beside := -INF
-		for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			if tiles.has(cell + d):
-				beside = maxf(beside, (tiles[cell + d] as FloorTile).top)
-		if beside >= top:
-			top = beside
-	top += lift
-	_tile_cell = cell
-	_at = FloorTile.centre(cell, top)
-	_ghost_tile.global_position = _at + Vector3(0, -FloorTile.THICK * 0.5, 0)
-	_ghost_tile.visible = true
-	_ghost_mat.albedo_color = FLOOR_COLOUR
+	var top := (level if level > -INF else hi + 0.05) + lift
+	_at = Vector3(at.x, top, at.z)
+	_yaw = yaw
+	var xf := Transform3D(turn, _at)
 	# Drafts.
-	if tiles.has(cell):
-		_why = "There is a floor there already."
-	elif lo < 0.12:
+	if lo < 0.12:
 		_why = "Not over the water."
 	elif top < hi + 0.04:
 		_why = "The ground stands higher than that; raise it with Shift and the wheel."
 	elif top > hi + MAX_TILE_RISE:
 		_why = "Too high above the ground."
-	elif _blocked(_at + Vector3(0, 0.95, 0), Vector3(FloorTile.SIZE - 0.05, 1.8, FloorTile.SIZE - 0.05)):
+	elif _blocked(xf * Vector3(0, -0.025, 0), Vector3(FloorTile.SIZE - 0.1, 0.04, FloorTile.SIZE - 0.1), turn):
+		_why = "Another floor is there."
+	elif _blocked(xf * Vector3(0, 0.95, 0), Vector3(FloorTile.SIZE - 0.05, 1.8, FloorTile.SIZE - 0.05), turn):
 		_why = "Something stands in the way."
-	elif _under_player(_at):
+	elif _under_player(xf):
 		_why = "You are standing there."
 	_ok = _why == ""
+	return true
 
 
-func _find_spot(p: Vector3, n: Vector3, c: Object) -> void:
-	var support := p
+## A piece: over the point the crosshair is on, or over the piece looked
+## at. Whether there is anything to show.
+func _find_spot(p: Vector3, n: Vector3, c: Object) -> bool:
 	if is_piece(c):
-		support = (c as Node3D).global_position
-		_at = support + Vector3(0, 0.5 + lift, 0)
+		var under := c as Node3D
+		_support = under.global_position.y + 0.2
+		_at = under.global_position + Vector3(0, 0.5 + lift, 0)
 	elif n.y > 0.7:
-		if c is FloorTile:
-			support.x = (floorf(p.x / SLOT) + 0.5) * SLOT
-			support.z = (floorf(p.z / SLOT) + 0.5) * SLOT
-		_at = support + Vector3(0, HEAD + lift, 0)
+		_support = p.y
+		_at = p + Vector3(0, HEAD + lift, 0)
 	else:
-		return
-	var key := _held_key()
-	_ghost_mat.albedo_color = LumenPart.COLOURS[KINDS[key]] if KINDS.has(key) else GLASS_COLOUR
-	_ghost_piece.global_position = _at
-	_ghost_piece.visible = true
-	if _at.y < support.y + 0.3:
+		return false
+	# Drafts.
+	if _at.y < _support + 0.25:
 		_why = "Too low."
-	elif _at.y > support.y + 4.0:
+	elif _at.y > _support + 4.0:
 		_why = "Too high."
 	else:
 		for other in pieces:
@@ -451,38 +451,92 @@ func _find_spot(p: Vector3, n: Vector3, c: Object) -> void:
 	if _why == "" and _blocked(_at, Vector3(0.3, 0.36, 0.3)):
 		_why = "Something stands in the way."
 	_ok = _why == ""
+	return true
 
 
-## Whether a box of `size` at `at` meets anything solid but the player.
-func _blocked(at: Vector3, size: Vector3) -> bool:
+## Whether a box of `size` at `at`, turned by `turn`, meets anything
+## solid but the player.
+func _blocked(at: Vector3, size: Vector3, turn := Basis.IDENTITY) -> bool:
 	var box := BoxShape3D.new()
 	box.size = size
 	var q := PhysicsShapeQueryParameters3D.new()
 	q.shape = box
-	q.transform = Transform3D(Basis.IDENTITY, at)
+	q.transform = Transform3D(turn, at)
 	q.collision_mask = 1 | 4
 	q.exclude = [island.player.get_rid()]
 	return not get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
 
 
-## Whether the player stands on the square a tile at `at` would cover,
-## below its top and within their height of it.
-func _under_player(at: Vector3) -> bool:
-	var pp := island.player.global_position
+## Whether the player stands within the square of a tile placed at
+## `xf`, below its top and within their height of it.
+func _under_player(xf: Transform3D) -> bool:
+	var local := xf.affine_inverse() * island.player.global_position
 	var half := FloorTile.SIZE * 0.5 + 0.35
-	return absf(pp.x - at.x) < half and absf(pp.z - at.z) < half and pp.y < at.y and pp.y > at.y - 2.0
+	return absf(local.x) < half and absf(local.z) < half and local.y < 0.0 and local.y > -2.0
 
 
 func _place() -> void:
 	if not _ok:
 		return
 	if _held_key() == "floor":
-		add_tile(_tile_cell, _at.y)
+		add_tile(_at, _yaw)
 	else:
-		# Set down facing the way the player looks, level.
-		var f := -island.player.camera.global_basis.z
-		add_piece(_held_key(), _at, atan2(-f.x, -f.z), 0.0)
+		add_piece(_held_key(), _at, _yaw, 0.0)
 	changed()
+
+
+## ---- the see-through copy -----------------------------------------------------
+
+## The copy of what is in hand, made whole and see-through, moved to
+## where it would go; a tile's made again when it moves, for its legs.
+func _show_ghost() -> void:
+	var key := _held_key()
+	var tile := key == "floor"
+	var moved := _ghost != null and tile and (_ghost.global_position.distance_to(_at) > 0.005
+			or absf(_ghost.rotation.y - _yaw) > 0.001)
+	if _ghost == null or _ghost_key != key or moved:
+		_drop_ghost()
+		_ghost_key = key
+		if tile:
+			_ghost = FloorTile.new(self, _at, _yaw)
+		else:
+			_ghost = _make(key, _at)
+			_ghost_rod = MeshInstance3D.new()
+			_ghost.add_child(_ghost_rod)
+		(_ghost as CollisionObject3D).collision_layer = 0
+		add_child(_ghost)
+		for m: Node in _ghost.find_children("*", "MeshInstance3D", true, false):
+			var mi := m as MeshInstance3D
+			mi.transparency = 0.45
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_ghost_red = false
+	_ghost.visible = true
+	if not tile:
+		_ghost.global_position = _at
+		_ghost.call("aim", _yaw, 0.0)
+		var top := _at.y - (0.2 if _ghost is OpticElement else 0.13)
+		var rod := CylinderMesh.new()
+		rod.top_radius = 0.016
+		rod.bottom_radius = 0.022
+		rod.height = maxf(top - _support, 0.02)
+		rod.radial_segments = 8
+		rod.rings = 1
+		rod.material = brass
+		_ghost_rod.mesh = rod
+		_ghost_rod.global_position = Vector3(_at.x, (top + _support) * 0.5, _at.z)
+		_ghost_rod.global_rotation = Vector3.ZERO
+	if _ghost_red != not _ok:
+		_ghost_red = not _ok
+		for m: Node in _ghost.find_children("*", "MeshInstance3D", true, false):
+			(m as MeshInstance3D).material_overlay = _red if _ghost_red else null
+
+
+func _drop_ghost() -> void:
+	if _ghost != null:
+		_ghost.queue_free()
+	_ghost = null
+	_ghost_rod = null
+	_ghost_key = ""
 
 
 ## ---- aiming by pointing ------------------------------------------------------
@@ -616,14 +670,16 @@ func _pick(i: int) -> void:
 	if (str(ITEMS[i][0]) == "floor") != (_held_key() == "floor"):
 		lift = 0.0
 	item = i
+	if _ghost != null and _ghost_key != _held_key():
+		_drop_ghost()
 	for k in _tray_cells.size():
 		_tray_cells[k].add_theme_stylebox_override("panel", _picked if k == item else _plain)
 
 
 func _set_building(on: bool) -> void:
 	building = on
-	_ghost_tile.visible = false
-	_ghost_piece.visible = false
+	if not on:
+		_drop_ghost()
 
 
 ## ---- each step --------------------------------------------------------------
@@ -647,9 +703,8 @@ func _process(delta: float) -> void:
 		_follow_aim()
 	if building and free and _aiming == null:
 		_find_place()
-	else:
-		_ghost_tile.visible = false
-		_ghost_piece.visible = false
+	elif _ghost != null:
+		_ghost.visible = false
 	_cross.visible = free and (building or _aiming != null)
 	_tray.get_parent().visible = building and free
 	_hint.visible = _cross.visible
@@ -683,26 +738,7 @@ func _hint_text() -> String:
 	return "%s%s\nWheel: choose     Shift and wheel: higher, lower     X: take away     Right click a piece: aim it     B: stop building" % [place, height]
 
 
-## ---- the pale copies and the screen --------------------------------------
-
-func _build_ghosts() -> void:
-	_ghost_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_ghost_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_ghost_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var slab := BoxMesh.new()
-	slab.size = Vector3(FloorTile.SIZE, FloorTile.THICK, FloorTile.SIZE)
-	slab.material = _ghost_mat
-	_ghost_tile.mesh = slab
-	var head := BoxMesh.new()
-	head.size = Vector3(0.28, 0.34, 0.28)
-	head.material = _ghost_mat
-	_ghost_piece.mesh = head
-	for g: MeshInstance3D in [_ghost_tile, _ghost_piece]:
-		g.top_level = true
-		g.visible = false
-		g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(g)
-
+## ---- the screen ------------------------------------------------------------------
 
 func _build_ui() -> void:
 	_ui.layer = 5
@@ -805,8 +841,8 @@ func _save() -> void:
 	if MouseMode.probe:
 		return
 	var floor_list: Array = []
-	for t: FloorTile in tiles.values():
-		floor_list.append([t.cell.x, t.cell.y, t.top])
+	for t in tiles:
+		floor_list.append([t.position.x, t.top, t.position.z, t.rotation.y])
 	var list: Array = []
 	for piece in pieces:
 		var p := piece.global_position
@@ -836,10 +872,11 @@ func _load() -> void:
 	var data := parsed as Dictionary
 	if data.get("floor") is Array:
 		for f: Variant in data["floor"]:
-			if f is Array and (f as Array).size() >= 3:
-				var cell := Vector2i(int(f[0]), int(f[1]))
-				if not tiles.has(cell):
-					add_tile(cell, float(f[2]))
+			if f is Array and (f as Array).size() >= 4:
+				add_tile(Vector3(float(f[0]), float(f[1]), float(f[2])), float(f[3]))
+			elif f is Array and (f as Array).size() == 3:
+				# Kept when tiles stood on a grid 2 m square: grid x, grid z, top.
+				add_tile(Vector3((float(f[0]) + 0.5) * 2.0, float(f[2]), (float(f[1]) + 0.5) * 2.0), 0.0)
 	if data.get("pieces") is Array:
 		for entry: Variant in data["pieces"]:
 			if not entry is Dictionary:
