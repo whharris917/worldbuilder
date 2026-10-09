@@ -174,7 +174,7 @@ func _ready() -> void:
 	_build_campfire()
 	_build_lanterns()
 	_works.append_array([SaltWorks.new(self), ColourWorks.new(self), BalloonWorks.new(self),
-			LagoonWorks.new(self), SkyWorks.new(self), CrystalExpo.new(self)])
+			LagoonWorks.new(self), SkyWorks.new(self), CrystalExpo.new(self), TideWorks.new(self)])
 	for works in _works:
 		add_child(works)
 	var wharf := LagoonWorks.pier(self)
@@ -957,7 +957,8 @@ func _process(delta: float) -> void:
 ## they stand on the ground and inside nothing is remembered (the last
 ## eight). A player found inside something (a body slightly smaller than
 ## theirs overlapping a solid) for half a second is put back where they
-## stood freely a few seconds before. R takes them back to the dock.
+## stood freely a few seconds before, as is one who has fallen into the
+## sea. R takes them back to the dock.
 func _keep_free(delta: float) -> void:
 	if MouseMode.probe or player == null:
 		return
@@ -970,6 +971,10 @@ func _keep_free(delta: float) -> void:
 			if _good.size() > 8:
 				_good.remove_at(0)
 	_wedged = _wedged + delta if inside else 0.0
+	# Fallen into the sea, or found inside something: back where they
+	# stood freely.
+	if player.position.y < -1.5:
+		_wedged = 1.0
 	if _wedged > 0.5:
 		_wedged = 0.0
 		var back := _good[0] if not _good.is_empty() else Vector4(DOCK_X, DOCK_Y + 0.05, _dock_z1 - 1.0, 0.0)

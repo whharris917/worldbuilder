@@ -37,6 +37,12 @@ const VIEWS := [
 	["link4", 62.0, Vector3(0.0, 1.6, -4.4), Vector3(0.0, 1.3, -0.2), "link4"],
 	["link5", 62.0, Vector3(0.0, 1.6, -4.4), Vector3(0.0, 1.3, -0.2), "link5"],
 	["link_walk", 64.0, Vector3(-5.0, 1.6, -6.0), Vector3(14.0, 1.4, -4.0), "link1"],
+	["tide_shore", 55.0, Vector3(0.0, 2.2, -60.0), Vector3(0.0, 1.0, 0.0), "tide"],
+	["tide_walk", 62.0, Vector3(0.0, 1.0, -30.0), Vector3(0.0, 1.0, -9.0), "tide"],
+	["tide_deck", 66.0, Vector3(-2.0, 1.7, -8.0), Vector3(1.0, 1.2, 2.0), "tide"],
+	["tide_engine", 62.0, Vector3(-4.5, 2.0, 2.5), Vector3(-8.5, 1.0, 7.5), "tide"],
+	["tide_still", 62.0, Vector3(1.0, 1.8, -5.0), Vector3(4.5, 1.2, -0.5), "tide"],
+	["tide_air", 55.0, Vector3(-18.0, 16.0, -22.0), Vector3(0.0, 0.0, 0.0), "tide"],
 	["expo", 60.0, Vector3(-6.0, 7.0, -22.0), Vector3(14.0, 1.0, 0.0), "booth2"],
 	["expo_walk", 66.0, Vector3(-4.0, 1.6, -10.5), Vector3(20.0, 1.6, -3.0), "booth3"],
 	["island", 55.0, Vector3(60.0, 330.0, 420.0), Vector3(0.0, 0.0, -10.0), ""],
@@ -146,7 +152,12 @@ func _run() -> void:
 		var eye: Vector3 = v[2]
 		var target: Vector3 = v[3]
 		if v.size() > 4 and v[4] != "":
-			if str(v[4]).begins_with("link"):
+			if str(v[4]) == "tide":
+				var tide := _world.find_children("*", "TideWorks", true, false)[0] as TideWorks
+				var frame: Node3D = tide.get("_site")
+				eye = frame.to_global(eye)
+				target = frame.to_global(target)
+			elif str(v[4]).begins_with("link"):
 				var links := _world.find_children("*", "LinkageHall", true, false)[0] as LinkageHall
 				var stand: Node3D = links.booths[int(str(v[4]).substr(4))]
 				eye = stand.to_global(eye)
