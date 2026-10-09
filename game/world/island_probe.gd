@@ -23,6 +23,13 @@ const VIEWS := [
 	["booth7", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.6, -0.6), "booth7"],
 	["bench", 60.0, Vector3(-7.0, 2.4, -10.0), Vector3(4.0, 1.0, -14.5), "booth2"],
 	["bench_close", 55.0, Vector3(1.5, 1.7, -12.3), Vector3(5.5, 1.2, -15.5), "booth4"],
+	["hall0", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.4, -0.4), "hall0"],
+	["hall1", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.4, -0.4), "hall1"],
+	["hall2", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.4, -0.4), "hall2"],
+	["hall3", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.4, -0.4), "hall3"],
+	["hall4", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.4, -0.4), "hall4"],
+	["hall5", 62.0, Vector3(0.0, 1.6, -4.6), Vector3(0.0, 1.4, -0.4), "hall5"],
+	["hall_walk", 64.0, Vector3(-5.0, 1.6, -6.0), Vector3(14.0, 1.4, -4.0), "hall1"],
 	["expo", 60.0, Vector3(-6.0, 7.0, -22.0), Vector3(14.0, 1.0, 0.0), "booth2"],
 	["expo_walk", 66.0, Vector3(-4.0, 1.6, -10.5), Vector3(20.0, 1.6, -3.0), "booth3"],
 	["island", 55.0, Vector3(60.0, 330.0, 420.0), Vector3(0.0, 0.0, -10.0), ""],
@@ -132,7 +139,12 @@ func _run() -> void:
 		var eye: Vector3 = v[2]
 		var target: Vector3 = v[3]
 		if v.size() > 4 and v[4] != "":
-			if str(v[4]).begins_with("booth"):
+			if str(v[4]).begins_with("hall"):
+				var hall := _world.find_children("*", "ApparatusHall", true, false)[0] as ApparatusHall
+				var stand: Node3D = hall.booths[int(str(v[4]).substr(4))]
+				eye = stand.to_global(eye)
+				target = stand.to_global(target)
+			elif str(v[4]).begins_with("booth"):
 				# Given in the exposition booth's own frame (x along the
 				# shore, z inland).
 				var expo := _world.find_children("*", "CrystalExpo", true, false)[0] as CrystalExpo

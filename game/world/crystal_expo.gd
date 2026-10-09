@@ -24,12 +24,17 @@ extends BeachSite
 ## - The Armillary: crystals where the silver rings of an armillary sphere
 ##   meet, lit from its middle.
 ## - The Cutting Room: each new cut of crystal under its own glass dome.
-## The booth names and notes are drafts.
+## Behind them, along a second boardwalk, the hall of apparatus
+## (ApparatusHall): vessels, pipes and mechanisms. The booth names and
+## notes are drafts.
 
 const BEARING := 203.0
 const SPREAD := 14.0                    # degrees either side the booths span
 const STAGE_IN := 19.0                  # a booth's middle, metres up from the shore
 const WALK_IN := 9.5                    # the promenade's middle
+const HALL_IN := 31.5                   # the second row's booths, for the apparatus hall
+const WALK2_IN := 25.0                  # the second promenade, between the rows
+const HALL_SPREAD := 13.0
 const WALK_W := 2.4
 const STAGE := Vector3(6.4, 0.6, 5.0)
 const EXHIBIT_SCALE := 1.25
@@ -71,11 +76,12 @@ func _init(owner_island: CozyIsland) -> void:
 func _ready() -> void:
 	add_child(_site)
 	_materials()
-	_build_promenade()
+	_build_promenade(WALK_IN, SPREAD + 7.0)
 	var builders: Array[Callable] = [_column, _branch, _rail, _chandelier, _cabinet, _retort, _armillary, _cutting_room]
 	for i in builders.size():
 		var b := deg_to_rad(BEARING - SPREAD + 2.0 * SPREAD * i / (builders.size() - 1))
-		var booth := _booth(b, i)
+		var booth := _booth(b, i, STAGE_IN, BOOTH_NAMES[i], BOOTH_NOTES[i])
+		_booths.append(booth)
 		# The demonstration stands forward on the stage, shown a quarter
 		# larger than in a works, as a showpiece.
 		var show := Node3D.new()
@@ -83,11 +89,12 @@ func _ready() -> void:
 		show.scale = Vector3.ONE * EXHIBIT_SCALE
 		booth.add_child(show)
 		builders[i].call(show)
-	_build_bunting()
+	_build_bunting(_booths)
 	for end: float in [-1.0, 1.0]:
 		_build_arch(deg_to_rad(BEARING + end * (SPREAD + 5.0)))
 	_place_beams()
 	add_child(OpticBench.new(self))
+	add_child(ApparatusHall.new(self))
 
 
 func _materials() -> void:
@@ -115,13 +122,14 @@ func _materials() -> void:
 
 ## ---- the fair --------------------------------------------------------------
 
-## A booth at `bearing`: its frame (x along the shore, y up from the
-## stage's top, z inland), the stage, the awning, the name board, the
-## backdrop, and a note for the whole of it.
-func _booth(bearing: float, index: int) -> Node3D:
+## A booth at `bearing`, its middle `inland` metres up from the shore:
+## its frame (x along the shore, y up from the stage's top, z inland),
+## the stage, the awning in the stripes of `index`, the name board
+## reading `title`, the backdrop, and `note` for the whole of it.
+func _booth(bearing: float, index: int, inland: float, title: String, note: String) -> Node3D:
 	var d := Vector3(cos(bearing), 0.0, sin(bearing))
 	var along := Vector3(-d.z, 0.0, d.x)
-	var centre := d * (island.coast(bearing, 0.0) - STAGE_IN)
+	var centre := d * (island.coast(bearing, 0.0) - inland)
 	var front := centre + d * STAGE.z * 0.5
 	var back := centre - d * STAGE.z * 0.5
 	var g_front := island.height(front.x, front.z)
@@ -131,7 +139,6 @@ func _booth(bearing: float, index: int) -> Node3D:
 	booth.name = "Booth%d" % index
 	_site.add_child(booth)
 	booth.global_transform = Transform3D(Basis(along, Vector3.UP, -d), Vector3(centre.x, top, centre.z))
-	_booths.append(booth)
 	var accent: Color = STRIPES[index % STRIPES.size()]
 	var m := CozyMesh.new()
 	var rng := RandomNumberGenerator.new()
@@ -172,7 +179,7 @@ func _booth(bearing: float, index: int) -> Node3D:
 	view.mesh = m.commit(island.cozy_material())
 	booth.add_child(view)
 	var sign := Label3D.new()
-	sign.text = BOOTH_NAMES[index]
+	sign.text = title
 	sign.font_size = 72
 	sign.pixel_size = 0.0042
 	sign.outline_size = 0
@@ -197,23 +204,24 @@ func _booth(bearing: float, index: int) -> Node3D:
 	ramp.shape = plank
 	ramp.transform = Transform3D(Basis(Vector3.RIGHT, -atan2(rise, 1.0)), Vector3(0, -rise * 0.5 - 0.02, -STAGE.z * 0.5 - 0.5))
 	body.add_child(ramp)
-	booth.add_child(HoverNote.new(Vector3(0, 1.4, 0.3), Vector3(3.2, 2.8, 3.0), BOOTH_NOTES[index]))
+	booth.add_child(HoverNote.new(Vector3(0, 1.4, 0.3), Vector3(3.2, 2.8, 3.0), note))
 	return booth
 
 
-## The promenade: a boardwalk following the shore along the fair, boards
+## A promenade `inland` metres up from the shore, `spread` degrees either
+## side of the fair's middle: a boardwalk following the shore, boards
 ## across it, each sitting on the sand.
-func _build_promenade() -> void:
+func _build_promenade(inland: float, spread: float) -> void:
 	var m := CozyMesh.new()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 777
 	var tones := [Color(0.82, 0.72, 0.58), Color(0.76, 0.66, 0.54), Color(0.86, 0.78, 0.64), Color(0.72, 0.62, 0.5)]
-	var from := deg_to_rad(BEARING - SPREAD - 7.0)
-	var to := deg_to_rad(BEARING + SPREAD + 7.0)
+	var from := deg_to_rad(BEARING - spread)
+	var to := deg_to_rad(BEARING + spread)
 	var a := from
 	while a < to:
 		var d := Vector3(cos(a), 0.0, sin(a))
-		var r := island.coast(a, 0.0) - WALK_IN
+		var r := island.coast(a, 0.0) - inland
 		var p := d * r
 		var y := island.height(p.x, p.z) + 0.03
 		var tone: Color = tones[rng.randi() % tones.size()]
@@ -225,15 +233,15 @@ func _build_promenade() -> void:
 	add_child(view)
 
 
-## Bunting strung from each booth's front corner to the next booth's, a
-## sagging line with little flags in turn.
-func _build_bunting() -> void:
+## Bunting strung from each booth's front corner to the next booth's in
+## `row`, a sagging line with little flags in turn.
+func _build_bunting(row: Array[Node3D]) -> void:
 	var m := CozyMesh.new()
 	var flags := [Color(0.93, 0.5, 0.42), Color(0.93, 0.74, 0.3), Color(0.3, 0.66, 0.66), CREAM, Color(0.68, 0.56, 0.84)]
 	var k := 0
-	for i in _booths.size() - 1:
-		var a := _booths[i].to_global(Vector3(3.0, FRONT_H + 0.02, -2.3))
-		var b := _booths[i + 1].to_global(Vector3(-3.0, FRONT_H + 0.02, -2.3))
+	for i in row.size() - 1:
+		var a := row[i].to_global(Vector3(3.0, FRONT_H + 0.02, -2.3))
+		var b := row[i + 1].to_global(Vector3(-3.0, FRONT_H + 0.02, -2.3))
 		var span := a.distance_to(b)
 		var count := int(span / 0.38)
 		var last := a

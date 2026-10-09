@@ -81,7 +81,7 @@ const SPITS := [Vector3(-112.0, 183.0, 70.0), Vector3(-98.0, 194.0, 80.0)]   # b
 # the exposition (CrystalExpo).
 const WIDE_BEARING := 203.0
 const WIDE_HALF := 17.0                 # degrees either side, fading over 8 more
-const WIDE_BEACH := 30.0
+const WIDE_BEACH := 46.0
 const FIRE_BEARING := 105.0            # degrees round from +x toward +z
 const LANTERNS := 5
 const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", "Outlines",
