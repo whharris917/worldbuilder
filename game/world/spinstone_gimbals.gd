@@ -74,6 +74,23 @@ const PURE := [
 	["sun", "Heliotrope", Color(0.9, 0.6, 0.22), "none", "lit"],
 	["moon", "Lunatrope", Color(0.6, 0.72, 0.95), "none", "lit"],
 ]
+## Two sunstones built from a heliotrope and a heliogyre (a sixth entry:
+## how they are built). "joined": the two crystals fixed end to end on
+## one spindle, one rigid body, the trope's pull and the gyre's spin
+## simply adding, their inertia too. "steered": a brass housing carrying
+## the heliotrope at its front swings in the gimbal; inside it the
+## heliogyre spins on its own jewel bearings about the housing's length,
+## an output pulley turning with it; only the gyre spins, and its spin is
+## angular momentum the trope must swing round with the housing.
+const BUILT := [
+	["sun", "Joined heliotrope and heliogyre", Color(0.95, 0.66, 0.28), "signed", "lit", "joined"],
+	["sun", "Heliogyre steered by a heliotrope", Color(1.0, 0.72, 0.32), "signed", "lit", "steered"],
+]
+## Inertia, kg m²: of the joined pair (along, across), of the steered
+## housing with its trope (along, across) and of its gyre (along).
+const JOINED_INERTIA := Vector2(0.0012, 0.012)
+const HOUSING_INERTIA := Vector2(0.0004, 0.008)
+const GYRE_INERTIA := 0.0006
 ## What a player inspecting each reads. Drafts.
 const TEXTS := {
 	"Earthstone": "Earthstone in a gimbal\nWhile lit, one end seeks the sky straight above, as a compass needle seeks the north, and the light spins it on its length. Free in its gimbal, it swings round, wobbling, to point straight up. Unlit, an inert stone.",
@@ -85,6 +102,8 @@ const TEXTS := {
 	"Geotrope": "Geotrope in a gimbal\nWhile lit, one end is drawn to point straight up, the harder the brighter its light; it does not spin. Unlit, an inert stone.",
 	"Heliotrope": "Heliotrope in a gimbal\nWhile lit, one end is drawn to point at the sun, the harder the brighter its light; it does not spin. Unlit, an inert stone.",
 	"Lunatrope": "Lunatrope in a gimbal\nWhile lit, one end is drawn to point at the moon, the harder the brighter its light; it does not spin. Unlit, an inert stone.",
+	"Joined heliotrope and heliogyre": "A heliotrope and a heliogyre, joined\nThe two crystals fixed end to end on one spindle: lit, the trope swings the pair round to point at the sun and the gyre spins it on its length, as a sunstone does; twice the weight, so slower to come round.",
+	"Heliogyre steered by a heliotrope": "A heliogyre steered by a heliotrope\nA brass housing with a heliotrope at its front, swung round by it to point at the sun; inside, a heliogyre spins on its own bearings, an output pulley turning with it. The housing points and only the gyre spins, so its spin could drive machinery.",
 }
 const SPACING := 2.4                    # m between the gimbals
 const HEIGHT := 1.35                    # the crystals' middles over the ground
@@ -118,11 +137,11 @@ var _mats: Dictionary
 var _kinds: Array
 
 
-## `mats`: "brass", "copper", "iron", "glass", "wood". `pure`: the row of
-## pure stones (PURE) in place of the combination stones (COMBO).
-func _init(materials: Dictionary, pure := false) -> void:
-	name = "PureSpinstones" if pure else "SpinstoneGimbals"
-	_kinds = PURE if pure else COMBO
+## `mats`: "brass", "copper", "iron", "glass", "wood". `row`: "combo" (the
+## combination stones, COMBO), "pure" (PURE) or "built" (BUILT).
+func _init(materials: Dictionary, row := "combo") -> void:
+	name = {"combo": "SpinstoneGimbals", "pure": "PureSpinstones", "built": "BuiltSunstones"}[row]
+	_kinds = {"combo": COMBO, "pure": PURE, "built": BUILT}[row]
 	_mats = materials
 	_beam_mat = StandardMaterial3D.new()
 	_beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -144,6 +163,7 @@ func settle() -> void:
 	var rng := RandomNumberGenerator.new()
 	for s in _stones:
 		s["momentum"] = Vector3.ZERO
+		s["gyre"] = 0.0
 		s["attitude"] = Basis.from_euler(Vector3(rng.randf_range(-1.0, 1.0), rng.randf() * TAU, rng.randf() * TAU))
 		_pose(s)
 
@@ -160,6 +180,11 @@ func report() -> String:
 		# Turning backward: about its length the other way, as a gyre does
 		# pointing away from its body.
 		var backward := _turning(s).dot(length) < -0.05
+		if s["build"] == "steered":
+			var gyre := _gyre_rate(s)
+			lines.append("%s: its gyre %.1f turns a second%s; its housing pointing %d degrees off the sun, turning %.1f a second." % [
+					s["title"], absf(gyre) / TAU, " backward" if gyre < -0.05 else "", roundi(off), turning / TAU])
+			continue
 		lines.append("%s: %.1f turns a second%s; pointing %d degrees off %s." % [s["title"], turning / TAU,
 				" backward" if backward else "", roundi(off), {"earth": "straight up", "sun": "the sun", "moon": "the moon"}[s["body"]]])
 	return "\n".join(lines)
@@ -176,13 +201,22 @@ func _toward(s: Dictionary) -> Vector3:
 
 ## Its turning, radians a second (world): its angular momentum through
 ## its inertia as it lies.
+## (For the steered housing, the housing's own: its share of the angular
+## momentum, the gyre's taken out.)
 func _turning(s: Dictionary) -> Vector3:
-	return _turning_of(s["attitude"], s["momentum"])
+	var att: Basis = s["attitude"]
+	var gyre := (att * Vector3.BACK).normalized() * float(s.get("gyre", 0.0))
+	return _turning_of(att, (s["momentum"] as Vector3) - gyre, s["inertia"])
 
 
-static func _turning_of(att: Basis, momentum: Vector3) -> Vector3:
+static func _turning_of(att: Basis, momentum: Vector3, inertia: Vector2) -> Vector3:
 	var body := att.transposed() * momentum
-	return att * Vector3(body.x / INERTIA_ACROSS, body.y / INERTIA_ACROSS, body.z / INERTIA_ALONG)
+	return att * Vector3(body.x / inertia.y, body.y / inertia.y, body.z / inertia.x)
+
+
+## A steered gyre's spin, radians a second about the housing's length.
+func _gyre_rate(s: Dictionary) -> float:
+	return float(s.get("gyre", 0.0)) / GYRE_INERTIA
 
 
 ## The lanterns lit or not, from outside (the panel): the lever thrown to
@@ -232,21 +266,48 @@ func _physics_process(delta: float) -> void:
 		var watts := light_watts if lit else 0.0
 		for i in STEPS:
 			# Half a step to the middle, then the whole step by the middle's
-			# turning and pull.
+			# rates.
 			var att: Basis = s["attitude"]
 			var momentum: Vector3 = s["momentum"]
-			var w := _turning_of(att, momentum)
-			var half_momentum := momentum + _twist(s, att, w, toward, watts) * dt * 0.5
+			var gyre: float = s["gyre"]
+			var r0 := _rates(s, att, momentum, gyre, toward, watts)
+			var w: Vector3 = r0[2]
 			var half_att := att
 			if w.length() > 1e-9:
 				half_att = (Basis(w.normalized(), w.length() * dt * 0.5) * att).orthonormalized()
-			var w_mid := _turning_of(half_att, half_momentum)
-			s["momentum"] = momentum + _twist(s, half_att, w_mid, toward, watts) * dt
+			var r1 := _rates(s, half_att, momentum + (r0[0] as Vector3) * dt * 0.5, gyre + float(r0[1]) * dt * 0.5, toward, watts)
+			s["momentum"] = momentum + (r1[0] as Vector3) * dt
+			s["gyre"] = gyre + float(r1[1]) * dt
+			var w_mid: Vector3 = r1[2]
 			if w_mid.length() > 1e-9:
 				s["attitude"] = (Basis(w_mid.normalized(), w_mid.length() * dt) * att).orthonormalized()
+			if s["build"] == "steered":
+				# The gyre on its bearings, as it turns against its housing.
+				var length := ((s["attitude"] as Basis) * Vector3.BACK).normalized()
+				s["gyre_angle"] = wrapf(float(s.get("gyre_angle", 0.0)) + (_gyre_rate(s) - w_mid.dot(length)) * dt, 0.0, TAU)
 		_pose(s)
-		(s["glow"] as StandardMaterial3D).emission_energy_multiplier = 0.1 + 0.8 * clampf(_turning(s).length() / 15.0, 0.0, 1.0)
+		var spinning := absf(_gyre_rate(s)) if s["build"] == "steered" else _turning(s).length()
+		(s["glow"] as StandardMaterial3D).emission_energy_multiplier = 0.1 + 0.8 * clampf(spinning / 15.0, 0.0, 1.0)
 		(s["beam"] as Node3D).visible = lit
+
+
+## How stone `s` changes, lying `att` with `momentum` (and a steered
+## gyre's `gyre` about the housing's length): [the rate of its angular
+## momentum, the rate of the gyre's, its turning (the housing's)].
+func _rates(s: Dictionary, att: Basis, momentum: Vector3, gyre: float, toward: Vector3, watts: float) -> Array:
+	var length := (att * Vector3.BACK).normalized()
+	if s["build"] != "steered":
+		var w := _turning_of(att, momentum, s["inertia"])
+		return [_twist(s, att, w, toward, watts), 0.0, w]
+	# The housing turns with what is left when the gyre's spin is taken
+	# out; the trope on it pulls it, the pivots and the air hold it back.
+	var w_housing := _turning_of(att, momentum - length * gyre, s["inertia"])
+	var swing := w_housing - length * w_housing.dot(length)
+	var spin := gyre / GYRE_INERTIA
+	var drive := TURN * watts * length.dot(toward) - spin * absf(spin) * DRAG
+	var outside := length.cross(toward) * PULL_PER_WATT * watts - w_housing * w_housing.length() * DRAG \
+			- swing * PIVOT_DAMP + length * drive
+	return [outside, drive, w_housing]
 
 
 ## Everything turning stone `s` lying `att`, turning `w`, by its laws:
@@ -290,6 +351,8 @@ func _pose(s: Dictionary) -> void:
 	(s["outer"] as Node3D).rotation = Vector3(0, yaw, 0)
 	(s["inner"] as Node3D).rotation = Vector3(tilt, 0, 0)
 	(s["rotor"] as Node3D).rotation = Vector3(0, 0, atan2(rest.x.y, rest.x.x))
+	if s.has("gyre_node"):
+		(s["gyre_node"] as Node3D).rotation.z = float(s.get("gyre_angle", 0.0))
 
 
 ## ---- building ----------------------------------------------------------------
@@ -353,15 +416,51 @@ func _build(k: int, rng: RandomNumberGenerator) -> void:
 	glow.metallic_specular = 0.9
 	glow.emission_enabled = true
 	glow.emission = Color.from_hsv(tint.h, minf(tint.s * 1.6, 1.0), tint.v * 0.75)
-	var stone := CozyMesh.new()
-	var grow := RandomNumberGenerator.new()
-	grow.seed = rng.randi()
-	LumenPart.grow_spinstone(stone, grow)
-	var crystal := MeshInstance3D.new()
-	crystal.mesh = stone.commit(glow)
-	# Grown upright round its spindle; laid along this one, made larger.
-	crystal.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5).scaled(Vector3.ONE * 1.9), Vector3(0, 0, -0.016 * 1.9))
-	rotor.add_child(crystal)
+	var build: String = kind[5] if kind.size() > 5 else "single"
+	var gyre_node: Node3D = null
+	match build:
+		"single":
+			rotor.add_child(_crystal(glow, rng, 1.9, 0.0))
+		"joined":
+			# The trope at the seeking end, the gyre behind, a brass collar
+			# where they meet.
+			var trope_glow := glow.duplicate() as StandardMaterial3D
+			trope_glow.albedo_color = Color(tint.darkened(0.15), 0.85)
+			rotor.add_child(_crystal(trope_glow, rng, 1.25, 0.15))
+			rotor.add_child(_crystal(glow, rng, 1.25, -0.15))
+			var collar := CozyMesh.new()
+			collar.cyl(0.035, 0.035, 0.04, 12, CozyMesh.at(Vector3.ZERO, Basis(Vector3.RIGHT, PI * 0.5)), gold)
+			_view(rotor, collar, _mats["brass"])
+		"steered":
+			# The housing: a brass cage with bearing plates at its ends, the
+			# trope fixed at its front, the gyre spinning inside with an
+			# output pulley behind.
+			var cage := CozyMesh.new()
+			for z: float in [-0.21, 0.09]:
+				cage.torus(0.085, 0.1, 24, 6, CozyMesh.at(Vector3(0, 0, z), Basis(Vector3.RIGHT, PI * 0.5)), gold)
+				cage.cyl(0.03, 0.03, 0.03, 10, CozyMesh.at(Vector3(0, 0, z), Basis(Vector3.RIGHT, PI * 0.5)), gold)
+				for k2 in 3:
+					var a := TAU * k2 / 3.0
+					cage.rod(Vector3(0, 0, z), Vector3(cos(a), sin(a), 0) * 0.092 + Vector3(0, 0, z), 0.008, 6, gold)
+			for k2 in 4:
+				var a := TAU * k2 / 4.0 + PI * 0.25
+				cage.rod(Vector3(cos(a), sin(a), 0) * 0.092 + Vector3(0, 0, -0.21), Vector3(cos(a), sin(a), 0) * 0.092 + Vector3(0, 0, 0.09), 0.009, 6, gold)
+			cage.cyl(0.02, 0.02, 0.08, 10, CozyMesh.at(Vector3(0, 0, 0.13), Basis(Vector3.RIGHT, PI * 0.5)), gold)
+			_view(rotor, cage, _mats["brass"])
+			var trope_glow := glow.duplicate() as StandardMaterial3D
+			trope_glow.albedo_color = Color(tint.darkened(0.15), 0.85)
+			trope_glow.emission_energy_multiplier = 0.1
+			rotor.add_child(_crystal(trope_glow, rng, 0.95, 0.24))
+			gyre_node = Node3D.new()
+			gyre_node.position = Vector3(0, 0, -0.06)
+			rotor.add_child(gyre_node)
+			gyre_node.add_child(_crystal(glow, rng, 1.15, 0.0))
+			var pulley := CozyMesh.new()
+			pulley.cyl(0.006, 0.006, 0.26, 6, CozyMesh.at(Vector3(0, 0, -0.05), Basis(Vector3.RIGHT, PI * 0.5)), Color(0.75, 0.77, 0.8))
+			pulley.cyl(0.05, 0.05, 0.025, 16, CozyMesh.at(Vector3(0, 0, -0.2), Basis(Vector3.RIGHT, PI * 0.5)), gold)
+			for k2 in 4:
+				pulley.box(Vector3(0.09, 0.008, 0.028), CozyMesh.at(Vector3(0, 0, -0.2), Basis(Vector3.BACK, PI * 0.25 * k2)), gold.darkened(0.2))
+			_view(gyre_node, pulley, _mats["brass"])
 	# Its lantern to the south, lit, aimed at it, and its beam.
 	var lamp := Node3D.new()
 	lamp.position = at + Vector3(0, HEIGHT, LAMP_OFF)
@@ -388,5 +487,30 @@ func _build(k: int, rng: RandomNumberGenerator) -> void:
 	var text: String = TEXTS[kind[1]]
 	var body := HoverNote.new(at + Vector3(0, HEIGHT, 0), Vector3.ONE * OUTER_R * 2.0, text)
 	add_child(body)
-	_stones.append({"body": kind[0], "title": kind[1], "spin": kind[3], "pull": kind[4], "outer": outer, "inner": inner, "rotor": rotor,
-			"glow": glow, "beam": beam, "lamp": look, "note": body, "momentum": Vector3.ZERO, "attitude": Basis.IDENTITY})
+	var inertia := Vector2(INERTIA_ALONG, INERTIA_ACROSS)
+	match build:
+		"joined":
+			inertia = JOINED_INERTIA
+		"steered":
+			inertia = HOUSING_INERTIA
+	var entry := {"body": kind[0], "title": kind[1], "spin": kind[3], "pull": kind[4], "build": build,
+			"inertia": inertia, "outer": outer, "inner": inner, "rotor": rotor, "glow": glow, "beam": beam,
+			"lamp": look, "note": body, "momentum": Vector3.ZERO, "gyre": 0.0, "attitude": Basis.IDENTITY}
+	if gyre_node != null:
+		entry["gyre_node"] = gyre_node
+	_stones.append(entry)
+
+
+## A spinstone crystal laid along the spindle (+z), `scale` times its grown
+## size, its middle `along` the spindle.
+func _crystal(glow: Material, rng: RandomNumberGenerator, scale: float, along: float) -> MeshInstance3D:
+	var stone := CozyMesh.new()
+	var grow := RandomNumberGenerator.new()
+	grow.seed = rng.randi()
+	LumenPart.grow_spinstone(stone, grow)
+	var crystal := MeshInstance3D.new()
+	crystal.mesh = stone.commit(glow)
+	# Grown upright round its spindle (its middle a little above the
+	# spindle's middle); laid along this one.
+	crystal.transform = Transform3D(Basis(Vector3.RIGHT, PI * 0.5).scaled(Vector3.ONE * scale), Vector3(0, 0, along - 0.016 * scale))
+	return crystal
