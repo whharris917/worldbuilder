@@ -263,7 +263,7 @@ func drive(force: float, dt: float) -> void:
 ## crossing a rail joint; a knock for a buffer struck.
 func _sound(was: float, struck: float) -> void:
 	var pace := absf(speed)
-	_roll.volume_db = linear_to_db(clampf(pace / 5.0, 0.0001, 1.0)) - 4.0
+	_roll.volume_db = linear_to_db(clampf(pace / 5.0, 0.0001, 1.0)) - 14.0
 	_roll.pitch_scale = 0.7 + clampf(pace / 8.0, 0.0, 1.0) * 0.9
 	var half := LENGTH * 0.5
 	for axle: float in [-AXLE, AXLE]:
@@ -272,11 +272,11 @@ func _sound(was: float, struck: float) -> void:
 		if a != b and pace > 0.15:
 			var clack := _clacks[randi() % _clacks.size()]
 			if clack.stream != null:
-				clack.volume_db = linear_to_db(clampf(pace / 4.0, 0.05, 1.0)) - 2.0
+				clack.volume_db = linear_to_db(clampf(pace / 4.0, 0.05, 1.0)) - 12.0
 				clack.pitch_scale = randf_range(0.94, 1.06)
 				clack.play()
 	if struck > 0.2 and _buffer.stream != null:
-		_buffer.volume_db = linear_to_db(clampf(struck / 5.0, 0.1, 1.0))
+		_buffer.volume_db = linear_to_db(clampf(struck / 5.0, 0.1, 1.0)) - 10.0
 		_buffer.pitch_scale = randf_range(0.95, 1.03)
 		_buffer.play()
 

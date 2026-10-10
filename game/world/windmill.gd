@@ -141,6 +141,8 @@ var _sail_angle := 0.0
 var _fantail_angle := 0.0
 var _lift := 0.0                        # the pinion lifted out of mesh, 0 to 1
 var _swoosh: AudioStreamPlayer3D
+## The swoosh's loudness, 0 to 1 (the world's sound panel).
+var swoosh_level := 1.0
 
 
 ## `materials`: "out" and "out_plain" for the outside (with and without
@@ -296,7 +298,7 @@ func _process(_delta: float) -> void:
 		var off := wrapf(_sail_angle + PI * 0.5 * k - PI, -PI, PI)
 		near += exp(-(off * off) / (0.45 * 0.45))
 	var loud := clampf(tip / 25.0, 0.0, 1.2) * near
-	_swoosh.volume_db = linear_to_db(maxf(loud, 0.0001)) - 4.0
+	_swoosh.volume_db = linear_to_db(maxf(loud * swoosh_level, 0.0001)) - 22.0
 	_swoosh.pitch_scale = clampf(0.5 + tip / 30.0, 0.5, 2.0)
 
 

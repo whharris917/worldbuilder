@@ -162,6 +162,12 @@ func _build_panels() -> void:
 	_panel.slider(wind, "Sail cloth (%)", 0.0, 100.0, 5.0, 100.0, redraw)
 	_panel.note(wind, "How much of the cloth is spread on the sails. A miller took cloth in as the wind rose, to keep the sails from running too fast.")
 	_readout = _panel.note(wind, "")
+	var sound := _panel.panel("Sound")
+	_panel.slider(sound, "Master volume (dB)", -24.0, 12.0, 0.5, AudioOutput.master_db, func(v: float) -> void: AudioOutput.set_master_db(v))
+	_panel.note(sound, "Everything the game plays, in every world.")
+	_panel.slider(sound, "Wind (%)", 0.0, 200.0, 5.0, 100.0, redraw)
+	_panel.slider(sound, "Sails (%)", 0.0, 200.0, 5.0, 100.0, redraw)
+	_panel.note(sound, "The wind heard everywhere, and the sails' swoosh as each sweeps past the tower.")
 
 
 func _on(title: String) -> bool:
@@ -196,6 +202,7 @@ func _apply() -> void:
 	var night := 1.0 - sky.daylight
 	campsite.set_night(night)
 	windmill.set_cloth(_value("Sail cloth (%)") * 0.01)
+	windmill.swoosh_level = _value("Sails (%)") * 0.01
 	_env.fog_light_color = sky.haze_colour
 
 
@@ -613,7 +620,7 @@ func _blow(delta: float) -> void:
 	windmill.wind_speed = maxf(speed, 0.0)
 	windmill.wind_from = wrapf(from, 0.0, 360.0)
 	var strength := windmill.wind_speed / 10.0
-	_wind_sound.volume_db = linear_to_db(clampf(strength, 0.0001, 1.6)) - 14.0
+	_wind_sound.volume_db = linear_to_db(clampf(strength * _value("Wind (%)") * 0.01, 0.0001, 1.6)) - 30.0
 	_wind_sound.pitch_scale = 0.85 + 0.03 * windmill.wind_speed
 	_readout_left -= delta
 	if _readout_left > 0.0:
