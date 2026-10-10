@@ -304,6 +304,7 @@ var copper: StandardMaterial3D
 var silver: StandardMaterial3D
 var glass: StandardMaterial3D
 var _polish: StandardMaterial3D         # a collector's dish
+var _stone_seed := 0                    # the shape of the next rotor's spinstone
 var _iron: StandardMaterial3D           # its back and mount
 var building := false
 var item := 0
@@ -450,8 +451,11 @@ func remove_tile(t: FloorTile) -> void:
 
 ## A piece of `key` with its middle at `at`, its head turned to `yaw`
 ## and `pitch`.
-func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0) -> Node3D:
+func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0, seed_value := -1) -> Node3D:
+	_stone_seed = seed_value if seed_value >= 0 else randi() % 1000000000
 	var piece := _make(key, at, delay)
+	if key == "radiometer":
+		piece.set_meta("stone_seed", _stone_seed)
 	_set_layer(piece, 4)
 	piece.set_meta("piece", key)
 	if key == "collector":
@@ -490,6 +494,8 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 		return OpticElement.new(GLASS[key], at, 0.0, timber, brass, silver, glass, false)
 	var kind: LumenPart.Kind = KINDS[key]
 	var look := {"post": false, "aimed": true, "catch": 0.22}
+	if key == "radiometer":
+		look["seed"] = _stone_seed
 	look.merge(LOOKS.get(key, {}))
 	if look.has("metal"):
 		look["metal"] = get(look["metal"])
@@ -2232,6 +2238,8 @@ func _save() -> void:
 				entry["on"] = part.condition
 			if part.has_meta("oil_lamp"):
 				entry["fuel"] = float(part.get_meta("fuel", 1.0))
+			if part.has_meta("stone_seed"):
+				entry["seed"] = int(part.get_meta("stone_seed"))
 			if part.has_meta("collector"):
 				var set_for: Vector3 = part.get_meta("sun_set", light.sun)
 				entry["sun_set"] = [set_for.x, set_for.y, set_for.z]
@@ -2296,7 +2304,7 @@ func _load() -> void:
 			if a is Array and (a as Array).size() >= 2:
 				aim = [float(a[0]), float(a[1])]
 			var piece := add_piece(key, Vector3(float(at[0]), float(at[1]), float(at[2])), aim[0], aim[1],
-					float(d.get("delay", 2.0)))
+					float(d.get("delay", 2.0)), int(d.get("seed", -1)))
 			if piece is LumenPart and bool(d.get("on", false)):
 				(piece as LumenPart).condition = true
 			if piece.has_meta("oil_lamp"):

@@ -49,6 +49,9 @@ enum Kind { LANTERN, AND, OR, NOT, LATCH, TON, TOF, RISE, FALL, RADIOMETER }
 
 const PULSE := 0.4
 const FULL_SPIN := 2000.0               # watts of light that run a rotor at full speed
+const STONE_R := 0.066                  # a spinstone's reach round its spindle, clear of the frame's posts
+const STONE_LOW := -0.095               # and its span up the spindle, between the bearings
+const STONE_HIGH := 0.128
 const COLOURS := {
 	Kind.LANTERN: Color(1.0, 0.72, 0.3),
 	Kind.AND: Color(1.0, 0.8, 0.2),
@@ -711,8 +714,8 @@ func _build_hourglass(brass: Material) -> void:
 ## black on one face and silvered on the other, on a pin.
 ## The luminous rotor: a round brass base, two posts and a bridge over
 ## the top, a jewel bearing in each, a steel spindle between them, and on
-## it the spinstone: a crystal of photogyrite, six-sided and pointed at
-## both ends, with three fins winding round it, glowing faintly as it
+## it the spinstone: a faceted crystal of photogyrite, each one shaped
+## and tinted its own way (`_grow_spinstone`), glowing faintly as it
 ## turns.
 func _build_radiometer() -> void:
 	var brass := StandardMaterial3D.new()
@@ -756,39 +759,106 @@ func _build_radiometer() -> void:
 	sv.mesh = spindle
 	sv.position.y = 0.015
 	_vanes.add_child(sv)
-	# The spinstone, glowing as it turns (its own glow, `_glow`).
-	_glow.albedo_color = Color(0.78, 0.66, 0.95, 0.85)
+	# The spinstone, glowing as it turns (its own glow, `_glow`), its
+	# shape its own: grown from a seed (`look` "seed", or its place).
+	var seed_value := int(_look.get("seed", hash(position)))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var tint := Color(0.78, 0.66, 0.95).lerp([Color(0.9, 0.7, 0.92), Color(0.66, 0.62, 0.98), Color(0.82, 0.74, 0.98)][rng.randi() % 3], rng.randf())
+	_glow.albedo_color = Color(tint, 0.85)
 	_glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_glow.emission = Color(0.85, 0.7, 1.0)
+	_glow.emission = tint.lightened(0.2)
 	_glow.roughness = 0.08
 	_glow.metallic_specular = 0.9
 	var stone := CozyMesh.new()
-	var lilac := Color(1, 1, 1)
-	stone.cyl(0.032, 0.032, 0.12, 6, CozyMesh.at(Vector3(0, 0.015, 0)), lilac)
-	stone.cyl(0.0, 0.032, 0.05, 6, CozyMesh.at(Vector3(0, 0.1, 0)), lilac)
-	stone.cyl(0.032, 0.0, 0.05, 6, CozyMesh.at(Vector3(0, -0.07, 0)), lilac)
-	# Three thin fins winding a third of a turn up the stone, each a
-	# smooth twisted blade from the stone's side outward.
-	var steps := 12
-	for f in 3:
-		var prev: Array = []
-		for k in steps + 1:
-			var t := float(k) / steps
-			var a := TAU * f / 3.0 + t * TAU / 3.0
-			var y := lerpf(-0.055, 0.085, t)
-			var out := Vector3(cos(a), 0, -sin(a))
-			# Narrower toward the ends, as the crystal's own fins taper.
-			var reach := 0.03 + 0.032 * sin(t * PI)
-			var row: Array[Vector3] = [out * 0.026 + Vector3.UP * y, out * reach + Vector3.UP * (y + 0.01)]
-			if not prev.is_empty():
-				var back: Vector3 = prev[0]
-				var n := (row[0] - back).cross(row[1] - row[0]).normalized()
-				stone.quad(prev[0], prev[1], row[1], row[0], n, lilac)
-				stone.quad(prev[0], prev[1], row[1], row[0], -n, lilac)
-			prev = row
+	_grow_spinstone(stone, rng)
 	var sm := MeshInstance3D.new()
 	sm.mesh = stone.commit(_glow)
 	_vanes.add_child(sm)
+
+
+## A spinstone's crystal into `m`, flat-faced: a prism of four to eight
+## uneven sides, pointed at its ends (one end sometimes broken flat),
+## sometimes with a smaller twin grown into it at a slant; kept within
+## the rotor's frame (STONE_R round the spindle, STONE_LOW to STONE_HIGH
+## up it), so it turns clear of the posts and bearings.
+func _grow_spinstone(m: CozyMesh, rng: RandomNumberGenerator) -> void:
+	var faces: Array = []
+	_crystal_faces(faces, rng, rng.randf_range(0.04, 0.062), Transform3D.IDENTITY)
+	if rng.randf() < 0.35:
+		var tilt := Basis(Vector3(rng.randf_range(-1.0, 1.0), 0.0, rng.randf_range(-1.0, 1.0)).normalized(),
+				rng.randf_range(0.35, 0.65))
+		var at := Vector3(rng.randf_range(-0.012, 0.012), rng.randf_range(-0.02, 0.03), rng.randf_range(-0.012, 0.012))
+		_crystal_faces(faces, rng, rng.randf_range(0.016, 0.026), Transform3D(tilt.scaled(Vector3.ONE * 0.7), at))
+	# Fitted to the frame: narrowed round the spindle, squeezed between
+	# the bearings, as needed.
+	var widest := 0.0
+	var low := INF
+	var high := -INF
+	for f: Array in faces:
+		for v: Vector3 in f:
+			widest = maxf(widest, Vector2(v.x, v.z).length())
+			low = minf(low, v.y)
+			high = maxf(high, v.y)
+	var squeeze := minf(1.0, STONE_R / maxf(widest, 1e-4))
+	var stretch := minf(1.0, (STONE_HIGH - STONE_LOW) / maxf(high - low, 1e-4))
+	var mid := (low + high) * 0.5
+	var into := (STONE_LOW + STONE_HIGH) * 0.5
+	var white := Color(1, 1, 1)
+	for f: Array in faces:
+		var pts: Array[Vector3] = []
+		for v: Vector3 in f:
+			pts.append(Vector3(v.x * squeeze, into + (v.y - mid) * stretch, v.z * squeeze))
+		var centre := Vector3.ZERO
+		for v in pts:
+			centre += v
+		centre /= pts.size()
+		var n := (pts[1] - pts[0]).cross(pts[2] - pts[0]).normalized()
+		if n.dot(centre - Vector3(0, into, 0)) < 0.0:
+			n = -n
+		if pts.size() == 3:
+			m.quad(pts[0], pts[1], pts[2], pts[2], n, white)
+		elif pts.size() == 4:
+			m.quad(pts[0], pts[1], pts[2], pts[3], n, white)
+		else:
+			for k in range(1, pts.size() - 1):
+				m.quad(pts[0], pts[k], pts[k + 1], pts[k + 1], n, white)
+
+
+## One crystal's faces, as lists of corners, `r` round, placed by `xf`.
+static func _crystal_faces(faces: Array, rng: RandomNumberGenerator, r: float, xf: Transform3D) -> void:
+	var sides: int = [4, 5, 6, 6, 6, 8][rng.randi() % 6]
+	var lo := rng.randf_range(-0.07, -0.03)
+	var hi := rng.randf_range(0.05, 0.09)
+	var taper := rng.randf_range(0.8, 1.05)
+	var turn := rng.randf() * TAU
+	var rings: Array = []
+	for level: Array in [[lo, 1.0], [hi, taper]]:
+		var ring: Array[Vector3] = []
+		for k in sides:
+			var a := turn + TAU * (k + rng.randf_range(-0.12, 0.12)) / sides
+			var reach := r * float(level[1]) * rng.randf_range(0.85, 1.15)
+			ring.append(xf * Vector3(cos(a) * reach, float(level[0]), sin(a) * reach))
+		rings.append(ring)
+	var bottom: Array[Vector3] = rings[0]
+	var top: Array[Vector3] = rings[1]
+	for k in sides:
+		var k1 := (k + 1) % sides
+		faces.append([bottom[k], bottom[k1], top[k1], top[k]])
+	# The ends: pointed, the tip a little off the middle; now and then
+	# one broken off flat.
+	var flat_end := rng.randi() % 2 if rng.randf() < 0.25 else -1
+	for e in 2:
+		var ring: Array[Vector3] = top if e == 1 else bottom
+		if e == flat_end:
+			var cap: Array[Vector3] = ring.duplicate()
+			faces.append(cap)
+			continue
+		var length := rng.randf_range(0.02, 0.05) * r / 0.04
+		var off := Vector3(rng.randf_range(-0.3, 0.3) * r, 0.0, rng.randf_range(-0.3, 0.3) * r)
+		var tip := xf * (Vector3(0.0, hi + length if e == 1 else lo - length, 0.0) + off)
+		for k in sides:
+			faces.append([ring[k], ring[(k + 1) % sides], tip])
 
 
 func _add(mesh: Mesh, at: Vector3) -> MeshInstance3D:
