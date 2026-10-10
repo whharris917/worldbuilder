@@ -105,8 +105,9 @@ extends Node3D
 ## ground's height and the pieces' materials in its look.
 ##
 ## Under sunlight (`sun_rules`, the test island's; BenchLight) light has
-## to come from somewhere: the menu offers the sun collector in place of
-## the lantern, the push and pull lamps and the track, the crystals read
+## to come from somewhere: the menu offers the sun collector and the oil
+## lantern (HONEST_LIGHT) in place of the lantern, the push and pull lamps
+## and the track, the crystals read
 ## light without sending any, and the pieces' texts say so (SUN_TEXTS).
 ## A collector is a parabolic dish of silvered facets on a fork mount
 ## (SunDish), turned each frame to face the sun as it stood when the
@@ -133,7 +134,9 @@ const ITEMS := [["floor", "Floor"], ["lantern", "Lantern"], ["gate", "Opening ga
 		["on_delay", "Hourglass"], ["off_delay", "Afterglow"], ["rise", "Rising spark"], ["fall", "Falling spark"],
 		["radiometer", "Radiometer"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"],
 		["push_lamp", "Push lamp"], ["pull_lamp", "Pull lamp"], ["track", "Track and cart"],
-		["collector", "Sun collector"]]
+		["collector", "Sun collector"], ["oil_lamp", "Oil lantern"]]
+## Under sunlight only: what makes light honestly.
+const HONEST_LIGHT := ["collector", "oil_lamp"]
 ## Free light: kept out of the menu under sunlight.
 const FREE_LIGHT := ["lantern", "push_lamp", "pull_lamp", "track"]
 const BEAMS := {"push_lamp": "push", "pull_lamp": "pull"}   # lamps sending force beams, by kind
@@ -144,7 +147,7 @@ const KINDS := {"lantern": LumenPart.Kind.LANTERN, "and": LumenPart.Kind.AND, "o
 		"not": LumenPart.Kind.NOT, "latch": LumenPart.Kind.LATCH, "on_delay": LumenPart.Kind.TON,
 		"off_delay": LumenPart.Kind.TOF, "rise": LumenPart.Kind.RISE, "fall": LumenPart.Kind.FALL,
 		"radiometer": LumenPart.Kind.RADIOMETER, "push_lamp": LumenPart.Kind.LANTERN,
-		"pull_lamp": LumenPart.Kind.LANTERN, "collector": LumenPart.Kind.LANTERN}
+		"pull_lamp": LumenPart.Kind.LANTERN, "collector": LumenPart.Kind.LANTERN, "oil_lamp": LumenPart.Kind.LANTERN}
 const GLASS := {"mirror": OpticElement.Kind.MIRROR, "splitter": OpticElement.Kind.SPLITTER,
 		"lens": OpticElement.Kind.LENS}
 ## Each kind's cut and setting (LumenPart's `look`); a metal by name.
@@ -157,6 +160,7 @@ const LOOKS := {
 	"push_lamp": {"lamp": "drum", "metal": "copper", "colour": Color(1.0, 0.3, 0.22)},
 	"pull_lamp": {"lamp": "drum", "metal": "silver", "colour": Color(0.35, 1.0, 0.45)},
 	"collector": {"lamp": "drum", "metal": "brass"},
+	"oil_lamp": {"lamp": "drum", "metal": "copper", "colour": Color(1.0, 0.62, 0.26)},
 }
 const FLOOR_COLOUR := Color(0.85, 0.7, 0.5)
 const GLASS_COLOUR := Color(0.85, 0.9, 1.0)
@@ -185,7 +189,7 @@ const NOTES := {
 }
 ## The menu's groups, in order, and what each piece does, one line
 ## each. Drafts.
-const GROUPS := [[["Floors", ["floor"]], ["Lamps", ["collector", "lantern", "push_lamp", "pull_lamp"]]],
+const GROUPS := [[["Floors", ["floor"]], ["Lamps", ["collector", "oil_lamp", "lantern", "push_lamp", "pull_lamp"]]],
 		[["Crystals", ["and", "or", "not", "latch", "on_delay", "off_delay", "rise", "fall"]]],
 		[["Gates", ["gate", "closing_gate"]], ["Glass", ["mirror", "splitter", "lens"]]],
 		[["Machines", ["radiometer", "track"]]]]
@@ -240,6 +244,11 @@ const SUN_TEXTS := {
 		"note": "Sun collector\nA mirrored dish gathers the sun into a glass globe at its focus, where the head sends it out as a beam while its shutter is open (a click). A right click aims the beam and turns the dish to the sun where it stands now; as the sun moves on, the beam fades.",
 		"menu": "a mirrored dish that gathers the sun into a beam.",
 		"details": "The first light that can be made: a burning mirror. A dish two metres across, a bowl of flat silvered-glass facets set in a brass frame and shaped as a paraboloid, sends every ray of sun striking it to one point ninety centimetres in front of it, its focus. There, in a glass globe held out on four brass arms, the light gathers and glows, and the head inside sends it out as a beam wherever it is aimed. At noon in clear air it carries over two kilowatts; less as the sun sinks, nothing in shadow or at night. A click opens and shuts its shutter. A right click aims the beam, and turns the dish to the sun where it is now (the fork turns on its toothed table, the dish on its quadrant gear); the sun moves fifteen degrees an hour, and three degrees off it the gathered light misses the globe, so turn it again from time to time. The beam runs straight and narrow, and fades as it goes, losing half its light about every five and a half metres: at noon it lights a crystal some fifty metres off. A lens along the way makes it fade half as fast from there.",
+	},
+	"oil_lamp": {
+		"note": "Oil lantern\nA flame behind a lens, sending a beam while it burns, day or night. A click lights it or puts it out; a click on its glass font fills it with oil.",
+		"menu": "a flame behind a lens: a beam day or night, while its oil lasts.",
+		"details": "An oil flame in a copper lantern, a lens before it, sending a steady beam of about sixty watts, enough to light a crystal some twenty-four metres off, by day or night. It burns oil only while lit, and a full font lasts four hours of the day; the oil can be seen falling in the glass font under the head, and while you look at the lantern a bar under your sight shows how much is left. When the oil runs out the flame goes out. A click on the lantern lights it or puts it out; a click on its font fills it.",
 	},
 	"and": {"note": "AND crystal\nGlows while every beam striking it is lit. It sends no light of its own.",
 		"menu": "glows while every beam striking it is lit; it sends no light.",
@@ -330,6 +339,8 @@ var slots: Array[String] = ["", "", "", "", "", "", "", "", "", ""]
 var _slot_cells: Array[PanelContainer] = []
 var _slot_pictures: Array[TextureRect] = []
 var _bar: HBoxContainer
+var _fuel: Panel                        # the fuel bar under the crosshair
+var _fuel_fill: ColorRect
 var _hover_item := -1                   # the card the pointer rests on, or -1
 var _textures := {}                     # item index -> its picture
 var _details: PanelContainer
@@ -475,6 +486,8 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 			delay if kind == LumenPart.Kind.TON or kind == LumenPart.Kind.TOF else 0.0, look)
 	if BEAMS.has(key):
 		part.set_meta("beam", BEAMS[key])
+	if key == "oil_lamp":
+		_make_font(part)
 	if key == "collector":
 		part.set_meta("collector", true)
 		var dish := SunDish.new(_polish, _iron, brass, copper)
@@ -483,9 +496,95 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 	return part
 
 
+## An oil lantern's font: a glass reservoir under its head, the oil in it
+## standing as high as it is full, a brass filler cap; a solid of its own
+## that a click on fills it (meta "refill_of").
+func _make_font(part: LumenPart) -> void:
+	part.set_meta("oil_lamp", true)
+	part.set_meta("fuel", 1.0)
+	var font := Node3D.new()
+	font.name = "Font"
+	font.position = Vector3(0, -0.24, 0)
+	part.add_child(font)
+	var bowl := CylinderMesh.new()
+	bowl.top_radius = 0.075
+	bowl.bottom_radius = 0.085
+	bowl.height = 0.14
+	bowl.material = glass
+	var view := MeshInstance3D.new()
+	view.mesh = bowl
+	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	font.add_child(view)
+	var oil_mat := StandardMaterial3D.new()
+	oil_mat.albedo_color = Color(0.85, 0.55, 0.15, 0.85)
+	oil_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	oil_mat.roughness = 0.1
+	var oil := CylinderMesh.new()
+	oil.top_radius = 0.068
+	oil.bottom_radius = 0.078
+	oil.height = 0.12
+	oil.material = oil_mat
+	var level := MeshInstance3D.new()
+	level.name = "Oil"
+	level.mesh = oil
+	level.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	font.add_child(level)
+	part.set_meta("oil_view", level)
+	for y: float in [-0.075, 0.075]:
+		var band := CylinderMesh.new()
+		band.top_radius = 0.09
+		band.bottom_radius = 0.09
+		band.height = 0.02
+		band.material = copper
+		var b := MeshInstance3D.new()
+		b.mesh = band
+		b.position.y = y
+		font.add_child(b)
+	var cap := CylinderMesh.new()
+	cap.top_radius = 0.025
+	cap.bottom_radius = 0.03
+	cap.height = 0.04
+	cap.material = brass
+	var c := MeshInstance3D.new()
+	c.mesh = cap
+	c.position = Vector3(0.06, 0.09, 0)
+	font.add_child(c)
+	var body := StaticBody3D.new()
+	body.collision_layer = 4
+	body.collision_mask = 0
+	body.set_meta("refill_of", part)
+	var shape := CollisionShape3D.new()
+	var box := CylinderShape3D.new()
+	box.radius = 0.1
+	box.height = 0.18
+	shape.shape = box
+	body.add_child(shape)
+	font.add_child(body)
+	part.set_meta("font_body", body)
+	# The flame's own glow on what is round it, while it burns.
+	var flame := OmniLight3D.new()
+	flame.light_color = Color(1.0, 0.66, 0.32)
+	flame.light_energy = 0.8
+	flame.omni_range = 3.5
+	flame.omni_attenuation = 1.5
+	flame.visible = false
+	part.add_child(flame)
+	part.set_meta("flame", flame)
+
+
+## An oil lantern's font shown as full as it is.
+func _show_fuel(part: LumenPart) -> void:
+	var level: MeshInstance3D = part.get_meta("oil_view")
+	var fuel := float(part.get_meta("fuel", 1.0))
+	level.visible = fuel > 0.005
+	level.scale = Vector3(1.0, maxf(fuel, 0.01), 1.0)
+	level.position.y = -0.06 * (1.0 - fuel)
+	(part.get_meta("flame") as OmniLight3D).visible = part.condition and fuel > 0.0
+
+
 ## Under sunlight, whether the menu offers `key`.
 func offered(key: String) -> bool:
-	return not FREE_LIGHT.has(key) if light.sun_rules else key != "collector"
+	return not FREE_LIGHT.has(key) if light.sun_rules else not HONEST_LIGHT.has(key)
 
 
 ## A piece's text from `table`, the sunlight's own where it has one.
@@ -508,6 +607,8 @@ func _turn_dish(part: LumenPart) -> void:
 
 ## A piece (a gate's sensor too) on collision layer `layer`.
 func _set_layer(n: Node3D, layer: int) -> void:
+	if n.has_meta("font_body"):
+		(n.get_meta("font_body") as CollisionObject3D).collision_layer = layer
 	if n.has_meta("rod_body"):
 		(n.get_meta("rod_body") as CollisionObject3D).collision_layer = ROD_LAYER if layer != 0 else 0
 	if n is LightGate:
@@ -689,6 +790,9 @@ func _demo_aim(from: Node3D, to: Node3D) -> void:
 
 
 func toggle(lantern: LumenPart) -> void:
+	# An oil lantern with no oil will not light.
+	if lantern.has_meta("oil_lamp") and not lantern.condition and float(lantern.get_meta("fuel", 1.0)) <= 0.0:
+		return
 	lantern.condition = not lantern.condition
 	changed()
 
@@ -789,6 +893,9 @@ func _look_hit(exclude: Array[RID] = []) -> Dictionary:
 	if not hit.is_empty() and (hit["collider"] as Node).has_meta("part_of"):
 		hit["collider"] = (hit["collider"] as Node).get_meta("part_of")
 		hit["sensor"] = true
+	elif not hit.is_empty() and (hit["collider"] as Node).has_meta("refill_of"):
+		hit["collider"] = (hit["collider"] as Node).get_meta("refill_of")
+		hit["refill"] = true
 	elif not hit.is_empty() and (hit["collider"] as Node).has_meta("rod_of"):
 		hit["collider"] = (hit["collider"] as Node).get_meta("rod_of")
 		hit["rod"] = true
@@ -1353,7 +1460,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		if hit.is_empty() or not is_piece(hit["collider"]):
 			return
 		var v := hit["collider"] as Node3D
-		if v is LumenPart and (v as LumenPart).kind == LumenPart.Kind.LANTERN:
+		if hit.get("refill", false):
+			# A click on an oil lantern's font fills it.
+			v.set_meta("fuel", 1.0)
+			changed()
+		elif v is LumenPart and (v as LumenPart).kind == LumenPart.Kind.LANTERN:
 			toggle(v as LumenPart)
 		elif sends(v) and key != null:
 			scope.enter(v, player.camera)
@@ -1471,6 +1582,13 @@ func _process(delta: float) -> void:
 	for piece in pieces:
 		if piece.has_meta("collector") and piece.visible:
 			_turn_dish(piece as LumenPart)
+		elif piece.has_meta("oil_lamp"):
+			_show_fuel(piece as LumenPart)
+	# The fuel bar under the crosshair, while it is on an oil lantern.
+	var lamp := _on_piece if _on_piece != null and _on_piece.has_meta("oil_lamp") else null
+	_fuel.visible = lamp != null and _cross.visible
+	if lamp != null:
+		_fuel_fill.anchor_right = clampf(float(lamp.get_meta("fuel", 1.0)), 0.0, 1.0)
 	if building and free and _aiming == null and not _menu_open:
 		_find_place()
 	elif _ghost != null:
@@ -1559,6 +1677,7 @@ func _build_ui() -> void:
 	_cross.visible = false
 	root.add_child(_cross)
 	_build_bar(root)
+	_build_fuel(root)
 	_build_card(root)
 	_build_menu(root)
 	_build_details(root)
@@ -1852,6 +1971,38 @@ func _use_slot(n: int) -> void:
 	_set_building(true)
 
 
+## A small bar under the crosshair, amber as far as an oil lantern's font
+## is full.
+func _build_fuel(root: Control) -> void:
+	_fuel = Panel.new()
+	var back := StyleBoxFlat.new()
+	back.bg_color = Color(0.08, 0.06, 0.04, 0.7)
+	back.border_color = Color(0.85, 0.66, 0.36, 0.9)
+	back.set_border_width_all(1)
+	back.set_corner_radius_all(3)
+	_fuel.add_theme_stylebox_override("panel", back)
+	_fuel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_fuel.offset_left = -32.0
+	_fuel.offset_right = 32.0
+	_fuel.offset_top = 22.0
+	_fuel.offset_bottom = 29.0
+	_fuel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fuel.visible = false
+	root.add_child(_fuel)
+	_fuel_fill = ColorRect.new()
+	_fuel_fill.color = Color(1.0, 0.68, 0.22)
+	_fuel_fill.anchor_left = 0.0
+	_fuel_fill.anchor_top = 0.0
+	_fuel_fill.anchor_bottom = 1.0
+	_fuel_fill.anchor_right = 1.0
+	_fuel_fill.offset_left = 1.0
+	_fuel_fill.offset_top = 1.0
+	_fuel_fill.offset_right = -1.0
+	_fuel_fill.offset_bottom = -1.0
+	_fuel_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fuel.add_child(_fuel_fill)
+
+
 func _build_bar(root: Control) -> void:
 	_bar = HBoxContainer.new()
 	_bar.add_theme_constant_override("separation", 4)
@@ -2056,6 +2207,8 @@ func _save() -> void:
 				entry["delay"] = part.delay
 			if part.kind == LumenPart.Kind.LANTERN:
 				entry["on"] = part.condition
+			if part.has_meta("oil_lamp"):
+				entry["fuel"] = float(part.get_meta("fuel", 1.0))
 			if part.has_meta("collector"):
 				var set_for: Vector3 = part.get_meta("sun_set", light.sun)
 				entry["sun_set"] = [set_for.x, set_for.y, set_for.z]
@@ -2122,6 +2275,8 @@ func _load() -> void:
 					float(d.get("delay", 2.0)))
 			if piece is LumenPart and bool(d.get("on", false)):
 				(piece as LumenPart).condition = true
+			if piece.has_meta("oil_lamp"):
+				piece.set_meta("fuel", clampf(float(d.get("fuel", 1.0)), 0.0, 1.0))
 			var sun_set: Variant = d.get("sun_set")
 			if piece.has_meta("collector") and sun_set is Array and (sun_set as Array).size() >= 3:
 				piece.set_meta("sun_set", Vector3(float(sun_set[0]), float(sun_set[1]), float(sun_set[2])).normalized())

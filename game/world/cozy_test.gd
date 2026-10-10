@@ -639,8 +639,9 @@ func _process(delta: float) -> void:
 	if camera != null:
 		sky.follow(camera.global_position)
 	_blow(delta)
-	if _on("Time passes"):
-		hour = fposmod(hour + delta / (_value("Minutes per hour") * 60.0), 24.0)
+	var pace := 1.0 / (_value("Minutes per hour") * 60.0) if _on("Time passes") else 0.0
+	hour = fposmod(hour + delta * pace, 24.0)
+	workshop.light.hours_per_second = pace
 	_sky_left -= delta
 	if _sky_left <= 0.0:
 		_sky_left = 0.1

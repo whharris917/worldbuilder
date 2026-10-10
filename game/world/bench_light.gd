@@ -45,6 +45,13 @@ extends Node3D
 ## slides off the hole it is sent through, falling to nothing ACCEPT
 ## radians off.
 ##
+## The other source is an oil lantern (meta "oil_lamp"): a flame behind a
+## lens, LAMP_POWER watts while it burns, day or night. It burns while its
+## shutter is open and it has oil (meta "fuel", 0 to 1), using a full
+## font in TANK_HOURS hours of the day (`hours_per_second`, set by the
+## world from the pace time passes at; none while time stands still);
+## when the oil runs out its flame goes out (its shutter closes).
+##
 ## The beam stays a narrow, focused line (no spreading, unlike real
 ## sunlight: a choice for play) and fades with the distance it has run:
 ## its power falls by e every FADE metres, halving about every 5.5 m. A
@@ -72,6 +79,8 @@ const COLLECT := 0.75                   # the share of the light the dish, its m
 const ACCEPT := 0.052                   # 3 degrees: the sun this far off its setting and the tube gets nothing
 const THRESHOLD := 3.0                  # watts reaching a piece for it to respond
 const FADE := 8.0                       # metres over which a beam's power falls by e
+const LAMP_POWER := 60.0                # an oil lantern's beam, watts
+const TANK_HOURS := 4.0                 # hours of the day a full font burns
 
 var parts: Array[LumenPart] = []
 var elements: Array[OpticElement] = []
@@ -91,6 +100,8 @@ var spot_size := 0.05
 var sun_rules := false
 var sun := Vector3.UP
 var sunlight := 0.0
+## Hours of the day passing each second of play (0 while time stands still).
+var hours_per_second := 0.0
 
 var _clock := 0.0
 var _history := {}                      # part -> Array of [time, out]
@@ -184,7 +195,8 @@ func step(dt: float) -> void:
 	for p in parts:
 		p.evaluate(dt)
 		if sun_rules:
-			_record_power(p, collector_power(p))
+			_burn(p, dt)
+			_record_power(p, source_power(p))
 		else:
 			_record(p)
 	_segments.clear()
@@ -192,7 +204,7 @@ func step(dt: float) -> void:
 	struck = Vector3.INF
 	if sun_rules:
 		for p in parts:
-			if p.has_meta("collector"):
+			if p.has_meta("collector") or p.has_meta("oil_lamp"):
 				var skip: Array[RID] = [p.get_rid()]
 				_trace_sun(p, p.lens_point(), p.forward(), 1.0, 0.0, 1.0 / FADE, 0.0, skip, 0, p == held)
 		return
@@ -222,6 +234,25 @@ func _shown(p: LumenPart, t: float) -> bool:
 
 
 ## ---- sunlight ----------------------------------------------------------------
+
+## An oil lantern's oil burned for `dt` seconds while it burns; its
+## flame out when the oil is gone.
+func _burn(p: LumenPart, dt: float) -> void:
+	if not p.has_meta("oil_lamp") or not p.condition:
+		return
+	var fuel := maxf(float(p.get_meta("fuel", 1.0)) - dt * hours_per_second / TANK_HOURS, 0.0)
+	p.set_meta("fuel", fuel)
+	if fuel <= 0.0:
+		p.condition = false
+
+
+## A source's power now, watts: an oil lantern's while it burns, or a
+## collector's.
+func source_power(p: LumenPart) -> float:
+	if p.has_meta("oil_lamp"):
+		return LAMP_POWER if p.condition and float(p.get_meta("fuel", 1.0)) > 0.0 else 0.0
+	return collector_power(p)
+
 
 ## A collector's power now, watts: the sunlight on its mirror while its
 ## shutter is open, the mirror is in the sun and still near enough its
