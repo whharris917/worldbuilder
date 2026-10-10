@@ -57,6 +57,7 @@ var eye := EYE
 
 var figure: PlayerFigure
 
+const STEP_DB := -23.0                  # the footsteps' loudness
 var _step_streams: Array[AudioStream] = []
 var _land_stream: AudioStream
 var _step_surface := ""
@@ -100,7 +101,7 @@ func _ready() -> void:
 	_land_stream = load("res://audio/land.wav")
 	_steps = AudioStreamPlayer.new()
 	_steps.bus = "Room"
-	_steps.volume_db = -17.0
+	_steps.volume_db = STEP_DB
 	add_child(_steps)
 
 
@@ -275,7 +276,7 @@ func _play(stream: AudioStream, pitch: float) -> void:
 	footstep.emit()
 	_steps.stream = stream
 	_steps.pitch_scale = pitch
-	_steps.volume_db = -17.0 + randf_range(-2.0, 0.0)
+	_steps.volume_db = STEP_DB + randf_range(-2.0, 0.0)
 	_steps.play()
 
 
