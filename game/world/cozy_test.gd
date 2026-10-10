@@ -23,6 +23,14 @@ extends BuildWorld
 ## driven by it; its gasworks (GasWorks) is the machine on its spindle.
 ## The mill's and the gasworks' state is kept in MILL_PATH.
 ##
+## Time passes: the hour runs on at a chosen pace (the Time panel) and
+## the sun keeps to its real path for LATITUDE on a day when its
+## declination is DECLINATION (late spring), worked out from the hour
+## (`sun_at`). The direct sunlight it gives, watts a square metre, follows
+## from how much air it crosses (`sunlight_at`). Building here is under
+## sunlight (BenchLight.sun_rules): the only light is what sun collectors
+## gather. The hour is kept with the mill's state.
+##
 ## The player builds here as on the cozy island (Workshop, Tab for its menu),
 ## what they build kept in BUILD_PATH, apart from the island's.
 
@@ -39,6 +47,8 @@ const GRASS_TO := 0.65                  # the grass's edge, as a share of the ra
 const CAMP_BEARING := 90.0              # degrees round from +x toward +z: due south
 const CAMP_OUT := 0.74                  # the campsite's centre, a share of the radius out
 const GROUND_OUT := 90.0                # how far the ground's disc reaches
+const LATITUDE := 44.0                  # degrees north
+const DECLINATION := 20.0               # the sun's, degrees: late May or mid July
 
 var sky: IslandSky
 var campsite: Campsite
@@ -55,6 +65,12 @@ var _clock := 0.0
 var _spawn := Vector3.ZERO
 var _spawn_facing := 0.0
 var _was_soft := 0
+## The hour of the day, 0 to 24.
+var hour := 10.0
+var _hour_saved := -1.0
+var _sky_left := 0.0
+var _slider_left := 0.0
+var _time_note: Label
 var _gust := FastNoiseLite.new()
 var _wind_sound: AudioStreamPlayer
 var _readout: Label
@@ -106,13 +122,16 @@ func _ready() -> void:
 	# The mill's stairs are steeper than the player's usual limit.
 	player.floor_max_angle = deg_to_rad(50.0)
 	player.floor_snap_length = 0.35
-	workshop = Workshop.new(self, BUILD_PATH, false)
+	workshop = Workshop.new(self, BUILD_PATH, false, true)
 	add_child(workshop)
 	_build_panels()
 	LabGraphics.attach(self, _panel.panel("Graphics"), func(g: GraphicsSettings) -> void:
 		RenderingServer.directional_soft_shadow_filter_set_quality(
 				maxi(g.filter_quality(), RenderingServer.SHADOW_QUALITY_SOFT_LOW) as RenderingServer.ShadowQuality))
 	_panel.restore()
+	if _hour_saved >= 0.0:
+		hour = _hour_saved
+	(_panel.sliders["Time of day"] as HSlider).set_value_no_signal(hour)
 	_apply()
 	# The player starts at the campsite's landward side, looking up the
 	# island to the windmill.
@@ -147,12 +166,18 @@ func _build_panels() -> void:
 	_panel.note(look, "The sun given a larger size in the sky, so shadows blur farther from what casts them. It costs a good deal of drawing time.")
 	_panel.switch(look, "Storybook sky", false, redraw)
 	var light := _panel.panel("Sun and moon")
-	_panel.slider(light, "Sun height", -30.0, 85.0, 0.5, 38.0, redraw)
-	_panel.slider(light, "Sun direction", 0.0, 360.0, 1.0, 215.0, redraw)
+	var time := _panel.panel("Time")
+	_panel.slider(time, "Time of day", 0.0, 24.0, 0.05, 10.0, func(v: float) -> void:
+		hour = v
+		_update_sky())
+	_panel.switch(time, "Time passes", true, redraw)
+	_panel.slider(time, "Minutes per hour", 1.0, 60.0, 1.0, 10.0, redraw)
+	_panel.note(time, "How many minutes of play an hour of the day takes. At ten, a day lasts four hours; the sun moves a degree and a half a minute.")
+	_time_note = _panel.note(time, "")
 	_panel.slider(light, "Sun brightness", 0.0, 3.0, 0.01, 1.4, redraw)
 	_panel.slider(light, "Moon height", -30.0, 85.0, 0.5, 25.0, redraw)
 	_panel.slider(light, "Moon direction", 0.0, 360.0, 1.0, 120.0, redraw)
-	_panel.note(light, "Heights in degrees above the horizon; directions from north toward east. The campsite is on the south beach.")
+	_panel.note(light, "The sun follows the hour (the Time panel). Brightness is how bright it looks; the light it gives the collectors follows from its height. Moon heights in degrees above the horizon; directions from north toward east. The campsite is on the south beach.")
 	var wind := _panel.panel("Wind")
 	_panel.slider(wind, "Wind speed (m/s)", 0.0, 20.0, 0.5, 7.0, redraw)
 	_panel.slider(wind, "Wind from", 0.0, 360.0, 1.0, 225.0, redraw)
@@ -179,9 +204,7 @@ func _value(title: String) -> float:
 
 
 func _apply() -> void:
-	var story := _on("Storybook sky")
-	sky.set_state(_value("Sun height"), _value("Sun direction"), _value("Sun brightness"),
-			_value("Moon height"), _value("Moon direction"), story)
+	_update_sky()
 	var size := 2.5 if _on("Soft shadows") else 0.5
 	sky.sun.light_angular_distance = size
 	sky.moonlight.light_angular_distance = size
@@ -199,11 +222,47 @@ func _apply() -> void:
 	_sea_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON if toon else BaseMaterial3D.DIFFUSE_BURLEY
 	_sea_mat.specular_mode = BaseMaterial3D.SPECULAR_TOON if toon else BaseMaterial3D.SPECULAR_SCHLICK_GGX
 	_sea_mat.roughness = 0.12 if toon else 0.05
-	var night := 1.0 - sky.daylight
-	campsite.set_night(night)
 	windmill.set_cloth(_value("Sail cloth (%)") * 0.01)
 	windmill.swoosh_level = _value("Sails (%)") * 0.01
+
+
+## ---- the hour and the sun ---------------------------------------------------
+
+## The sun's height over the horizon and bearing from north toward east,
+## degrees, at `h` o'clock (solar time).
+static func sun_at(h: float) -> Vector2:
+	var lat := deg_to_rad(LATITUDE)
+	var dec := deg_to_rad(DECLINATION)
+	var angle := deg_to_rad((h - 12.0) * 15.0)
+	var east := -cos(dec) * sin(angle)
+	var north := sin(dec) * cos(lat) - cos(dec) * cos(angle) * sin(lat)
+	var up := sin(dec) * sin(lat) + cos(dec) * cos(angle) * cos(lat)
+	return Vector2(rad_to_deg(asin(clampf(up, -1.0, 1.0))), fposmod(rad_to_deg(atan2(east, north)), 360.0))
+
+
+## Direct sunlight with the sun `height` degrees up, W/m²: the sunlight
+## above the air (1361) dimmed by the air it crosses (Meinel's fit), the
+## air's depth from the sun's height (Kasten and Young's air mass).
+static func sunlight_at(height: float) -> float:
+	if height <= 0.0:
+		return 0.0
+	var air := 1.0 / (sin(deg_to_rad(height)) + 0.50572 * pow(height + 6.07995, -1.6364))
+	return 1361.0 * pow(0.7, pow(air, 0.678))
+
+
+## The sky, the night lights and the collectors' sunlight for the hour.
+func _update_sky() -> void:
+	var at := sun_at(hour)
+	sky.set_state(at.x, at.y, _value("Sun brightness"), _value("Moon height"), _value("Moon direction"),
+			_on("Storybook sky"))
+	campsite.set_night(1.0 - sky.daylight)
 	_env.fog_light_color = sky.haze_colour
+	workshop.light.sun = sky.sun.global_basis.z.normalized()
+	workshop.light.sunlight = sunlight_at(at.x)
+	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
+	_time_note.text = "%02d:%02d. %s" % [floori(hour), floori(fmod(hour, 1.0) * 60.0),
+			("The sun is %d degrees up in the %s; its direct light %d watts a square metre." % [roundi(at.x), where, roundi(workshop.light.sunlight)])
+			if at.x > 0.0 else "The sun is down."]
 
 
 ## ---- materials -------------------------------------------------------------
@@ -580,6 +639,16 @@ func _process(delta: float) -> void:
 	if camera != null:
 		sky.follow(camera.global_position)
 	_blow(delta)
+	if _on("Time passes"):
+		hour = fposmod(hour + delta / (_value("Minutes per hour") * 60.0), 24.0)
+	_sky_left -= delta
+	if _sky_left <= 0.0:
+		_sky_left = 0.1
+		_update_sky()
+	_slider_left -= delta
+	if _slider_left <= 0.0:
+		_slider_left = 0.5
+		(_panel.sliders["Time of day"] as HSlider).set_value_no_signal(hour)
 	_save_left -= delta
 	if _save_left <= 0.0:
 		_save_left = 5.0
@@ -649,7 +718,9 @@ func _save_mill() -> void:
 		return
 	var file := FileAccess.open(MILL_PATH, FileAccess.WRITE)
 	if file != null:
-		file.store_string(JSON.stringify(windmill.state()))
+		var state := windmill.state()
+		state["hour"] = hour
+		file.store_string(JSON.stringify(state))
 
 
 func _load_mill() -> void:
@@ -661,3 +732,5 @@ func _load_mill() -> void:
 			if parsed is Dictionary:
 				saved = parsed
 	windmill.restore(saved)
+	if saved.has("hour"):
+		_hour_saved = fposmod(float(saved["hour"]), 24.0)

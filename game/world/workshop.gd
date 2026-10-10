@@ -103,6 +103,15 @@ extends Node3D
 ##
 ## It stands in any BuildWorld: the world gives it the player, the
 ## ground's height and the pieces' materials in its look.
+##
+## Under sunlight (`sun_rules`, the test island's; BenchLight) light has
+## to come from somewhere: the menu offers the sun collector in place of
+## the lantern, the push and pull lamps and the track, the crystals read
+## light without sending any, and the pieces' texts say so (SUN_TEXTS).
+## A collector is a lantern-bodied piece with a round mirror behind its
+## tube, turned each frame to send the sun, as it stood when the
+## collector was last aimed or set down (meta "sun_set"), along the
+## tube.
 
 const SAVE_PATH := "user://cozy_island_build.json"
 const DEMO_AT := Vector3(21.3, 0.0, 108.9)   # the shuttle's track middle, in the meadow by the cabin
@@ -122,7 +131,10 @@ const ITEMS := [["floor", "Floor"], ["lantern", "Lantern"], ["gate", "Opening ga
 		["closing_gate", "Closing gate"], ["and", "AND"], ["or", "OR"], ["not", "NOT"], ["latch", "Latch"],
 		["on_delay", "Hourglass"], ["off_delay", "Afterglow"], ["rise", "Rising spark"], ["fall", "Falling spark"],
 		["radiometer", "Radiometer"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"],
-		["push_lamp", "Push lamp"], ["pull_lamp", "Pull lamp"], ["track", "Track and cart"]]
+		["push_lamp", "Push lamp"], ["pull_lamp", "Pull lamp"], ["track", "Track and cart"],
+		["collector", "Sun collector"]]
+## Free light: kept out of the menu under sunlight.
+const FREE_LIGHT := ["lantern", "push_lamp", "pull_lamp", "track"]
 const BEAMS := {"push_lamp": "push", "pull_lamp": "pull"}   # lamps sending force beams, by kind
 const TRACK_COLOUR := Color(0.6, 0.45, 0.32)
 const GATES := {"gate": false, "closing_gate": true}   # key -> closing
@@ -131,7 +143,7 @@ const KINDS := {"lantern": LumenPart.Kind.LANTERN, "and": LumenPart.Kind.AND, "o
 		"not": LumenPart.Kind.NOT, "latch": LumenPart.Kind.LATCH, "on_delay": LumenPart.Kind.TON,
 		"off_delay": LumenPart.Kind.TOF, "rise": LumenPart.Kind.RISE, "fall": LumenPart.Kind.FALL,
 		"radiometer": LumenPart.Kind.RADIOMETER, "push_lamp": LumenPart.Kind.LANTERN,
-		"pull_lamp": LumenPart.Kind.LANTERN}
+		"pull_lamp": LumenPart.Kind.LANTERN, "collector": LumenPart.Kind.LANTERN}
 const GLASS := {"mirror": OpticElement.Kind.MIRROR, "splitter": OpticElement.Kind.SPLITTER,
 		"lens": OpticElement.Kind.LENS}
 ## Each kind's cut and setting (LumenPart's `look`); a metal by name.
@@ -143,6 +155,7 @@ const LOOKS := {
 	"off_delay": {"design": "cluster", "setting": "cup", "metal": "copper"},
 	"push_lamp": {"lamp": "drum", "metal": "copper", "colour": Color(1.0, 0.3, 0.22)},
 	"pull_lamp": {"lamp": "drum", "metal": "silver", "colour": Color(0.35, 1.0, 0.45)},
+	"collector": {"lamp": "drum", "metal": "brass"},
 }
 const FLOOR_COLOUR := Color(0.85, 0.7, 0.5)
 const GLASS_COLOUR := Color(0.85, 0.9, 1.0)
@@ -171,7 +184,7 @@ const NOTES := {
 }
 ## The menu's groups, in order, and what each piece does, one line
 ## each. Drafts.
-const GROUPS := [[["Floors", ["floor"]], ["Lamps", ["lantern", "push_lamp", "pull_lamp"]]],
+const GROUPS := [[["Floors", ["floor"]], ["Lamps", ["collector", "lantern", "push_lamp", "pull_lamp"]]],
 		[["Crystals", ["and", "or", "not", "latch", "on_delay", "off_delay", "rise", "fall"]]],
 		[["Gates", ["gate", "closing_gate"]], ["Glass", ["mirror", "splitter", "lens"]]],
 		[["Machines", ["radiometer", "track"]]]]
@@ -217,6 +230,41 @@ const DETAILS := {
 	"lens": "A beam passing through it reaches twice as far again, for carrying a signal across a distance.",
 	"radiometer": "Four vanes on a needle in a glass bulb, dark on one face and bright on the other. A lit beam striking the bulb spins them, faster the more light, with a soft whir.",
 	"track": "Sixteen metres of track with a cart on it, carrying a copper ball on a pole. Red beams on the ball push the cart away from their lamp and green ones pull it toward theirs, up to eight metres a second; gold beams do nothing to it.",
+}
+## What the pieces are under sunlight, where it differs: their card
+## ("note"), the menu's line ("menu") and their details ("details").
+## Drafts.
+const SUN_TEXTS := {
+	"collector": {
+		"note": "Sun collector\nA mirror sends the sun along a lens tube and out as a beam, while its shutter is open (a click). A right click aims the beam and sets the mirror for the sun where it stands now; as the sun moves on, the beam fades.",
+		"menu": "a mirror and a lens tube that send the sun out as a beam.",
+		"details": "The first light that can be made: a round mirror sixty centimetres across catches the sun and sends it along a lens tube, which squeezes it into a beam ten centimetres across. At noon in clear air it carries about two hundred watts; less as the sun sinks, nothing in shadow or at night. A click opens and shuts its shutter. A right click aims the beam, and sets the mirror for where the sun is now; the sun moves fifteen degrees an hour, and three degrees off its setting the mirror misses the tube, so aim it again from time to time. The beam spreads as it goes, because the sun is not a point: squeezing light narrower always makes it spread faster. Whatever it strikes catches only the part that falls on it.",
+	},
+	"and": {"note": "AND crystal\nGlows while every beam striking it is lit. It sends no light of its own.",
+		"menu": "glows while every beam striking it is lit; it sends no light.",
+		"details": "A crystal that glows while every beam striking it carries enough light, three watts or more of what falls on it. It reads light and sends none: to let one beam govern another, use a gate."},
+	"or": {"note": "OR crystal\nGlows while any beam striking it is lit. It sends no light of its own.",
+		"menu": "glows while any beam striking it is lit; it sends no light.",
+		"details": "A crystal that glows while any beam striking it carries enough light. It reads light and sends none."},
+	"not": {"note": "NOT crystal\nGlows while no lit beam strikes it. It sends no light of its own.",
+		"menu": "glows while no lit beam strikes it; it sends no light.",
+		"details": "A crystal that glows while nothing lit strikes it. It sends no light; a closing gate is the NOT that governs a beam."},
+	"latch": {"note": "Latch crystal\nLit by a beam on its left, put out by one on its right; it remembers between. It sends no light of its own.",
+		"menu": "lit from its left, put out from its right; remembers; sends no light.",
+		"details": "A crystal that remembers: a lit beam on its left lights it, one on its right puts it out, and with neither it stays as it was. It shows a state and sends no light."},
+	"on_delay": {"menu": "glows once a beam striking it has stayed lit a while; sends no light.",
+		"details": "An hourglass that glows once a beam striking it has stayed lit for its time, from 1 to 13 seconds (T changes it). It sends no light."},
+	"off_delay": {"menu": "glows while a beam is lit and a while after; sends no light.",
+		"details": "A crystal that glows the moment a beam striking it lights and stays lit for its time after it goes dark (T changes it). It sends no light."},
+	"rise": {"menu": "one flash when a beam striking it lights; sends no light."},
+	"fall": {"menu": "one flash when a beam striking it goes dark; sends no light."},
+	"gate": {"details": "The piece that lets one beam govern another. A brass ring with a glass bulb above it: a beam through the ring passes only while a lit beam strikes the bulb (three watts or more of what falls on the bulb, fifteen centimetres across). The ring is twenty-three centimetres across, so a beam wider than that loses what misses it. Gates in a row along one beam make an AND; two beams brought to the same place make an OR. A right click turns its ring toward what you look at."},
+	"closing_gate": {"details": "Like the opening gate, but it stops the beam through its ring while its bulb is lit, and lets it pass while the bulb is dark: the NOT. A right click turns its ring toward what you look at."},
+	"mirror": {"details": "A silvered glass thirty-eight centimetres across that turns a beam off its face, losing a tenth of it. A beam wider than the mirror loses what misses it. A right click aims the beam it sends on."},
+	"splitter": {"details": "Half-silvered glass: a beam striking it goes on straight through and is turned aside as well, half its light each way."},
+	"lens": {"menu": "widens a narrow beam to its own width, so it spreads more slowly.",
+		"details": "A lens thirty-eight centimetres across. A beam narrower than the lens leaves it as wide as the lens and spreads that much more slowly: a beam ten centimetres across widened to thirty-eight spreads less than a third as fast, and reaches three times as far. A beam already wider is cut to the lens and goes on as it was. No lens can make light brighter than the sun."},
+	"radiometer": {"details": "Four vanes on a needle in a glass bulb, dark on one face and bright on the other, that spin while a beam striking it carries enough light, with a soft whir."},
 }
 const MENU_HELP := ""
 const AIM_NOTE := "\nA right click aims it at what you look at; E looks through it."
@@ -303,10 +351,12 @@ var _plain := StyleBoxFlat.new()
 
 ## `save_path` is where what is built is kept; `demo` builds the shuttle
 ## on a first visit (the cozy island's).
-func _init(owner_island: BuildWorld, save_path := SAVE_PATH, demo := true) -> void:
+## `sun` puts the light under sunlight (BenchLight.sun_rules).
+func _init(owner_island: BuildWorld, save_path := SAVE_PATH, demo := true, sun := false) -> void:
 	island = owner_island
 	_save_path = save_path
 	_demo = demo
+	light.sun_rules = sun
 	name = "Workshop"
 
 
@@ -376,6 +426,8 @@ func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0)
 	var piece := _make(key, at, delay)
 	_set_layer(piece, 4)
 	piece.set_meta("piece", key)
+	if key == "collector":
+		piece.set_meta("sun_set", light.sun)
 	add_child(piece)
 	piece.call("aim", yaw, pitch)
 	pieces.append(piece)
@@ -417,7 +469,77 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 			delay if kind == LumenPart.Kind.TON or kind == LumenPart.Kind.TOF else 0.0, look)
 	if BEAMS.has(key):
 		part.set_meta("beam", BEAMS[key])
+	if key == "collector":
+		part.set_meta("collector", true)
+		var mirror := Node3D.new()
+		mirror.name = "SunMirror"
+		mirror.set_meta(StaticMerge.MOVES, true)
+		var disc := CylinderMesh.new()
+		disc.top_radius = BenchLight.MIRROR_D * 0.5
+		disc.bottom_radius = BenchLight.MIRROR_D * 0.5
+		disc.height = 0.025
+		disc.radial_segments = 24
+		disc.material = silver
+		var face := MeshInstance3D.new()
+		face.mesh = disc
+		mirror.add_child(face)
+		var rim := TorusMesh.new()
+		rim.inner_radius = BenchLight.MIRROR_D * 0.5 - 0.01
+		rim.outer_radius = BenchLight.MIRROR_D * 0.5 + 0.025
+		rim.material = brass
+		var ring := MeshInstance3D.new()
+		ring.mesh = rim
+		mirror.add_child(ring)
+		var back := CylinderMesh.new()
+		back.top_radius = BenchLight.MIRROR_D * 0.5
+		back.bottom_radius = BenchLight.MIRROR_D * 0.5
+		back.height = 0.02
+		back.material = timber
+		var board := MeshInstance3D.new()
+		board.mesh = back
+		board.position.y = -0.022
+		mirror.add_child(board)
+		part.add_child(mirror)
+		part.set_meta("mirror", mirror)
+		var arm := CylinderMesh.new()
+		arm.top_radius = 0.015
+		arm.bottom_radius = 0.015
+		arm.height = 1.0
+		arm.material = brass
+		var strut := MeshInstance3D.new()
+		strut.mesh = arm
+		part.add_child(strut)
+		part.set_meta("mirror_arm", strut)
 	return part
+
+
+## Under sunlight, whether the menu offers `key`.
+func offered(key: String) -> bool:
+	return not FREE_LIGHT.has(key) if light.sun_rules else key != "collector"
+
+
+## A piece's text from `table`, the sunlight's own where it has one.
+func _text(table: Dictionary, which: String, key: String) -> String:
+	if light.sun_rules and SUN_TEXTS.has(key) and (SUN_TEXTS[key] as Dictionary).has(which):
+		return SUN_TEXTS[key][which]
+	return table.get(key, "")
+
+
+## A collector's mirror: behind its tube, turned to send the sun as it
+## stood when the collector was set along the tube, on a brass arm.
+func _turn_mirror(part: LumenPart) -> void:
+	var mirror: Node3D = part.get_meta("mirror")
+	var forward := part.forward()
+	var sun_set: Vector3 = part.get_meta("sun_set", light.sun)
+	var at := part.global_position - forward * 0.5
+	var n := (forward + sun_set).normalized()
+	if n.length_squared() < 0.5:
+		n = Vector3.UP
+	mirror.global_transform = Transform3D(CozyMesh.aligned(n), at)
+	part.set_meta("mirror_at", at)
+	var strut: MeshInstance3D = part.get_meta("mirror_arm")
+	var from := part.global_position
+	strut.global_transform = Transform3D(CozyMesh.aligned(at - from) * Basis.from_scale(Vector3(1.0, from.distance_to(at), 1.0)), (from + at) * 0.5)
 
 
 ## A piece (a gate's sensor too) on collision layer `layer`.
@@ -454,7 +576,7 @@ func remove_piece(piece: Node3D) -> void:
 
 func relabel(piece: Node3D) -> void:
 	var key: String = piece.get_meta("piece", "")
-	var text: String = NOTES.get(key, "")
+	var text: String = _text(NOTES, "note", key)
 	if piece is LumenPart:
 		var p := piece as LumenPart
 		if p.kind == LumenPart.Kind.TON or p.kind == LumenPart.Kind.TOF:
@@ -1031,12 +1153,16 @@ func _put_down() -> void:
 			r.global_position = move * r.global_position
 			r.call("aim", float(r.get("yaw")) + turn, float(r.get("pitch")))
 			_hide(r, false)
+			if r.has_meta("collector"):
+				r.set_meta("sun_set", light.sun)
 		for target: Dictionary in _targets.values() + links.values():
 			if target.get("tile") == old:
 				target["tile"] = tile
 	else:
 		_carried.global_position = _at
 		_hide(_carried, false)
+		if _carried.has_meta("collector"):
+			_carried.set_meta("sun_set", light.sun)
 	for piece: Node3D in _targets:
 		links[piece] = _targets[piece]
 		aim_at(piece, _target_point(_targets[piece]))
@@ -1224,6 +1350,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
 			if not _aim_target.is_empty():
 				links[_aiming] = _aim_target
+			# Aiming a collector sets its mirror for the sun where it is now.
+			if _aiming.has_meta("collector"):
+				_aiming.set_meta("sun_set", light.sun)
 			_aim_target = {}
 			_end_aim()
 			changed()
@@ -1375,6 +1504,9 @@ func _process(delta: float) -> void:
 	var free := scope.held == null and not player.input_locked and player.look_held_by == null
 	if _aiming != null and free:
 		_follow_aim()
+	for piece in pieces:
+		if piece.has_meta("collector") and piece.visible:
+			_turn_mirror(piece as LumenPart)
 	if building and free and _aiming == null and not _menu_open:
 		_find_place()
 	elif _ghost != null:
@@ -1529,6 +1661,8 @@ func _build_menu(root: Control) -> void:
 			heading.add_theme_font_size_override("font_size", 15)
 			row.add_child(heading)
 			for key: String in group[1]:
+				if not offered(key):
+					continue
 				var i := _index_of(key)
 				var card := Button.new()
 				card.custom_minimum_size = Vector2(90, 98)
@@ -1560,7 +1694,7 @@ func _build_menu(root: Control) -> void:
 					_close_menu())
 				card.mouse_entered.connect(func() -> void:
 					_hover_item = i
-					_about.text = "%s: %s" % [ITEMS[i][1], MENU_NOTES.get(key, "")])
+					_about.text = "%s: %s" % [ITEMS[i][1], _text(MENU_NOTES, "menu", key)])
 				card.mouse_exited.connect(func() -> void:
 					if _hover_item == i:
 						_hover_item = -1
@@ -1658,6 +1792,8 @@ func _take_pictures() -> void:
 	var studios: Array = []
 	for i in ITEMS.size():
 		var key := str(ITEMS[i][0])
+		if not offered(key):
+			continue
 		var studio := SubViewport.new()
 		studio.size = Vector2i(160, 152)
 		studio.own_world_3d = true
@@ -1686,6 +1822,9 @@ func _take_pictures() -> void:
 		if thing.has_method("aim"):
 			# Lamps turned to show their glass to the camera.
 			thing.call("aim", 0.6 + (PI if KINDS.get(key, -1) == LumenPart.Kind.LANTERN else 0.0), -0.12)
+		if thing.has_meta("collector"):
+			thing.set_meta("sun_set", Vector3(-0.4, 0.8, 0.45).normalized())
+			_turn_mirror(thing as LumenPart)
 		var box := AABB()
 		var first := true
 		for v: Node in thing.find_children("*", "MeshInstance3D", true, false):
@@ -1841,7 +1980,7 @@ func _build_details(root: Control) -> void:
 func _show_details(i: int) -> void:
 	var key := str(ITEMS[i][0])
 	_details_name.text = str(ITEMS[i][1])
-	_details_text.text = DETAILS.get(key, MENU_NOTES.get(key, ""))
+	_details_text.text = _text(DETAILS, "details", key)
 	_details_picture.texture = _textures.get(i)
 	_details.visible = true
 	_details.reset_size()
@@ -1953,6 +2092,9 @@ func _save() -> void:
 				entry["delay"] = part.delay
 			if part.kind == LumenPart.Kind.LANTERN:
 				entry["on"] = part.condition
+			if part.has_meta("collector"):
+				var set_for: Vector3 = part.get_meta("sun_set", light.sun)
+				entry["sun_set"] = [set_for.x, set_for.y, set_for.z]
 		if piece is BeamCart:
 			entry["along"] = (piece as BeamCart).along
 		if links.has(piece):
@@ -2016,6 +2158,9 @@ func _load() -> void:
 					float(d.get("delay", 2.0)))
 			if piece is LumenPart and bool(d.get("on", false)):
 				(piece as LumenPart).condition = true
+			var sun_set: Variant = d.get("sun_set")
+			if piece.has_meta("collector") and sun_set is Array and (sun_set as Array).size() >= 3:
+				piece.set_meta("sun_set", Vector3(float(sun_set[0]), float(sun_set[1]), float(sun_set[2])).normalized())
 			if piece is BeamCart:
 				(piece as BeamCart).place_cart(float(d.get("along", 0.0)))
 			if d.get("link") is Dictionary:
