@@ -254,6 +254,15 @@ func aim_along(dir: Vector3) -> void:
 	aim(atan2(-local.x, -local.z), asin(clampf(local.y, -1.0, 1.0)))
 
 
+## The head (and the solids the player and beams meet) moved to `local`
+## in its own frame: a sun collector's, to its dish's focus.
+func set_head_at(local: Vector3) -> void:
+	_head.position = local
+	for c in get_children():
+		if c is CollisionShape3D:
+			(c as CollisionShape3D).position = local
+
+
 ## Which way its beam leaves.
 func forward() -> Vector3:
 	return -(_head.global_transform.basis.z).normalized()

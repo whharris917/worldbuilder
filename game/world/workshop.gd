@@ -108,11 +108,11 @@ extends Node3D
 ## to come from somewhere: the menu offers the sun collector in place of
 ## the lantern, the push and pull lamps and the track, the crystals read
 ## light without sending any, and the pieces' texts say so (SUN_TEXTS).
-## A collector is a parabolic dish on a fork mount above a lantern-bodied
-## turning head (SunDish), the dish turned each frame to face the sun as
-## it stood when the collector was last aimed or set down (meta
-## "sun_set"); the light comes down the mount to the head, which aims the
-## beam.
+## A collector is a parabolic dish of silvered facets on a fork mount
+## (SunDish), turned each frame to face the sun as it stood when the
+## collector was last aimed or set down (meta "sun_set"), its
+## lantern-bodied turning head standing at the dish's focus inside a
+## glowing globe and aiming the beam from there.
 
 const SAVE_PATH := "user://cozy_island_build.json"
 const DEMO_AT := Vector3(21.3, 0.0, 108.9)   # the shuttle's track middle, in the meadow by the cabin
@@ -237,9 +237,9 @@ const DETAILS := {
 ## Drafts.
 const SUN_TEXTS := {
 	"collector": {
-		"note": "Sun collector\nA dish gathers the sun and sends it down its mount and out of the head as a beam, while the shutter is open (a click). A right click aims the beam and turns the dish to the sun where it stands now; as the sun moves on, the beam fades.",
+		"note": "Sun collector\nA mirrored dish gathers the sun into a glass globe at its focus, where the head sends it out as a beam while its shutter is open (a click). A right click aims the beam and turns the dish to the sun where it stands now; as the sun moves on, the beam fades.",
 		"menu": "a mirrored dish that gathers the sun into a beam.",
-		"details": "The first light that can be made. A dish two metres across, its face a paraboloid of polished metal, gathers the sun to a point eighty centimetres in front of it; a small curved mirror held on three struts just short of that point sends the light back through a hole in the dish's middle, along the axle, down the fork and the column to the head, which sends it out as a beam wherever it is aimed. At noon in clear air it carries over two kilowatts; less as the sun sinks, nothing in shadow or at night. A click opens and shuts its shutter. A right click aims the beam, and turns the dish to the sun where it is now; the sun moves fifteen degrees an hour, and three degrees off it the dish's light misses the hole, so turn it again from time to time. The beam runs straight and narrow, and fades as it goes, losing half its light about every five and a half metres: at noon it lights a crystal some fifty metres off, less as the sun sinks. A lens along the way makes it fade half as fast from there.",
+		"details": "The first light that can be made: a burning mirror. A dish two metres across, a bowl of flat silvered-glass facets set in a brass frame and shaped as a paraboloid, sends every ray of sun striking it to one point ninety centimetres in front of it, its focus. There, in a glass globe held out on four brass arms, the light gathers and glows, and the head inside sends it out as a beam wherever it is aimed. At noon in clear air it carries over two kilowatts; less as the sun sinks, nothing in shadow or at night. A click opens and shuts its shutter. A right click aims the beam, and turns the dish to the sun where it is now (the fork turns on its toothed table, the dish on its quadrant gear); the sun moves fifteen degrees an hour, and three degrees off it the gathered light misses the globe, so turn it again from time to time. The beam runs straight and narrow, and fades as it goes, losing half its light about every five and a half metres: at noon it lights a crystal some fifty metres off. A lens along the way makes it fade half as fast from there.",
 	},
 	"and": {"note": "AND crystal\nGlows while every beam striking it is lit. It sends no light of its own.",
 		"menu": "glows while every beam striking it is lit; it sends no light.",
@@ -477,7 +477,7 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 		part.set_meta("beam", BEAMS[key])
 	if key == "collector":
 		part.set_meta("collector", true)
-		var dish := SunDish.new(_polish, _iron, brass)
+		var dish := SunDish.new(_polish, _iron, brass, copper)
 		part.add_child(dish)
 		part.set_meta("dish", dish)
 	return part
@@ -496,11 +496,14 @@ func _text(table: Dictionary, which: String, key: String) -> String:
 
 
 ## A collector's dish turned to the sun as it stood when the collector
-## was last aimed or set down.
+## was last aimed or set down, its head moved to the dish's focus, its
+## globe glowing with what it gathers.
 func _turn_dish(part: LumenPart) -> void:
 	var dish: SunDish = part.get_meta("dish")
 	dish.point_at(part.get_meta("sun_set", light.sun))
 	part.set_meta("mirror_at", dish.centre())
+	part.set_head_at(part.to_local(dish.focus()))
+	dish.glow(light.power_now(part) / 2000.0)
 
 
 ## A piece (a gate's sensor too) on collision layer `layer`.

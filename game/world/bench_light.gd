@@ -34,7 +34,8 @@ extends Node3D
 ##
 ## Sunlight (`sun_rules`, the test island's): no light comes from
 ## nowhere. Its only source is a sun collector, a lantern-bodied piece
-## with meta "collector" under a parabolic dish (SunDish).
+## with meta "collector" whose head stands at a parabolic dish's focus
+## (SunDish).
 ## Its beam carries power: the direct sunlight (`sunlight`, watts a
 ## square metre, set by the world from the sun's height) on the mirror's
 ## area (SunDish.DISH_D across), less COLLECT, while its shutter is open,
@@ -248,6 +249,11 @@ func _record_power(p: LumenPart, power: float) -> void:
 		h.append([_clock, power])
 	while h.size() > 1 and float(h[1][0]) < _clock - HISTORY:
 		h.remove_at(0)
+
+
+## What a collector sends now, watts.
+func power_now(p: LumenPart) -> float:
+	return power_at(p, _clock)
 
 
 ## What a collector sent at time `t`, watts.
