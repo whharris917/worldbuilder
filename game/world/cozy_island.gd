@@ -116,7 +116,6 @@ var _porch_mat: StandardMaterial3D
 var _crowns: Array[Vector4] = []        # broad-leaved trees: crown centre, size
 var _lanterns: Array[HangingLantern] = []
 var _fire_at := Vector3.ZERO
-var _hovered: Node = null
 var _surfaces: Array[Dictionary] = []
 var _sea: MeshInstance3D
 var _sea_mat: StandardMaterial3D
@@ -151,7 +150,6 @@ var _clock := 0.0
 var _was_debanding := false
 var _was_soft := 0
 var _place_left := 3.0
-var _labels := true                     # floating labels on what the player looks at
 var _good: Array[Vector4] = []          # recent places stood freely on the ground: x, y, z, facing
 var _good_left := 0.0
 var _wedged := 0.0                      # seconds found inside something
@@ -317,7 +315,6 @@ func _build_panels() -> void:
 
 	var isle := _panel.panel("Island")
 	_panel.switch(isle, "Works and machines", true, func(v: bool) -> void: _set_works(v))
-	_panel.switch(isle, "Floating labels", true, func(v: bool) -> void: _labels = v)
 	_panel.button(isle, "Build the shuttle again", func() -> void: workshop.build_demo())
 	_panel.note(isle, "The shuttle by the cabin: a cart running to and fro by itself, worked by beams. Built once on your first visit; this builds it afresh, in place of whatever stands there.")
 	_panel.note(isle, "All the works and the exposition, their machines, beams and sounds. Off, the island is left to itself: the beaches, the dunes and the bay, the cabin, the campfire and the lanterns.")
@@ -1042,15 +1039,6 @@ func _process(delta: float) -> void:
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:
 		sky.follow(camera.global_position)
-	# What the player looks at tells what it is (the salt works' parts),
-	# unless the floating labels are switched off.
-	var view: Node = player.look_view() if _labels else null
-	if view != _hovered:
-		if _hovered != null and is_instance_valid(_hovered) and _hovered.has_method("show_label"):
-			_hovered.call("show_label", false)
-		_hovered = view
-		if view != null and view.has_method("show_label"):
-			view.call("show_label", true)
 
 
 ## ---- where the player stands -------------------------------------------

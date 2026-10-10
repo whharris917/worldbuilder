@@ -281,8 +281,9 @@ func _sound(was: float, struck: float) -> void:
 		_buffer.play()
 
 
-func show_label(on: bool) -> void:
-	_label.visible = on
+## What a right click on it reads: its name, then what it does.
+func inspect_text() -> String:
+	return _label.text
 
 
 func relabel(text: String) -> void:

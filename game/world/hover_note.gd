@@ -2,8 +2,8 @@ class_name HoverNote
 extends StaticBody3D
 ## An invisible solid over a machine that tells a player looking at it
 ## what the machine is: a box the player bumps into and the interact ray
-## meets, with a floating label shown while it is looked at (its `view`
-## meta names itself; the island shows and hides the label).
+## meets (its `view` meta names itself), whose text a right click on it
+## reads (`inspect_text`, shown by the Workshop's card).
 
 var _label: Label3D
 
@@ -33,8 +33,9 @@ func _init(at: Vector3, size: Vector3, text: String, lift := 0.0) -> void:
 	add_child(_label)
 
 
-func show_label(on: bool) -> void:
-	_label.visible = on
+## What a right click on it reads: its name, then what it does.
+func inspect_text() -> String:
+	return _label.text
 
 
 ## Its label made to read `text`, for a note that tells a machine's state.

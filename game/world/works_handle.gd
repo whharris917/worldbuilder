@@ -3,7 +3,7 @@ extends StaticBody3D
 ## Something at the salt works a player works by hand, looking at it:
 ## a LEVER, thrown over with E, or a CRANK, turned while E is held. The
 ## body's `view` meta names this node, as the player's interact ray
-## expects; looking at it shows what it does (a hover label).
+## expects; a right click on it reads what it does (`inspect_text`).
 
 enum Kind { LEVER, CRANK }
 
@@ -85,8 +85,9 @@ func _mesh(mesh: Mesh, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	return view
 
 
-func show_label(on_screen: bool) -> void:
-	_label.visible = on_screen
+## What a right click on it reads: its name, then what it does.
+func inspect_text() -> String:
+	return _label.text
 
 
 ## E on a lever throws it over.

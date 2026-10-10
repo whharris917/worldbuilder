@@ -58,7 +58,6 @@ var _gust := FastNoiseLite.new()
 var _readout: Label
 var _readout_left := 0.0
 var _save_left := 5.0
-var _hovered: Node = null
 
 
 func _ready() -> void:
@@ -578,13 +577,6 @@ func _process(delta: float) -> void:
 		_save_mill()
 	if MouseMode.probe or player == null:
 		return
-	var view: Node = player.look_view()
-	if view != _hovered:
-		if _hovered != null and is_instance_valid(_hovered) and _hovered.has_method("show_label"):
-			_hovered.call("show_label", false)
-		_hovered = view
-		if view != null and view.has_method("show_label"):
-			view.call("show_label", true)
 	if player.position.y < -1.5 or (Input.is_physical_key_pressed(KEY_R) and not player.input_locked and player.look_held_by == null):
 		_put_player()
 

@@ -501,7 +501,7 @@ func _build_door() -> void:
 	var r := radius_at(PLINTH + DOOR_H * 0.5) - wall_at(PLINTH) * 0.5
 	var hd := asin(DOOR_W * 0.5 / radius_at(PLINTH + DOOR_H * 0.5))
 	var width := 2.0 * r * sin(hd) - 0.04
-	door = MillDoor.new(width, DOOR_H - 0.03, Color(0.24, 0.43, 0.4), mats["out"], "Door")
+	door = MillDoor.new(width, DOOR_H - 0.03, Color(0.24, 0.43, 0.4), mats["out"], "Door\nThe mill's door. E opens and shuts it.")
 	door.position = Vector3(-width * 0.5, PLINTH + 0.01, r * cos(hd))
 	add_child(door)
 

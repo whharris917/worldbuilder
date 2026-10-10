@@ -169,8 +169,9 @@ func _process(delta: float) -> void:
 	_bulb_glow.emission_energy_multiplier = 1.5 * _spin
 
 
-func show_label(on: bool) -> void:
-	_label.visible = on
+## What a right click on it reads: its name, then what it does.
+func inspect_text() -> String:
+	return _label.text
 
 
 func relabel(text: String) -> void:

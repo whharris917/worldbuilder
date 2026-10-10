@@ -23,8 +23,8 @@ extends StaticBody3D
 ##   bulb that spin in light. `spin` (0 to 1) eases toward lit or not;
 ##   the machine it drives reads it, or `powered`.
 ##
-## Looking at a part shows its name and what it does (`describe`, a
-## hover label).
+## A right click on a part reads its name and what it does (`describe`,
+## `inspect_text`).
 ##
 ## Its look, optional (`look`): "post" false leaves out its own post and
 ## cradle, for a part held by some other mounting; "design" cuts its
@@ -190,8 +190,9 @@ func face(toward: Vector3) -> void:
 		_head.basis = Basis.looking_at(Vector3(local.x, 0.0, local.z).normalized(), Vector3.UP)
 
 
-func show_label(on: bool) -> void:
-	_label.visible = on
+## What a right click on it reads: its name, then what it does.
+func inspect_text() -> String:
+	return _label.text
 
 
 ## Its label made to read `text` in place of its own description.

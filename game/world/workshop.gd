@@ -14,8 +14,21 @@ extends Node3D
 ## rests on it. A click picks one and goes back to the view with it in
 ## hand. Opening the menu, or a right click while something is in hand,
 ## puts it away. Empty hands stops building; Tab, Esc, a right click or a
-## click outside the menu go back to the view. The number keys still
-## pick the first ten pieces while building.
+## click outside the menu go back to the view. A small button at each
+## card's top right opens the piece's details: what it is and how it
+## works (DETAILS).
+##
+## The quick-select bar along the bottom: ten slots, keys 1 to 9 and 0,
+## empty to begin. A number pressed with the pointer resting on a card
+## in the menu puts that piece in that slot; pressed in the view it takes
+## the slot's piece in hand, or puts it away if it is in hand already.
+## The slots are kept with what is built.
+##
+## Nothing built or in the works carries a floating label. Whatever can
+## be used or read (a `view` the player's ray meets, or a built piece
+## within REACH) turns the crosshair into a brass ring while it is on it;
+## a right click then shows its card, what it is and what it does, until
+## the crosshair leaves it (its `inspect_text`).
 ##
 ## While building, a see-through copy of what is in hand, whole, stands where it would go, at
 ## what the crosshair is on within REACH metres, turned square to the
@@ -48,18 +61,17 @@ extends Node3D
 ## beam strikes first. Esc, B or
 ## choosing something else puts it back where it stood.
 ##
-## A crosshair shows whenever the player looks about, gold when it is on
-## a piece within REACH; the line above it then says what can be done.
-## At any time: E on a lantern opens or closes it; E on any other piece
-## but a radiometer looks through it to aim it (BenchScope); a right click
-## on one takes it up to aim, its beam following the crosshair (settling
-## on any piece it is on) until a left click fixes it or a right click or
-## Esc leaves it as it was.
+## A crosshair shows whenever the player looks about; the line under it
+## says what can be done. With empty hands: E on a lantern opens or
+## closes it; E on any other piece but a radiometer looks through it to
+## aim it (BenchScope); a click on one takes it up to aim, its beam
+## following the crosshair (settling on any piece it is on) until a
+## click fixes it or a right click or Esc leaves it as it was.
 ##
 ## Light gates (LightGate): an opening gate lets a beam through its ring
 ## while a lit beam strikes the bulb above it, a closing gate stops one
-## while lit; a right click on one turns its ring to face what the
-## crosshair is on. From these an AND is gates in a row along one beam,
+## while lit; a click on one turns its ring to face what the crosshair
+## is on. From these an AND is gates in a row along one beam,
 ## a NOT a closing gate.
 ##
 ## Push and pull lamps are lanterns whose beams are red and green; a
@@ -178,7 +190,29 @@ const MENU_NOTES := {
 	"radiometer": "its vanes spin in the light; a bell rings as they start.",
 	"track": "a cart on rails, driven by push and pull beams on its copper ball.",
 }
-const MENU_HELP := "Click a piece to take it in hand.     Tab or right click: back to the view."
+## Each piece's details, opened from its card. Drafts.
+const DETAILS := {
+	"floor": "A square of boards two metres across on legs, set level whatever the ground does underneath. Placed within a metre of the place beside another floor it settles flush against it, so floors join into a deck. Pieces stand on it, and moving a floor carries them with it.",
+	"lantern": "A lamp with a shutter. While the shutter is open it sends a gold beam straight ahead; E opens and shuts it. A gold beam is the signal every crystal and gate reads: lit or dark. Click it to aim it at what you look at.",
+	"push_lamp": "A lantern with red glass. Its red beam is no signal: striking the copper ball on a cart's pole it pushes the cart along its track, away from the lamp. E opens and shuts it.",
+	"pull_lamp": "A lantern with green glass. Its green beam is no signal: striking the copper ball on a cart's pole it pulls the cart along its track, toward the lamp. E opens and shuts it.",
+	"and": "A crystal that shines, sending a gold beam of its own onward, while every beam striking it is lit. Two lanterns aimed at it make it shine only while both are open.",
+	"or": "A crystal that shines, sending a gold beam of its own onward, while any beam striking it is lit.",
+	"not": "A crystal that shines while no lit beam strikes it; a lit beam puts it out. It turns a signal round.",
+	"latch": "A crystal that remembers. A lit beam striking its left side lights it, one striking its right side puts it out, and with neither lit it stays as it was. While aiming a beam at it, the line under the view says which side the beam will strike.",
+	"on_delay": "An hourglass. It shines once a beam striking it has stayed lit for its time, and goes dark the moment the beam does. T changes the time, from 1 to 13 seconds. It keeps a flicker from starting anything.",
+	"off_delay": "A crystal that lights the moment a beam striking it lights, and stays lit for its time after the beam goes dark. T changes the time, from 1 to 13 seconds. It keeps a short gap from stopping anything.",
+	"rise": "One short flash the moment a beam striking it lights, then dark however long the beam stays lit: for counting, or for starting something once.",
+	"fall": "One short flash the moment a beam striking it goes dark.",
+	"gate": "A brass ring with a glass bulb above it. A beam through the ring passes only while a lit beam strikes the bulb. Gates in a row along one beam make an AND. Click it to turn its ring toward what you look at.",
+	"closing_gate": "A ring like the opening gate's, but it stops the beam through it while its bulb is lit and lets it pass while the bulb is dark. Click it to turn its ring toward what you look at.",
+	"mirror": "A silvered glass that turns a beam off its face as a mirror turns light, losing a little of the beam's reach. Click it to aim the beam it sends on.",
+	"splitter": "Half-silvered glass. A beam striking it goes on straight through and is turned aside as well, each with half the reach.",
+	"lens": "A beam passing through it reaches twice as far again, for carrying a signal across a distance.",
+	"radiometer": "Four vanes on a needle in a glass bulb, dark on one face and bright on the other. A lit beam striking the bulb spins them, faster the more light, and a bell rings as they start, so a signal can be heard.",
+	"track": "Sixteen metres of track with a cart on it, carrying a copper ball on a pole. Red beams on the ball push the cart away from their lamp and green ones pull it toward theirs, up to eight metres a second; gold beams do nothing to it.",
+}
+const MENU_HELP := "Click a piece to take it in hand. With the pointer on one, a number puts it in that slot.     Tab: back to the view."
 const AIM_NOTE := "\nE: look through it.  Right click: aim it at what you look at."
 
 var island: BuildWorld
@@ -227,8 +261,27 @@ var _demo_built := false
 var _reaim: Array = []                  # [piece, target, steps left]: aimed again as the light settles
 var _red := StandardMaterial3D.new()
 var _ui := CanvasLayer.new()
-var _cross := Label.new()
+var _cross := TextureRect.new()
+var _plus: ImageTexture                 # the crosshair
+var _ring: ImageTexture                 # the crosshair over something to use or read
 var _on_piece: Node3D = null            # the piece the crosshair is on, within reach
+var _on_thing: Node = null              # what the crosshair is on that can be used or read
+## The quick-select slots: a piece's key, or "" for none.
+var slots: Array[String] = ["", "", "", "", "", "", "", "", "", ""]
+var _slot_cells: Array[PanelContainer] = []
+var _slot_pictures: Array[TextureRect] = []
+var _bar: HBoxContainer
+var _hover_item := -1                   # the card the pointer rests on, or -1
+var _textures := {}                     # item index -> its picture
+var _details: PanelContainer
+var _details_picture: TextureRect
+var _details_name: Label
+var _details_text: Label
+var _card: PanelContainer               # the inspected thing's card
+var _card_title: Label
+var _card_text: Label
+var _inspected: Node = null
+var _inspect_grace := 0.0
 var _hint := Label.new()
 var _menu: PanelContainer
 var _menu_open := false
@@ -1083,6 +1136,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	var click := event as InputEventMouseButton
 	if _menu_open:
+		# A number with the pointer on a card fills that slot.
+		var n := _slot_of(key)
+		if n >= 0 and _hover_item >= 0:
+			slots[n] = str(ITEMS[_hover_item][0])
+			_refresh_bar()
+			changed()
+			get_viewport().set_input_as_handled()
+			return
 		# Back to the view: Tab, Esc, a right click, or a click outside
 		# the menu (a click on it is the menu's own).
 		if (key != null and key.pressed and not key.echo and key.physical_keycode == KEY_TAB) \
@@ -1129,6 +1190,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		# A right click with something in hand puts it away.
 		_set_building(false)
 	elif click != null and click.pressed and click.button_index == MOUSE_BUTTON_RIGHT:
+		# With empty hands, a right click reads what the crosshair is on.
+		_inspect(_on_thing)
+	elif _slot_of(key) >= 0:
+		_use_slot(_slot_of(key))
+	elif not building and click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
 		var hit := _look_hit()
 		if hit.is_empty() or not is_piece(hit["collider"]) or not turns(hit["collider"]):
 			return
@@ -1176,10 +1242,7 @@ func _build_input(event: InputEvent) -> bool:
 		return false
 	match key.physical_keycode:
 		_:
-			if key.physical_keycode >= KEY_0 and key.physical_keycode <= KEY_9:
-				_pick(9 if key.physical_keycode == KEY_0 else key.physical_keycode - KEY_1)
-			else:
-				return false
+			return false
 	return true
 
 
@@ -1271,12 +1334,31 @@ func _process(delta: float) -> void:
 		var hit := _look_hit()
 		if not hit.is_empty() and is_piece(hit["collider"]):
 			_on_piece = hit["collider"] as Node3D
+	_on_thing = null
+	if looking and _aiming == null and not building and _carried == null:
+		_on_thing = _on_piece if _on_piece != null else player.look_view()
+		if _on_thing != null and not (_on_thing.has_method("inspect_text") or _on_thing.has_method("use")):
+			_on_thing = null
 	_cross.visible = looking
-	_cross.add_theme_color_override("font_color", Color(1.0, 0.82, 0.35, 1.0) if _on_piece != null else Color(1, 1, 1, 0.7))
+	_cross.texture = _ring if _on_thing != null else _plus
+	# The card stays while the crosshair stays on what it tells of.
+	if _inspected != null:
+		if not is_instance_valid(_inspected) or not looking:
+			_inspect(null)
+		elif _on_thing == _inspected:
+			_inspect_grace = 0.4
+		else:
+			_inspect_grace -= delta
+			if _inspect_grace <= 0.0:
+				_inspect(null)
+	_bar.visible = free and not (_aiming != null)
+	for k in slots.size():
+		var held := building and slots[k] != "" and str(ITEMS[item][0]) == slots[k]
+		_slot_cells[k].add_theme_stylebox_override("panel", _picked if held else _plain)
 	# The menu closes if the view was taken back some other way.
 	if _menu_open and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or not free):
 		_close_menu(false)
-	_hint.visible = looking and (building or _aiming != null or _on_piece != null)
+	_hint.visible = looking and (building or _aiming != null or _on_piece != null or _on_thing != null)
 	if _hint.visible:
 		_hint.text = _hint_text()
 		_hint.visible = _hint.text != ""
@@ -1301,17 +1383,21 @@ func _hint_text() -> String:
 		return text
 	if not building:
 		var p := _on_piece as LumenPart
+		if _on_piece == null:
+			if _on_thing == null:
+				return ""
+			return "Right click: what it is" + ("     E: use it" if _on_thing.has_method("use") else "")
 		if p != null and p.kind == LumenPart.Kind.LANTERN:
-			return "Right click: aim it     E: open or close it     G: move it     X: take it away"
+			return "Click: aim it     E: open or close it     Right click: what it is     G: move it     X: take it away"
 		if p != null and p.kind == LumenPart.Kind.RADIOMETER:
-			return "G: move it     X: take it away"
+			return "Right click: what it is     G: move it     X: take it away"
 		if p != null and (p.kind == LumenPart.Kind.TON or p.kind == LumenPart.Kind.TOF):
-			return "Right click: aim it     E: look through it     T: change the time     G: move it     X: take it away"
+			return "Click: aim it     E: look through it     T: change the time     Right click: what it is     G: move it     X: take it away"
 		if _on_piece is BeamCart:
-			return "G: move it     X: take it away"
+			return "Right click: what it is     G: move it     X: take it away"
 		if _on_piece is LightGate:
-			return "Right click: turn it     G: move it     X: take it away"
-		return "Right click: aim it     E: look through it     G: move it     X: take it away"
+			return "Click: turn it     Right click: what it is     G: move it     X: take it away"
+		return "Click: aim it     E: look through it     Right click: what it is     G: move it     X: take it away"
 	if _carried != null:
 		var put := "Click: set it down here" if _ok else _why
 		if put == "":
@@ -1338,20 +1424,21 @@ func _build_ui() -> void:
 	theme.default_font_size = 13
 	root.theme = theme
 	_ui.add_child(root)
-	_cross.text = "+"
-	_cross.add_theme_font_size_override("font_size", 22)
-	_cross.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
-	_cross.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
-	_cross.add_theme_constant_override("outline_size", 4)
+	_plus = _crosshair(false)
+	_ring = _crosshair(true)
+	_cross.texture = _plus
 	_cross.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	_cross.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_cross.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_cross.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_cross.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_cross.offset_left = -16.0
+	_cross.offset_right = 16.0
+	_cross.offset_top = -16.0
+	_cross.offset_bottom = 16.0
 	_cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cross.visible = false
 	root.add_child(_cross)
+	_build_bar(root)
+	_build_card(root)
 	_build_menu(root)
+	_build_details(root)
 	_hint.add_theme_font_size_override("font_size", 14)
 	_hint.add_theme_color_override("font_color", Color(0.97, 0.93, 0.82))
 	_hint.add_theme_color_override("font_outline_color", Color(0.1, 0.08, 0.06))
@@ -1360,7 +1447,7 @@ func _build_ui() -> void:
 	_hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint.offset_bottom = -40.0
+	_hint.offset_bottom = -96.0
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hint.visible = false
 	root.add_child(_hint)
@@ -1444,8 +1531,24 @@ func _build_menu(root: Control) -> void:
 					_pick(i)
 					building = true
 					_close_menu())
-				card.mouse_entered.connect(func() -> void: _about.text = "%s: %s" % [ITEMS[i][1], MENU_NOTES.get(key, "")])
-				card.mouse_exited.connect(func() -> void: _about.text = MENU_HELP)
+				card.mouse_entered.connect(func() -> void:
+					_hover_item = i
+					_about.text = "%s: %s" % [ITEMS[i][1], MENU_NOTES.get(key, "")])
+				card.mouse_exited.connect(func() -> void:
+					if _hover_item == i:
+						_hover_item = -1
+					_about.text = MENU_HELP)
+				var more := Button.new()
+				more.text = "i"
+				more.focus_mode = Control.FOCUS_NONE
+				more.add_theme_font_size_override("font_size", 11)
+				more.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+				more.offset_left = -20.0
+				more.offset_right = -3.0
+				more.offset_top = 3.0
+				more.offset_bottom = 20.0
+				more.pressed.connect(func() -> void: _show_details(i))
+				card.add_child(more)
 				row.add_child(card)
 				_cards[i] = card
 	var foot := HBoxContainer.new()
@@ -1471,12 +1574,14 @@ func _index_of(key: String) -> int:
 	for i in ITEMS.size():
 		if str(ITEMS[i][0]) == key:
 			return i
-	return 0
+	return -1
 
 
 ## Opening the menu puts away what was in hand.
 func _open_menu() -> void:
 	_set_building(false)
+	_inspect(null)
+	_hover_item = -1
 	_menu_open = true
 	_menu.visible = true
 	_about.text = MENU_HELP
@@ -1491,6 +1596,8 @@ func _open_menu() -> void:
 func _close_menu(capture := true) -> void:
 	_menu_open = false
 	_menu.visible = false
+	_details.visible = false
+	_hover_item = -1
 	Input.set_custom_mouse_cursor(null)
 	if capture:
 		MouseMode.capture()
@@ -1580,8 +1687,217 @@ func _take_pictures() -> void:
 		var studio := pair[1] as SubViewport
 		var picture := studio.get_texture().get_image()
 		if picture != null and _pictures.has(pair[0]):
-			(_pictures[pair[0]] as TextureRect).texture = ImageTexture.create_from_image(picture)
+			_textures[pair[0]] = ImageTexture.create_from_image(picture)
+			(_pictures[pair[0]] as TextureRect).texture = _textures[pair[0]]
 		studio.queue_free()
+	_refresh_bar()
+
+
+## ---- the quick-select bar, details, inspecting ---------------------------------
+
+## The slot a key is for: 1 to 9 the first nine, 0 the tenth; -1 for any
+## other key.
+static func _slot_of(key: InputEventKey) -> int:
+	if key == null or not key.pressed or key.echo:
+		return -1
+	if key.physical_keycode >= KEY_1 and key.physical_keycode <= KEY_9:
+		return key.physical_keycode - KEY_1
+	if key.physical_keycode == KEY_0:
+		return 9
+	return -1
+
+
+## A slot's piece taken in hand, or put away if it is in hand already.
+func _use_slot(n: int) -> void:
+	if slots[n] == "" or _carried != null or _aiming != null:
+		return
+	var i := _index_of(slots[n])
+	if i < 0:
+		return
+	if building and item == i:
+		_set_building(false)
+		return
+	_inspect(null)
+	_pick(i)
+	_set_building(true)
+
+
+func _build_bar(root: Control) -> void:
+	_bar = HBoxContainer.new()
+	_bar.add_theme_constant_override("separation", 4)
+	_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_bar.offset_bottom = -12.0
+	_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_bar)
+	var back := StyleBoxFlat.new()
+	back.bg_color = Color(0.09, 0.07, 0.05, 0.6)
+	back.set_corner_radius_all(6)
+	for k in 10:
+		var cell := PanelContainer.new()
+		cell.custom_minimum_size = Vector2(58, 60)
+		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var frame := Control.new()
+		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cell.add_child(frame)
+		var picture := TextureRect.new()
+		picture.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.add_child(picture)
+		var number := Label.new()
+		number.text = str((k + 1) % 10)
+		number.position = Vector2(2, -2)
+		number.add_theme_color_override("font_color", Color(0.95, 0.85, 0.6))
+		number.add_theme_color_override("font_outline_color", Color(0.1, 0.08, 0.06))
+		number.add_theme_constant_override("outline_size", 4)
+		frame.add_child(number)
+		_bar.add_child(cell)
+		_slot_cells.append(cell)
+		_slot_pictures.append(picture)
+	_refresh_bar()
+
+
+func _refresh_bar() -> void:
+	for k in _slot_pictures.size():
+		_slot_pictures[k].texture = _textures.get(_index_of(slots[k])) if slots[k] != "" else null
+
+
+## A piece's details over the menu: its picture, its name, what it does
+## and how it works; Back closes it.
+func _build_details(root: Control) -> void:
+	_details = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.12, 0.09, 0.06, 0.97)
+	style.border_color = Color(0.85, 0.66, 0.36)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(10)
+	style.set_content_margin_all(16)
+	_details.add_theme_stylebox_override("panel", style)
+	_details.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_details.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_details.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_details.custom_minimum_size = Vector2(520, 0)
+	_details.visible = false
+	root.add_child(_details)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	_details.add_child(row)
+	_details_picture = TextureRect.new()
+	_details_picture.custom_minimum_size = Vector2(150, 142)
+	_details_picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_details_picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	row.add_child(_details_picture)
+	var column := VBoxContainer.new()
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_theme_constant_override("separation", 8)
+	row.add_child(column)
+	_details_name = Label.new()
+	_details_name.add_theme_font_size_override("font_size", 18)
+	_details_name.add_theme_color_override("font_color", Color(0.98, 0.86, 0.58))
+	column.add_child(_details_name)
+	_details_text = Label.new()
+	_details_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_details_text.custom_minimum_size = Vector2(330, 0)
+	_details_text.add_theme_color_override("font_color", Color(0.95, 0.92, 0.84))
+	column.add_child(_details_text)
+	var back := Button.new()
+	back.text = "Back"
+	back.focus_mode = Control.FOCUS_NONE
+	back.size_flags_horizontal = Control.SIZE_SHRINK_END
+	back.pressed.connect(func() -> void: _details.visible = false)
+	column.add_child(back)
+
+
+func _show_details(i: int) -> void:
+	var key := str(ITEMS[i][0])
+	_details_name.text = str(ITEMS[i][1])
+	_details_text.text = DETAILS.get(key, MENU_NOTES.get(key, ""))
+	_details_picture.texture = _textures.get(i)
+	_details.visible = true
+	_details.reset_size()
+
+
+## The inspected thing's card, at the right of the view.
+func _build_card(root: Control) -> void:
+	_card = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.09, 0.07, 0.05, 0.86)
+	style.border_color = Color(0.72, 0.56, 0.3, 0.8)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(12)
+	_card.add_theme_stylebox_override("panel", style)
+	_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
+	_card.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_card.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_card.offset_right = -40.0
+	_card.custom_minimum_size = Vector2(320, 0)
+	_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_card.visible = false
+	root.add_child(_card)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 6)
+	_card.add_child(column)
+	_card_title = Label.new()
+	_card_title.add_theme_font_size_override("font_size", 16)
+	_card_title.add_theme_color_override("font_color", Color(0.98, 0.86, 0.58))
+	_card_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(_card_title)
+	_card_text = Label.new()
+	_card_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_card_text.custom_minimum_size = Vector2(296, 0)
+	_card_text.add_theme_color_override("font_color", Color(0.95, 0.92, 0.84))
+	column.add_child(_card_text)
+
+
+## Shows `thing`'s card (its first line the title, the rest the text), or
+## hides the card for null or a thing with nothing to read.
+func _inspect(thing: Node) -> void:
+	var text := ""
+	if thing != null and is_instance_valid(thing) and thing.has_method("inspect_text"):
+		text = str(thing.call("inspect_text"))
+	_inspected = thing if text != "" else null
+	_card.visible = text != ""
+	if text == "":
+		return
+	var lines := text.split("\n", true, 1)
+	_card_title.text = lines[0]
+	_card_text.text = lines[1] if lines.size() > 1 else ""
+	_card_text.visible = lines.size() > 1
+	_inspect_grace = 0.4
+	_card.reset_size()
+
+
+## The crosshair: a plus, or a brass ring over something to use or read.
+static func _crosshair(ring: bool) -> ImageTexture:
+	var size := 32
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var c := Vector2(size, size) * 0.5
+	for y in size:
+		for x in size:
+			var p := Vector2(x + 0.5, y + 0.5) - c
+			var on := 0.0
+			var rim := 0.0
+			if ring:
+				var d := absf(p.length() - 9.0)
+				on = clampf(1.6 - d, 0.0, 1.0)
+				rim = clampf(2.8 - d, 0.0, 1.0)
+				var dot := clampf(2.2 - p.length(), 0.0, 1.0)
+				on = maxf(on, dot)
+				rim = maxf(rim, clampf(3.4 - p.length(), 0.0, 1.0))
+			else:
+				var arm := minf(absf(p.x), absf(p.y))
+				var reach := maxf(absf(p.x), absf(p.y))
+				on = clampf(1.5 - arm, 0.0, 1.0) * clampf(8.5 - reach, 0.0, 1.0)
+				rim = clampf(2.6 - arm, 0.0, 1.0) * clampf(9.6 - reach, 0.0, 1.0)
+			var fill := Color(1.0, 0.84, 0.45) if ring else Color(1, 1, 1)
+			var col := Color(0, 0, 0, 0.55 * rim).blend(Color(fill, on * 0.92))
+			img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
 
 
 ## ---- keeping what is built -------------------------------------------------
@@ -1627,7 +1943,8 @@ func _save() -> void:
 		list.append(entry)
 	var file := FileAccess.open(_save_path, FileAccess.WRITE)
 	if file != null:
-		file.store_string(JSON.stringify({"floor": floor_list, "pieces": list, "demo": DEMO_VERSION if _demo_built else 0}))
+		file.store_string(JSON.stringify({"floor": floor_list, "pieces": list, "demo": DEMO_VERSION if _demo_built else 0,
+				"slots": slots}))
 
 
 func _load() -> void:
@@ -1641,6 +1958,11 @@ func _load() -> void:
 		return
 	var data := parsed as Dictionary
 	_demo_built = int(data.get("demo", 0)) >= DEMO_VERSION
+	if data.get("slots") is Array:
+		var saved: Array = data["slots"]
+		for k in mini(saved.size(), slots.size()):
+			slots[k] = str(saved[k]) if _index_of(str(saved[k])) >= 0 and str(saved[k]) != "" else ""
+		_refresh_bar()
 	if data.get("floor") is Array:
 		for f: Variant in data["floor"]:
 			if f is Array and (f as Array).size() >= 4:

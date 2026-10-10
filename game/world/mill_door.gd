@@ -47,8 +47,9 @@ func _init(width: float, height: float, colour: Color, mat: Material, text: Stri
 	add_child(_label)
 
 
-func show_label(on_screen: bool) -> void:
-	_label.visible = on_screen
+## What a right click on it reads: its name, then what it does.
+func inspect_text() -> String:
+	return _label.text
 
 
 func use() -> void:

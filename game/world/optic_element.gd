@@ -130,8 +130,9 @@ func describe() -> String:
 			return "Lens\nA beam passing through it leaves focused, reaching twice as far again." + how
 
 
-func show_label(on: bool) -> void:
-	_label.visible = on
+## What a right click on it reads: its name, then what it does.
+func inspect_text() -> String:
+	return _label.text
 
 
 ## Its label made to read `text` in place of its own description.
