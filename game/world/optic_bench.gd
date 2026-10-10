@@ -12,8 +12,8 @@ extends Node3D
 ## its reach lost), a splitter sends half its reach on and half aside, a
 ## lens doubles what reach it has left; every crystal sends its own beam
 ## out at full reach, so a crystal is a relay. Dark beams are drawn as
-## faint guide lines; lit ones glow in their colour. A beam is stopped by
-## the player's body too.
+## faint guide lines; lit ones glow in their colour. The player's body
+## stops no beam.
 ##
 ## Aiming: a right click on a part looks through it, in a scope: from a crystal's or
 ## lantern's lens along its beam; from a mirror or splitter along the beam
@@ -249,7 +249,9 @@ func _trace(origin: Vector3, dir: Vector3, reach: float, exclude: Array[RID], li
 	var skip := exclude
 	while depth < MAX_BOUNCES and reach > 0.05:
 		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach)
-		q.exclude = skip
+		var ex: Array[RID] = skip.duplicate()
+		ex.append(island.player.get_rid())
+		q.exclude = ex
 		var hit := space.intersect_ray(q)
 		if hit.is_empty():
 			_segments.append([origin, origin + dir * reach, reach, 0.0, colour, lit])

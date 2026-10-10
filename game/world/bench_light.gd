@@ -7,7 +7,8 @@ extends Node3D
 ## sent on and aside by a splitter (half its reach each), given twice its
 ## remaining reach by a lens it passes along the axis of, read by the
 ## built part it strikes, lost on anything else. A beam reaches REACH
-## metres at most.
+## metres at most. The player's body stops no beam, so building never
+## breaks a circuit by standing in it.
 ##
 ## Light here travels slowly, at SPEED, as along the works' fixed beams:
 ## a point s metres along a beam shows what the part sending it showed
@@ -181,6 +182,14 @@ func _shown(p: LumenPart, t: float) -> bool:
 
 ## The beam of `source` from `origin` along `dir`, `s` metres from the
 ## lens so far, with `reach` metres left.
+## The player's body, for the beams to pass through.
+func _player() -> Array[RID]:
+	var shop := get_parent() as Workshop
+	if shop == null or shop.island == null or shop.island.player == null:
+		return []
+	return [shop.island.player.get_rid()]
+
+
 func _trace(source: LumenPart, origin: Vector3, dir: Vector3, reach: float, exclude: Array[RID], s: float,
 		depth: int, mark: bool) -> void:
 	var hot := mark
@@ -191,7 +200,9 @@ func _trace(source: LumenPart, origin: Vector3, dir: Vector3, reach: float, excl
 		# Everything stops a beam but the pieces' rods, which are solid only
 		# to the crosshair.
 		q.collision_mask = 0xFFFFFFFF & ~Workshop.ROD_LAYER
-		q.exclude = skip
+		var ex: Array[RID] = skip.duplicate()
+		ex.append_array(_player())
+		q.exclude = ex
 		var hit := space.intersect_ray(q)
 		if hit.is_empty():
 			_segments.append([origin, origin + dir * reach, s, s + reach, reach, source, hot])
