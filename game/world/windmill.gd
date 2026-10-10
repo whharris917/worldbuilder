@@ -501,7 +501,7 @@ func _build_door() -> void:
 	var r := radius_at(PLINTH + DOOR_H * 0.5) - wall_at(PLINTH) * 0.5
 	var hd := asin(DOOR_W * 0.5 / radius_at(PLINTH + DOOR_H * 0.5))
 	var width := 2.0 * r * sin(hd) - 0.04
-	door = MillDoor.new(width, DOOR_H - 0.03, Color(0.24, 0.43, 0.4), mats["out"], "Door\nThe mill's door. E opens and shuts it.")
+	door = MillDoor.new(width, DOOR_H - 0.03, Color(0.24, 0.43, 0.4), mats["out"], "Door\nThe mill's door. A click opens and shuts it.")
 	door.position = Vector3(-width * 0.5, PLINTH + 0.01, r * cos(hd))
 	add_child(door)
 
@@ -911,10 +911,10 @@ func _build_drive() -> void:
 	var iron_mat := StandardMaterial3D.new()
 	iron_mat.albedo_color = Color(0.22, 0.22, 0.22)
 	gear_lever = WorksHandle.new(WorksHandle.Kind.LEVER, Vector3(1.85, PLINTH + 0.55, 0.35), wood_mat, iron_mat,
-			"Gear\nE drops the pinion out of the great spur wheel, or raises it back in.")
+			"Gear\nA click drops the pinion out of the great spur wheel, or raises it back in.")
 	add_child(gear_lever)
 	brake_lever = WorksHandle.new(WorksHandle.Kind.LEVER, Vector3(ROPE.x + 0.1, PLINTH + 0.55, ROPE.z + 0.15), wood_mat, iron_mat,
-			"Brake\nE draws the brake round the brake wheel, or lets it off.")
+			"Brake\nA click draws the brake round the brake wheel, or lets it off.")
 	add_child(brake_lever)
 	brake_lever.on = false
 	brake_lever.call("_show")

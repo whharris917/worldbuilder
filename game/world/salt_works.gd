@@ -263,7 +263,7 @@ func _build_shaft() -> void:
 	var g := ground(MILL_U - 1.2, cv)
 	_box(Vector3(0.2, 1.1, 0.2), at(MILL_U - 1.2, cv, g + 0.45), _wood, true)
 	_crank = WorksHandle.new(WorksHandle.Kind.CRANK, at(MILL_U - 1.42, cv, g + 1.05), _wood, _iron,
-			"Hand crank\nHold E to turn the shaft when the wind is too light.")
+			"Hand crank\nHold the mouse button on it to turn the shaft when the wind is too light.")
 	_site.add_child(_crank)
 	_rod(at(MILL_U - 1.42, cv, g + 1.05), at(MILL_U, cv, _shaft_y(cv)), 0.015, _iron, 4)
 
@@ -706,7 +706,7 @@ func _build_circuit() -> void:
 
 	var gl := ground(-0.4, 7.0)
 	_lever = WorksHandle.new(WorksHandle.Kind.LEVER, at(-0.4, 7.0, gl + 0.55), _wood, _iron,
-			"Run lever\nE: start or stop the fire. The works fill and rake either way.")
+			"Run lever\nA click starts or stops the fire. The works fill and rake either way.")
 	_site.add_child(_lever)
 
 
@@ -721,7 +721,7 @@ func _physics_process(dt: float) -> void:
 	_sail_angle += _sail_speed * dt
 	var gov := _sail_speed / 2.2
 	_s_wind.condition = gov > (0.3 if _s_wind.condition else 0.4)
-	# The crank: turned while E is held on it.
+	# The crank: turned while it is used (the mouse button or E held on it).
 	var holding := Input.is_action_pressed("interact") and island.player.look_view() == _crank
 	_crank_speed = move_toward(_crank_speed, 1.0 if holding else 0.0, 2.0 * dt)
 	_crank.turn(_crank_speed * 5.0 * dt)

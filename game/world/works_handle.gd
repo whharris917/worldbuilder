@@ -90,7 +90,7 @@ func inspect_text() -> String:
 	return _label.text
 
 
-## E on a lever throws it over.
+## Using a lever (a click, or E) throws it over.
 func use() -> void:
 	if kind == Kind.LEVER:
 		on = not on

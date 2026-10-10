@@ -203,7 +203,7 @@ func relabel(text: String) -> void:
 ## What a player looking at it is told. Drafts.
 func describe() -> String:
 	if aimed:
-		var how := "\nE: look through its lens to aim it." if kind != Kind.RADIOMETER else ""
+		var how := "\nA right click aims it; E looks through its lens." if kind != Kind.RADIOMETER else ""
 		if kind == Kind.LATCH:
 			how += " A beam from its left lights it, from its right puts it out."
 		return _describe_kind() + how

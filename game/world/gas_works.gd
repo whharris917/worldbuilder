@@ -456,7 +456,7 @@ func _limelight(m: CozyMesh, thin: CozyMesh) -> void:
 	var dark := StandardMaterial3D.new()
 	dark.albedo_color = Color(0.22, 0.22, 0.22)
 	_valve = WorksHandle.new(WorksHandle.Kind.LEVER, LAMP + Vector3(-0.7, 0.55, 0.0), wood, dark,
-			"Limelight\nE opens the gas to the lamp, or shuts it.")
+			"Limelight\nA click opens the gas to the lamp, or shuts it.")
 	_valve.on = false
 	_valve.call("_show")
 	_valve.thrown.connect(func(on: bool) -> void: lamp_open = on)

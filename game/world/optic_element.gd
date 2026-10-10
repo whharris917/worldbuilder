@@ -120,7 +120,7 @@ func _init(element_kind: Kind, at: Vector3, ground: float, wood: Material, frame
 
 ## What a player looking at it is told. Drafts.
 func describe() -> String:
-	var how := "\nHold E and move the mouse to aim it."
+	var how := "\nA right click aims it; E looks through it."
 	match kind:
 		Kind.MIRROR:
 			return "Mirror\nTurns a beam off its silvered face; a little of the beam's reach is lost." + how

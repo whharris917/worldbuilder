@@ -470,7 +470,7 @@ func _build_circuit() -> void:
 	_wire(_l["vials"], ton_vials)
 	_wire(ton_vials, _r["pack"])
 	_lever = WorksHandle.new(WorksHandle.Kind.LEVER, hill(-3.2, 2.6, 0.55), _wood, _brass,
-			"Run lever\nE: let the rods rise and the dishes turn, or keep them down.")
+			"Run lever\nA click lets the rods rise and the dishes turn, or keep them down.")
 	_site.add_child(_lever)
 
 

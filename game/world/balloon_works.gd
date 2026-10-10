@@ -608,7 +608,7 @@ func _build_circuit() -> void:
 
 	var lg := ground(WINCH.x + 2.6, WINCH.y + 1.6)
 	_lever = WorksHandle.new(WorksHandle.Kind.LEVER, at(WINCH.x + 2.6, WINCH.y + 1.6, lg + 0.55), _wood, _iron,
-			"Run lever\nE: let the balloon go up, or keep it home. It still comes down in a gale.")
+			"Run lever\nA click lets the balloon go up, or keep it home. It still comes down in a gale.")
 	_site.add_child(_lever)
 	_wire_run()
 

@@ -756,7 +756,7 @@ func _build_circuit() -> void:
 
 	var lg := ground(DRUM.x - 2.4, DRUM.y + 1.2)
 	_lever = WorksHandle.new(WorksHandle.Kind.LEVER, at(DRUM.x - 2.4, DRUM.y + 1.2, lg + 0.55), _wood, _iron,
-			"Run lever\nE: hold or release the recipe drum. Safety valves and bottling carry on.")
+			"Run lever\nA click holds or releases the recipe drum. Safety valves and bottling carry on.")
 	_site.add_child(_lever)
 
 

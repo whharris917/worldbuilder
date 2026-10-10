@@ -50,7 +50,7 @@ func _ready() -> void:
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_overlay.add_child(frame)
 	var hint := Label.new()
-	hint.text = "Mouse: aim     Wheel: zoom     E: done"
+	hint.text = "Right click: done"
 	hint.add_theme_font_size_override("font_size", 18)
 	hint.add_theme_color_override("font_color", Color(0.95, 0.9, 0.78))
 	hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -112,6 +112,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var b := (event as InputEventMouseButton).button_index
 		if b == MOUSE_BUTTON_WHEEL_UP or b == MOUSE_BUTTON_WHEEL_DOWN:
 			_fov = clampf(_fov * (0.8 if b == MOUSE_BUTTON_WHEEL_UP else 1.25), 1.5, 60.0)
+		elif b == MOUSE_BUTTON_RIGHT:
+			leave()
 	elif event.is_action_pressed("interact") or event.is_action_pressed("ui_cancel"):
 		leave()
 	else:

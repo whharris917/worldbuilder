@@ -15,12 +15,12 @@ extends Node3D
 ## faint guide lines; lit ones glow in their colour. A beam is stopped by
 ## the player's body too.
 ##
-## Aiming: E on a part looks through it, in a scope: from a crystal's or
+## Aiming: a right click on a part looks through it, in a scope: from a crystal's or
 ## lantern's lens along its beam; from a mirror or splitter along the beam
 ## it turns, so steering the view turns the glass to send the beam there;
 ## from a lens along its axis. The mouse aims (finer as the view zooms),
-## the wheel zooms, a glowing spot marks where the beam strikes; E again,
-## or Esc, looks out through the player's own eyes. The player stands
+## the wheel zooms, a glowing spot marks where the beam strikes; a right
+## click again, E or Esc looks out through the player's own eyes. The player stands
 ## still meanwhile (`Player.look_held_by`). A beam passing within SNAP
 ## metres of the middle of a part or a glass settles there with a click;
 ## a firm push frees it. Aims are kept in SAVE_PATH.
@@ -42,6 +42,7 @@ const HEIGHT := 1.15
 const MAX_BOUNCES := 10
 const FOV_START := 30.0
 
+var _right_was := false                # the right button held last frame
 var expo: CrystalExpo
 var island: CozyIsland
 var parts: Array[LumenPart] = []
@@ -315,7 +316,7 @@ func _build_scope() -> void:
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_overlay.add_child(frame)
 	var hint := Label.new()
-	hint.text = "Mouse: aim     Wheel: zoom     E: done"
+	hint.text = "Right click: done"
 	hint.add_theme_font_size_override("font_size", 18)
 	hint.add_theme_color_override("font_color", Color(0.95, 0.9, 0.78))
 	hint.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -357,7 +358,10 @@ static func scope_picture() -> ImageTexture:
 
 func _process(_delta: float) -> void:
 	var player := island.player
-	if Input.is_action_just_pressed("interact"):
+	var right := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var pressed := right and not _right_was
+	_right_was = right
+	if pressed or (_held != null and Input.is_action_just_pressed("interact")):
 		if _held == null:
 			var v := player.look_view()
 			if v != null and player.look_held_by == null and (parts.has(v) or elements.has(v)) \

@@ -15,8 +15,8 @@ extends Node3D
 ## hand. Opening the menu, or a right click while something is in hand,
 ## puts it away. Empty hands stops building; Tab, Esc, a right click or a
 ## click outside the menu go back to the view. A small button at each
-## card's top right opens the piece's details: what it is and how it
-## works (DETAILS).
+## card's top right, or I with the pointer on the card, opens the
+## piece's details: what it is and how it works (DETAILS).
 ##
 ## The quick-select bar along the bottom: ten slots, keys 1 to 9 and 0,
 ## empty to begin. A number pressed with the pointer resting on a card
@@ -24,11 +24,15 @@ extends Node3D
 ## the slot's piece in hand, or puts it away if it is in hand already.
 ## The slots are kept with what is built.
 ##
-## Nothing built or in the works carries a floating label. Whatever can
-## be used or read (a `view` the player's ray meets, or a built piece
-## within REACH) turns the crosshair into a brass ring while it is on it;
-## a right click then shows its card, what it is and what it does, until
-## the crosshair leaves it (its `inspect_text`).
+## The mouse: a click uses a thing (left click is the "interact" action,
+## with E), a right click changes it (aims a piece, turns a gate's ring).
+## Nothing carries a floating label and the screen carries almost no help
+## text: whatever can be used or read (a `view` the player's ray meets,
+## or a built piece within REACH) turns the crosshair into a brass ring
+## while it is on it, and I shows its card, what it is and what it does,
+## until the crosshair leaves it (its `inspect_text`). The line under the
+## view speaks only when something cannot be done, or which side of a
+## latch a beam will strike.
 ##
 ## While building, a see-through copy of what is in hand, whole, stands where it would go, at
 ## what the crosshair is on within REACH metres, turned square to the
@@ -61,17 +65,16 @@ extends Node3D
 ## beam strikes first. Esc, B or
 ## choosing something else puts it back where it stood.
 ##
-## A crosshair shows whenever the player looks about; the line under it
-## says what can be done. With empty hands: E on a lantern opens or
-## closes it; E on any other piece but a radiometer looks through it to
-## aim it (BenchScope); a click on one takes it up to aim, its beam
-## following the crosshair (settling on any piece it is on) until a
-## click fixes it or a right click or Esc leaves it as it was.
+## With empty hands: a click on a lantern opens or closes it; E on any
+## other piece but a radiometer looks through it to aim it (BenchScope);
+## a right click on one takes it up to aim, its beam following the
+## crosshair (settling on any piece it is on) until a click fixes it or a
+## right click or Esc leaves it as it was.
 ##
 ## Light gates (LightGate): an opening gate lets a beam through its ring
 ## while a lit beam strikes the bulb above it, a closing gate stops one
-## while lit; a click on one turns its ring to face what the crosshair
-## is on. From these an AND is gates in a row along one beam,
+## while lit; a right click on one turns its ring to face what the
+## crosshair is on. From these an AND is gates in a row along one beam,
 ## a NOT a closing gate.
 ##
 ## Push and pull lamps are lanterns whose beams are red and green; a
@@ -144,7 +147,7 @@ const DELAYS := [1.0, 2.0, 3.0, 5.0, 8.0, 13.0]
 
 ## What a piece tells the player looking at it. Drafts.
 const NOTES := {
-	"lantern": "Lantern\nE: open or close its shutter.",
+	"lantern": "Lantern\nA click opens or closes its shutter; a right click aims it.",
 	"and": "AND crystal\nShines while every beam striking it is lit.",
 	"or": "OR crystal\nShines while any beam striking it is lit.",
 	"not": "NOT crystal\nShines while no lit beam strikes it.",
@@ -156,8 +159,8 @@ const NOTES := {
 	"radiometer": "Radiometer\nIts vanes spin in the light; a bell rings as they start.",
 	"gate": "Opening gate\nLets a beam through its ring while a lit beam strikes the bulb above it.",
 	"closing_gate": "Closing gate\nStops a beam at its ring while a lit beam strikes the bulb above it.",
-	"push_lamp": "Push lamp\nIts red beam on a cart's copper ball pushes the cart along its track, away from the lamp.\nE: open or close it.",
-	"pull_lamp": "Pull lamp\nIts green beam on a cart's copper ball pulls the cart along its track, toward the lamp.\nE: open or close it.",
+	"push_lamp": "Push lamp\nIts red beam on a cart's copper ball pushes the cart along its track, away from the lamp.\nA click opens or closes it; a right click aims it.",
+	"pull_lamp": "Pull lamp\nIts green beam on a cart's copper ball pulls the cart along its track, toward the lamp.\nA click opens or closes it; a right click aims it.",
 	"track": "Track and cart\nPush and pull beams on the copper ball drive the cart along the track.",
 	"mirror": "Mirror\nTurns a beam off its silvered face; a little of its reach is lost.",
 	"splitter": "Splitter\nSends a beam on through and aside as well, each with half its reach.",
@@ -193,9 +196,9 @@ const MENU_NOTES := {
 ## Each piece's details, opened from its card. Drafts.
 const DETAILS := {
 	"floor": "A square of boards two metres across on legs, set level whatever the ground does underneath. Placed within a metre of the place beside another floor it settles flush against it, so floors join into a deck. Pieces stand on it, and moving a floor carries them with it.",
-	"lantern": "A lamp with a shutter. While the shutter is open it sends a gold beam straight ahead; E opens and shuts it. A gold beam is the signal every crystal and gate reads: lit or dark. Click it to aim it at what you look at.",
-	"push_lamp": "A lantern with red glass. Its red beam is no signal: striking the copper ball on a cart's pole it pushes the cart along its track, away from the lamp. E opens and shuts it.",
-	"pull_lamp": "A lantern with green glass. Its green beam is no signal: striking the copper ball on a cart's pole it pulls the cart along its track, toward the lamp. E opens and shuts it.",
+	"lantern": "A lamp with a shutter. While the shutter is open it sends a gold beam straight ahead; a click opens and shuts it. A gold beam is the signal every crystal and gate reads: lit or dark. A right click aims it at what you look at.",
+	"push_lamp": "A lantern with red glass. Its red beam is no signal: striking the copper ball on a cart's pole it pushes the cart along its track, away from the lamp. A click opens and shuts it.",
+	"pull_lamp": "A lantern with green glass. Its green beam is no signal: striking the copper ball on a cart's pole it pulls the cart along its track, toward the lamp. A click opens and shuts it.",
 	"and": "A crystal that shines, sending a gold beam of its own onward, while every beam striking it is lit. Two lanterns aimed at it make it shine only while both are open.",
 	"or": "A crystal that shines, sending a gold beam of its own onward, while any beam striking it is lit.",
 	"not": "A crystal that shines while no lit beam strikes it; a lit beam puts it out. It turns a signal round.",
@@ -204,16 +207,16 @@ const DETAILS := {
 	"off_delay": "A crystal that lights the moment a beam striking it lights, and stays lit for its time after the beam goes dark. T changes the time, from 1 to 13 seconds. It keeps a short gap from stopping anything.",
 	"rise": "One short flash the moment a beam striking it lights, then dark however long the beam stays lit: for counting, or for starting something once.",
 	"fall": "One short flash the moment a beam striking it goes dark.",
-	"gate": "A brass ring with a glass bulb above it. A beam through the ring passes only while a lit beam strikes the bulb. Gates in a row along one beam make an AND. Click it to turn its ring toward what you look at.",
-	"closing_gate": "A ring like the opening gate's, but it stops the beam through it while its bulb is lit and lets it pass while the bulb is dark. Click it to turn its ring toward what you look at.",
-	"mirror": "A silvered glass that turns a beam off its face as a mirror turns light, losing a little of the beam's reach. Click it to aim the beam it sends on.",
+	"gate": "A brass ring with a glass bulb above it. A beam through the ring passes only while a lit beam strikes the bulb. Gates in a row along one beam make an AND. A right click turns its ring toward what you look at.",
+	"closing_gate": "A ring like the opening gate's, but it stops the beam through it while its bulb is lit and lets it pass while the bulb is dark. A right click turns its ring toward what you look at.",
+	"mirror": "A silvered glass that turns a beam off its face as a mirror turns light, losing a little of the beam's reach. A right click aims the beam it sends on.",
 	"splitter": "Half-silvered glass. A beam striking it goes on straight through and is turned aside as well, each with half the reach.",
 	"lens": "A beam passing through it reaches twice as far again, for carrying a signal across a distance.",
 	"radiometer": "Four vanes on a needle in a glass bulb, dark on one face and bright on the other. A lit beam striking the bulb spins them, faster the more light, and a bell rings as they start, so a signal can be heard.",
 	"track": "Sixteen metres of track with a cart on it, carrying a copper ball on a pole. Red beams on the ball push the cart away from their lamp and green ones pull it toward theirs, up to eight metres a second; gold beams do nothing to it.",
 }
-const MENU_HELP := "Click a piece to take it in hand. With the pointer on one, a number puts it in that slot.     Tab: back to the view."
-const AIM_NOTE := "\nE: look through it.  Right click: aim it at what you look at."
+const MENU_HELP := ""
+const AIM_NOTE := "\nA right click aims it at what you look at; E looks through it."
 
 var island: BuildWorld
 var _save_path := SAVE_PATH
@@ -1136,6 +1139,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	var click := event as InputEventMouseButton
 	if _menu_open:
+		# I with the pointer on a card opens its details.
+		if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_I and _hover_item >= 0:
+			_show_details(_hover_item)
+			get_viewport().set_input_as_handled()
+			return
 		# A number with the pointer on a card fills that slot.
 		var n := _slot_of(key)
 		if n >= 0 and _hover_item >= 0:
@@ -1190,23 +1198,28 @@ func _unhandled_input(event: InputEvent) -> void:
 		# A right click with something in hand puts it away.
 		_set_building(false)
 	elif click != null and click.pressed and click.button_index == MOUSE_BUTTON_RIGHT:
-		# With empty hands, a right click reads what the crosshair is on.
-		_inspect(_on_thing)
-	elif _slot_of(key) >= 0:
-		_use_slot(_slot_of(key))
-	elif not building and click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT:
+		# With empty hands, a right click changes a piece: aims it, or turns
+		# a gate's ring.
 		var hit := _look_hit()
 		if hit.is_empty() or not is_piece(hit["collider"]) or not turns(hit["collider"]):
 			return
 		_start_aim(hit["collider"])
-	elif event.is_action_pressed("interact"):
+	elif key != null and key.pressed and not key.echo and key.physical_keycode == KEY_I:
+		# I reads what the crosshair is on, or puts its card away.
+		_inspect(null if _inspected != null else _on_thing)
+	elif _slot_of(key) >= 0:
+		_use_slot(_slot_of(key))
+	elif event.is_action_pressed("interact") and not (building and click != null):
+		# Using a piece: a click or E opens or closes a lantern; E looks
+		# through any other (a click on one does nothing). Anything else is
+		# left to the player, who uses what it is looking at.
 		var hit := _look_hit()
 		if hit.is_empty() or not is_piece(hit["collider"]):
 			return
 		var v := hit["collider"] as Node3D
 		if v is LumenPart and (v as LumenPart).kind == LumenPart.Kind.LANTERN:
 			toggle(v as LumenPart)
-		elif sends(v):
+		elif sends(v) and key != null:
 			scope.enter(v, player.camera)
 		else:
 			return
@@ -1371,45 +1384,19 @@ func _process(delta: float) -> void:
 ## What the line over the tray says. Drafts.
 func _hint_text() -> String:
 	if _aiming != null:
-		var text := "Look where its beam should go and click     Right click: leave it as it was"
+		var text := ""
 		var hit := _look_hit([(_aiming as CollisionObject3D).get_rid()])
 		if not hit.is_empty() and hit["collider"] is LumenPart and is_piece(hit["collider"]):
 			var latch := hit["collider"] as LumenPart
 			if latch.kind == LumenPart.Kind.LATCH:
 				var right := latch.global_transform.basis * (Basis.from_euler(Vector3(latch.pitch, latch.yaw, 0.0)) * Vector3.RIGHT)
 				var dir := (latch.global_position - _aiming.global_position).normalized()
-				text = ("It strikes the latch from its left: it will light it.\n" if dir.dot(right) > 0.0
-						else "It strikes the latch from its right: it will put it out.\n") + text
+				text = ("It strikes the latch from its left: it will light it." if dir.dot(right) > 0.0
+						else "It strikes the latch from its right: it will put it out.")
 		return text
-	if not building:
-		var p := _on_piece as LumenPart
-		if _on_piece == null:
-			if _on_thing == null:
-				return ""
-			return "Right click: what it is" + ("     E: use it" if _on_thing.has_method("use") else "")
-		if p != null and p.kind == LumenPart.Kind.LANTERN:
-			return "Click: aim it     E: open or close it     Right click: what it is     G: move it     X: take it away"
-		if p != null and p.kind == LumenPart.Kind.RADIOMETER:
-			return "Right click: what it is     G: move it     X: take it away"
-		if p != null and (p.kind == LumenPart.Kind.TON or p.kind == LumenPart.Kind.TOF):
-			return "Click: aim it     E: look through it     T: change the time     Right click: what it is     G: move it     X: take it away"
-		if _on_piece is BeamCart:
-			return "Right click: what it is     G: move it     X: take it away"
-		if _on_piece is LightGate:
-			return "Click: turn it     Right click: what it is     G: move it     X: take it away"
-		return "Click: aim it     E: look through it     Right click: what it is     G: move it     X: take it away"
-	if _carried != null:
-		var put := "Click: set it down here" if _ok else _why
-		if put == "":
-			put = "Look at the ground, a floor or a piece"
-		return "%s\nShift and wheel: higher, lower     Esc: put it back where it was" % put
-	var place := ("Click: place the %s" % str(ITEMS[item][1]).to_lower()) if _ok else _why
-	if place == "":
-		place = "Look at the ground, a floor or a piece"
-	var height := ""
-	if not is_zero_approx(lift):
-		height = "     %+.2f m" % lift
-	return "%s%s\nRight click: put it away     Tab: the menu     Shift and wheel: higher, lower     G: move     X: take away" % [place, height]
+	if _carried != null or building:
+		return _why if not _ok else ""
+	return ""
 
 
 ## ---- the screen ------------------------------------------------------------------
