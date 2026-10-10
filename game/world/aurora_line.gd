@@ -21,14 +21,26 @@ extends Node3D
 ##   the other. Its carrying cable is red cable, push cable, which holds
 ##   itself straight between the towers without sagging; a carriage runs
 ##   on it with a copper bucket hanging below.
-## - At the spring the bucket fills (FILL_TIME). Its weight, felt down the
-##   haul cable, tells the drive house at B to bring it home: the green
-##   drum winds in pull cable and hauls the carriage to B. There the
-##   bucket tips into the cistern (EMPTY_TIME, WATER_PER_LOAD), and the
-##   red drum pays out push cable and sends the empty carriage back. Every
-##   metre hauled spends cable (a spool's worth for SPOOL_METRES), drawn
-##   from the store onto the drums a spool at a time; with no spool of the
-##   colour wanted, the line waits.
+## - The line runs on light-beam logic, a ladder at each end (LumenPart,
+##   LumenBeam, as the works'), and its machines do only what the ladders'
+##   radiometers say. The ends cannot see each other, so each ladder reads
+##   what can be sensed where it stands.
+##   At the spring: lanterns "the bucket is at the spring" and "the bucket
+##   is full"; AND(at the spring, NOT full) turns the radiometer that opens
+##   the spring's tap, and the bucket fills (FILL_TIME).
+##   At the drive house, which feels the bucket's weight down the haul
+##   cable and counts the cable paid out: lanterns "the bucket is full",
+##   "the bucket is at the cistern", "there is water in the bucket", "the
+##   bucket is at the spring", "green cable to hand", "red cable to hand".
+##   AND(full, NOT at the cistern, green to hand) engages the green drum,
+##   which winds in pull cable and hauls the carriage to B; AND(at the
+##   cistern, water in it) tips the bucket into the cistern (EMPTY_TIME,
+##   WATER_PER_LOAD); AND(NOT water, NOT at the spring, red to hand)
+##   engages the red drum, which pays out push cable and sends the empty
+##   carriage back. Every metre hauled spends cable (a spool's worth for
+##   SPOOL_METRES), drawn from the store onto the drums a spool at a time;
+##   with no spool of the colour wanted, its lantern goes out and the line
+##   waits.
 ##
 ## So the aurora makes the cable that carries the water that spins the
 ## aurora into cable. The store starts with spools in it, so the line
@@ -111,6 +123,11 @@ var _clock := 0.0
 var _note_left := 0.0
 var _save_left := 5.0
 var _tip := 0.0                                 # the bucket's tip, 0 upright to 1 poured
+var _parts: Array[LumenPart] = []               # the two ladders
+var _beams: Array[LumenBeam] = []
+var _sense := {}                                # sensor -> its lantern
+var _out := {}                                  # machine -> its radiometer
+var _was_end := true                            # the carriage was at an end last step
 
 
 func _init(owner_island: CozyIsland) -> void:
@@ -130,6 +147,7 @@ func _ready() -> void:
 	_build_store(still)
 	_build_ropes()
 	_build_carriage()
+	_build_ladders()
 	var view := MeshInstance3D.new()
 	view.name = "Still"
 	view.mesh = still.commit(island.cozy_material(true))
@@ -682,6 +700,83 @@ func _build_carriage() -> void:
 	_pivot.add_child(_bucket_water)
 
 
+## ---- the ladders --------------------------------------------------------------
+
+## The spring's ladder beside the well, and the drive house's on the dunes
+## beside it, on the far side from the spinners.
+func _build_ladders() -> void:
+	var wood := island.surface("weathered_wood", 0.8, Color(0.9, 0.88, 0.86), 0.9, Color(0.66, 0.56, 0.46))
+	var brass := island.surface("", 1.0, Color(0.62, 0.46, 0.2), 0.3, Color(0.92, 0.72, 0.34))
+	brass.metallic = 0.85
+	var across_a := _d_a.cross(Vector3.UP).normalized()
+	var at_a := func(u: float, v: float, h: float) -> Vector3:
+		var p := _a_ground + _d_a * u + across_a * v
+		p.y = _g(p) + h
+		return p
+	var at_b := func(u: float, v: float, h: float) -> Vector3:
+		var p := _b_ground + _d_b * u + _side_b * v
+		p.y = _g(p) + h
+		return p
+	var lantern := LumenPart.Kind.LANTERN
+	# The spring.
+	_sense["at_spring"] = _part(lantern, "the bucket is at the spring", at_a.call(-1.8, 4.4, 1.6), wood, brass)
+	_sense["full"] = _part(lantern, "the bucket is full (a float in it lifts)", at_a.call(-0.6, 4.4, 1.6), wood, brass)
+	var not_full := _part(LumenPart.Kind.NOT, "the bucket is not full", at_a.call(-0.6, 5.6, 2.0), wood, brass)
+	var fill := _part(LumenPart.Kind.AND, "fill the bucket", at_a.call(0.6, 5.0, 2.2), wood, brass)
+	_out["tap"] = _part(LumenPart.Kind.RADIOMETER, "opens the spring's tap", at_a.call(1.0, 3.4, 1.8), wood, brass)
+	_wire(_sense["at_spring"], fill)
+	_wire(_sense["full"], not_full)
+	_wire(not_full, fill)
+	_wire(fill, _out["tap"])
+	# The drive house.
+	_sense["heavy"] = _part(lantern, "the bucket is full (the haul cable is heavy)", at_b.call(2.0, -4.0, 1.6), wood, brass)
+	_sense["home"] = _part(lantern, "the bucket is at the cistern", at_b.call(3.0, -4.0, 1.6), wood, brass)
+	_sense["wet"] = _part(lantern, "there is water in the bucket (the haul cable is not light)", at_b.call(4.0, -4.0, 1.6), wood, brass)
+	_sense["out"] = _part(lantern, "the bucket is at the spring (the cable is all paid out)", at_b.call(5.0, -4.0, 1.6), wood, brass)
+	_sense["green"] = _part(lantern, "green cable to hand", at_b.call(6.0, -4.0, 1.6), wood, brass)
+	_sense["red"] = _part(lantern, "red cable to hand", at_b.call(7.0, -4.0, 1.6), wood, brass)
+	var not_home := _part(LumenPart.Kind.NOT, "the bucket is not at the cistern", at_b.call(3.0, -5.4, 2.0), wood, brass)
+	var not_wet := _part(LumenPart.Kind.NOT, "the bucket is empty", at_b.call(4.0, -5.4, 2.0), wood, brass)
+	var not_out := _part(LumenPart.Kind.NOT, "the bucket is not at the spring", at_b.call(5.0, -5.4, 2.0), wood, brass)
+	var haul := _part(LumenPart.Kind.AND, "haul the full bucket home", at_b.call(2.4, -6.6, 2.3), wood, brass)
+	var tip := _part(LumenPart.Kind.AND, "tip the bucket", at_b.call(3.6, -6.6, 2.3), wood, brass)
+	var send := _part(LumenPart.Kind.AND, "send the empty bucket back", at_b.call(5.8, -6.6, 2.3), wood, brass)
+	_out["green"] = _part(LumenPart.Kind.RADIOMETER, "engages the green drum: pull cable hauls the bucket home", at_b.call(3.0, -2.2, 1.8), wood, brass)
+	_out["red"] = _part(LumenPart.Kind.RADIOMETER, "engages the red drum: push cable sends the bucket back", at_b.call(4.2, -2.2, 1.8), wood, brass)
+	_out["tip"] = _part(LumenPart.Kind.RADIOMETER, "tips the bucket into the cistern", at_b.call(-0.3, -1.9, 2.6), wood, brass)
+	_wire(_sense["home"], not_home)
+	_wire(_sense["wet"], not_wet)
+	_wire(_sense["out"], not_out)
+	for from: LumenPart in [_sense["heavy"], not_home, _sense["green"]]:
+		_wire(from, haul)
+	for from: LumenPart in [_sense["home"], _sense["wet"]]:
+		_wire(from, tip)
+	for from: LumenPart in [not_wet, not_out, _sense["red"]]:
+		_wire(from, send)
+	_wire(haul, _out["green"])
+	_wire(tip, _out["tip"])
+	_wire(send, _out["red"])
+	for b in _beams:
+		b.place()
+	for b in _beams:
+		if b.source.kind == LumenPart.Kind.LANTERN:
+			b.source.face(b.target.global_position)
+
+
+func _part(kind: LumenPart.Kind, title: String, at: Vector3, wood: Material, brass: Material) -> LumenPart:
+	var part := LumenPart.new(kind, title, at, _g(at), wood, brass)
+	add_child(part)
+	_parts.append(part)
+	return part
+
+
+func _wire(from: LumenPart, to: LumenPart) -> void:
+	var b := LumenBeam.new(from, to, from.colour())
+	add_child(b)
+	to.inputs.append(b)
+	_beams.append(b)
+
+
 func _note(at: Vector3, size: Vector3, lift: float) -> HoverNote:
 	var n := HoverNote.new(at, size, "", lift)
 	add_child(n)
@@ -750,32 +845,52 @@ func _physics_process(dt: float) -> void:
 			progress[colour] = 0.0
 			spools[colour] = int(spools[colour]) + 1
 			_play(_sounds["chime"], 0.8 if colour == "red" else 1.0)
-	# The line.
-	match stage:
-		Stage.FILLING:
-			load = minf(1.0, load + dt / FILL_TIME)
-			if load >= 1.0:
-				stage = Stage.TO_B
-		Stage.TO_B:
-			if _haul(_length, "green", dt):
-				stage = Stage.EMPTYING
-				_play(_sounds["clank"])
-		Stage.EMPTYING:
-			_tip = minf(1.0, _tip + dt / 0.8)
-			if _tip >= 1.0:
-				var poured := minf(load, dt / EMPTY_TIME)
-				load -= poured
-				water = minf(1.0, water + WATER_PER_LOAD * poured)
-				if load <= 0.0:
-					load = 0.0
-					stage = Stage.TO_A
-		Stage.TO_A:
-			_tip = maxf(0.0, _tip - dt / 0.8)
-			if _tip <= 0.0 and _haul(0.0, "red", dt):
-				stage = Stage.FILLING
-				_play(_sounds["clank"])
-	if stage != Stage.EMPTYING and stage != Stage.TO_A:
+	# The line, as its ladders say: the sensors lit from where the bucket
+	# is and what is in it, the ladders stepped, the machines moved by
+	# their radiometers.
+	var at_spring := along <= 0.05
+	var at_cistern := along >= _length - 0.05
+	(_sense["at_spring"] as LumenPart).condition = at_spring
+	(_sense["full"] as LumenPart).condition = load >= 0.99
+	(_sense["heavy"] as LumenPart).condition = load >= 0.99
+	(_sense["home"] as LumenPart).condition = at_cistern
+	(_sense["wet"] as LumenPart).condition = load > 0.01
+	(_sense["out"] as LumenPart).condition = at_spring
+	(_sense["green"] as LumenPart).condition = float(drum["green"]) > 0.0 or int(spools["green"]) > 0
+	(_sense["red"] as LumenPart).condition = float(drum["red"]) > 0.0 or int(spools["red"]) > 0
+	for part in _parts:
+		part.evaluate(dt)
+	for b in _beams:
+		b.step(dt)
+	var tap := (_out["tap"] as LumenPart).spin > 0.5
+	var tipping := (_out["tip"] as LumenPart).spin > 0.5
+	var green := (_out["green"] as LumenPart).spin > 0.5
+	var red := (_out["red"] as LumenPart).spin > 0.5
+	if tap and at_spring and load < 1.0:
+		load = minf(1.0, load + dt / FILL_TIME)
+		stage = Stage.FILLING
+	if tipping:
+		stage = Stage.EMPTYING
+		_tip = minf(1.0, _tip + dt / 0.8)
+		if _tip >= 1.0 and load > 0.0:
+			var poured := minf(load, dt / EMPTY_TIME)
+			load -= poured
+			water = minf(1.0, water + WATER_PER_LOAD * poured)
+	else:
 		_tip = maxf(0.0, _tip - dt / 0.8)
+	if green and not red:
+		stage = Stage.TO_B
+		_haul(_length, "green", dt)
+	elif red and not green and _tip <= 0.0:
+		stage = Stage.TO_A
+		_haul(0.0, "red", dt)
+	else:
+		speed = move_toward(speed, 0.0, ACCEL * dt * 1.5)
+		along = clampf(along + speed * dt, 0.0, _length)
+	var at_end := along <= 0.05 or along >= _length - 0.05
+	if at_end and not _was_end:
+		_play(_sounds["clank"])
+	_was_end = at_end
 	_save_left -= dt
 	if _save_left <= 0.0:
 		_save_left = 5.0
