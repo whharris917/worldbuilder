@@ -93,7 +93,7 @@ worldbuilder/
 - Anything placed in a world must sit inside the 3.8 km star dome.
 - Floating labels show only on hover; signs and plates are physical and stay. On the cozy islands there are none: I inspects (Workshop).
 - An interact body's `view` meta names the node the player acts on. Left click is the universal use (the `interact` action, with E); right click changes a thing (aims, turns).
-- **The player's pace**: a brisk 2 m/s walk (the director's choice), Shift to run at 4.5, eased in and out; the view 60 degrees high (about 90 across). Rooms are judged at this pace.
+- **The player's pace**: a 4 m/s walk (the director's choice), Shift to run at 8, eased in and out; the view 60 degrees high (about 90 across). Rooms are judged at this pace.
 
 ## Real buildings
 

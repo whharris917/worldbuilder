@@ -12,13 +12,13 @@ extends CharacterBody3D
 ## Space jumps; in the air the player keeps the speed they left the
 ## ground with and can steer it a little.
 ##
-## The pace is a person's: a walk at WALK_SPEED, Shift to run, picking
+## The pace: a walk at WALK_SPEED (twice a person's), Shift to run, picking
 ## up and slowing over a fraction of a second rather than at once; and
 ## the view about ninety degrees across, as a room looks to the eye, so
 ## a room is crossed in the steps it takes and looks its size.
 
-const WALK_SPEED := 2.0        # m/s, a brisk walk
-const RUN_SPEED := 4.5         # m/s, Shift held
+const WALK_SPEED := 4.0        # m/s
+const RUN_SPEED := 8.0         # m/s, Shift held
 const ACCEL := 6.0             # m/s² picking up
 const DECEL := 9.0             # m/s² slowing to a stop or a walk
 const MOUSE_SENS := 0.0022
