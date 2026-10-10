@@ -132,7 +132,7 @@ const ROD_LAYER := 8                    # the rods' solids: met by the crosshair
 const ITEMS := [["floor", "Floor"], ["lantern", "Lantern"], ["gate", "Opening gate"],
 		["closing_gate", "Closing gate"], ["and", "AND"], ["or", "OR"], ["not", "NOT"], ["latch", "Latch"],
 		["on_delay", "Hourglass"], ["off_delay", "Afterglow"], ["rise", "Rising spark"], ["fall", "Falling spark"],
-		["radiometer", "Radiometer"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"],
+		["radiometer", "Luminous rotor"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"],
 		["push_lamp", "Push lamp"], ["pull_lamp", "Pull lamp"], ["track", "Track and cart"],
 		["collector", "Sun collector"], ["oil_bullseye", "Bullseye lantern"], ["oil_globe", "Globe lamp"]]
 ## The oil lanterns' designs (LanternLook), by key.
@@ -183,7 +183,7 @@ const NOTES := {
 	"off_delay": "Afterglow crystal, %s s\nShines while a beam striking it is lit, and that long after. T: change the time.",
 	"rise": "Rising spark\nOne flash when a beam striking it lights.",
 	"fall": "Falling spark\nOne flash when a beam striking it goes dark.",
-	"radiometer": "Radiometer\nIts vanes spin in the light, whirring softly.",
+	"radiometer": "Luminous rotor\nA spinstone, a crystal of photogyrite, turning on its spindle in the light: the more light, the faster.",
 	"gate": "Opening gate\nLets a beam through its ring while a lit beam strikes the bulb above it.",
 	"closing_gate": "Closing gate\nStops a beam at its ring while a lit beam strikes the bulb above it.",
 	"push_lamp": "Push lamp\nIts red beam on a cart's copper ball pushes the cart along its track, away from the lamp.\nA click opens or closes it; a right click aims it.",
@@ -217,7 +217,7 @@ const MENU_NOTES := {
 	"mirror": "turns a beam off its silvered face.",
 	"splitter": "sends a beam on through and aside, each with half its reach.",
 	"lens": "a beam through it reaches twice as far again.",
-	"radiometer": "its vanes spin in the light, whirring softly.",
+	"radiometer": "a spinstone that turns in the light: the more light, the faster.",
 	"track": "a cart on rails, driven by push and pull beams on its copper ball.",
 }
 ## Each piece's details, opened from its card. Drafts.
@@ -239,7 +239,7 @@ const DETAILS := {
 	"mirror": "A silvered glass that turns a beam off its face as a mirror turns light, losing a little of the beam's reach. A right click aims the beam it sends on.",
 	"splitter": "Half-silvered glass. A beam striking it goes on straight through and is turned aside as well, each with half the reach.",
 	"lens": "A beam passing through it reaches twice as far again, for carrying a signal across a distance.",
-	"radiometer": "Four vanes on a needle in a glass bulb, dark on one face and bright on the other. A lit beam striking the bulb spins them, faster the more light, with a soft whir.",
+	"radiometer": "A spinstone (a crystal of photogyrite) held upright between two jewel bearings in a brass frame. Photogyrite turns when light falls on it, as no other stone does: a lit beam striking it sets it whirling on its spindle, glowing faintly, with a soft whir.",
 	"track": "Sixteen metres of track with a cart on it, carrying a copper ball on a pole. Red beams on the ball push the cart away from their lamp and green ones pull it toward theirs, up to eight metres a second; gold beams do nothing to it.",
 }
 ## What the pieces are under sunlight, where it differs: their card
@@ -285,7 +285,7 @@ const SUN_TEXTS := {
 	"splitter": {"details": "Half-silvered glass: a beam striking it goes on straight through and is turned aside as well, half its light each way."},
 	"lens": {"menu": "a beam passing through it fades half as fast from there.",
 		"details": "A beam passing through a lens loses a twentieth of its light there, and from there fades half as fast, so it carries a signal twice as far again."},
-	"radiometer": {"details": "Four vanes on a needle in a glass bulb, dark on one face and bright on the other, that spin while a beam striking it carries enough light, with a soft whir."},
+	"radiometer": {"details": "A spinstone (a crystal of photogyrite) held upright between two jewel bearings in a brass frame. Photogyrite turns when light falls on it, as no other stone does. The light pushes it round in proportion to its power, and the air holds it back the harder the faster it goes, so it runs up to a speed that grows with the square root of the light: a lantern's sixty watts turn it gently, a sun collector's two kilowatts set it whirling. It glows faintly as it turns, with a soft whir."},
 }
 const MENU_HELP := ""
 const AIM_NOTE := "\nA right click aims it at what you look at; E looks through it."

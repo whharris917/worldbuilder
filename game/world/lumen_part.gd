@@ -19,9 +19,15 @@ extends StaticBody3D
 ##   lit and keeps glowing `delay` seconds after, fading (an afterglow).
 ## - RISE, FALL: edge triggers. One flash (PULSE seconds) when the beam
 ##   comes on, or when it goes dark.
-## - RADIOMETER: an output coil. A Crookes radiometer: vanes in a glass
-##   bulb that spin in light. `spin` (0 to 1) eases toward lit or not;
-##   the machine it drives reads it, or `powered`.
+## - RADIOMETER: an output coil, the luminous rotor. A spinstone (a
+##   crystal of photogyrite, which turns when light falls on it) upright
+##   on a spindle between two jewel bearings in an open brass frame.
+##   Light pushes it round in proportion to its power and the air's drag
+##   holds it back with the square of its speed, so it runs up to a
+##   speed growing with the square root of the light: `spin` (0 to 1)
+##   eases toward the root of the power reaching it over FULL_SPIN watts,
+##   or toward 1 while lit where beams carry no power; the machine it
+##   drives reads it, or `powered`.
 ##
 ## A right click on a part reads its name and what it does (`describe`,
 ## `inspect_text`).
@@ -42,6 +48,7 @@ extends StaticBody3D
 enum Kind { LANTERN, AND, OR, NOT, LATCH, TON, TOF, RISE, FALL, RADIOMETER }
 
 const PULSE := 0.4
+const FULL_SPIN := 2000.0               # watts of light that run a rotor at full speed
 const COLOURS := {
 	Kind.LANTERN: Color(1.0, 0.72, 0.3),
 	Kind.AND: Color(1.0, 0.8, 0.2),
@@ -232,7 +239,7 @@ func _describe_kind() -> String:
 		Kind.FALL:
 			return "Falling spark: %s\nOne flash when its beam goes dark." % title
 		_:
-			return "Radiometer: %s\nIts vanes spin in the light and drive the machine." % title
+			return "Luminous rotor: %s\nIts spinstone turns in the light and drives the machine." % title
 
 
 ## ---- aiming ------------------------------------------------------------------
@@ -343,7 +350,16 @@ func evaluate(dt: float) -> void:
 			out = _pulse_left > 0.0
 		Kind.RADIOMETER:
 			powered = lit.has(true)
-			spin = move_toward(spin, 1.0 if powered else 0.0, dt * 1.2)
+			var want := 1.0 if powered else 0.0
+			var watts := 0.0
+			var measured := false
+			for b in inputs:
+				if b is OpticArrival and (b as OpticArrival).power >= 0.0:
+					measured = true
+					watts += (b as OpticArrival).power
+			if measured:
+				want = sqrt(clampf(watts / FULL_SPIN, 0.0, 1.0))
+			spin = move_toward(spin, want, dt * 1.2)
 			out = false
 	_last_in = first
 
@@ -366,6 +382,7 @@ func _process(delta: float) -> void:
 		Kind.RADIOMETER:
 			_vane_angle += spin * 14.0 * delta
 			_vanes.rotation.y = _vane_angle
+			_glow.emission_energy_multiplier = 0.15 + 2.2 * spin
 		_:
 			_glow.emission_energy_multiplier = 2.5 if out else 0.1
 
@@ -692,43 +709,86 @@ func _build_hourglass(brass: Material) -> void:
 
 ## A Crookes radiometer: a glass bulb on a stem with four vanes, each
 ## black on one face and silvered on the other, on a pin.
+## The luminous rotor: a round brass base, two posts and a bridge over
+## the top, a jewel bearing in each, a steel spindle between them, and on
+## it the spinstone: a crystal of photogyrite, six-sided and pointed at
+## both ends, with three fins winding round it, glowing faintly as it
+## turns.
 func _build_radiometer() -> void:
-	var glass := StandardMaterial3D.new()
-	glass.albedo_color = Color(0.85, 0.95, 1.0, 0.2)
-	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glass.roughness = 0.05
-	var bulb := SphereMesh.new()
-	bulb.radius = 0.13
-	bulb.height = 0.26
-	bulb.material = glass
-	_add(bulb, Vector3.ZERO)
-	var stem := CylinderMesh.new()
-	stem.top_radius = 0.025
-	stem.bottom_radius = 0.035
-	stem.height = 0.08
-	stem.material = glass
-	_add(stem, Vector3(0, -0.15, 0))
+	var brass := StandardMaterial3D.new()
+	brass.albedo_color = Color(0.82, 0.62, 0.3)
+	brass.metallic = 0.85
+	brass.roughness = 0.3
+	var ruby := StandardMaterial3D.new()
+	ruby.albedo_color = Color(0.75, 0.08, 0.12)
+	ruby.roughness = 0.1
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.75, 0.77, 0.8)
+	steel.metallic = 0.9
+	steel.roughness = 0.25
+	var frame := CozyMesh.new()
+	var gold := Color(0.82, 0.62, 0.3)
+	frame.cyl(0.11, 0.12, 0.025, 24, CozyMesh.at(Vector3(0, -0.15, 0)), gold)
+	frame.cyl(0.03, 0.04, 0.03, 12, CozyMesh.at(Vector3(0, -0.125, 0)), gold)
+	for s: float in [-1.0, 1.0]:
+		frame.cyl(0.009, 0.011, 0.33, 8, CozyMesh.at(Vector3(s * 0.095, 0.015, 0)), gold)
+		frame.ball(0.016, 8, CozyMesh.at(Vector3(s * 0.095, 0.18, 0)), gold)
+	frame.box(Vector3(0.2, 0.016, 0.026), CozyMesh.at(Vector3(0, 0.17, 0)), gold)
+	frame.cyl(0.018, 0.022, 0.025, 10, CozyMesh.at(Vector3(0, 0.155, 0)), gold)
+	var held := MeshInstance3D.new()
+	held.mesh = frame.commit(brass)
+	_head.add_child(held)
+	for y: float in [-0.11, 0.142]:
+		var jewel := SphereMesh.new()
+		jewel.radius = 0.009
+		jewel.height = 0.018
+		jewel.material = ruby
+		_add(jewel, Vector3(0, y, 0))
 	_vanes = Node3D.new()
 	_vanes.set_meta(StaticMerge.MOVES, true)
 	_head.add_child(_vanes)
-	var black := StandardMaterial3D.new()
-	black.albedo_color = Color(0.02, 0.02, 0.02)
-	var silver := StandardMaterial3D.new()
-	silver.albedo_color = Color(0.9, 0.9, 0.9)
-	silver.metallic = 1.0
-	silver.roughness = 0.2
-	for k in 4:
-		var arm := Node3D.new()
-		arm.rotation.y = TAU * k / 4.0
-		_vanes.add_child(arm)
-		for face: Array in [[black, 0.003], [silver, -0.003]]:
-			var vane := MeshInstance3D.new()
-			var plate := BoxMesh.new()
-			plate.size = Vector3(0.05, 0.05, 0.004)
-			plate.material = face[0]
-			vane.mesh = plate
-			vane.position = Vector3(0.07, 0, float(face[1]))
-			arm.add_child(vane)
+	var spindle := CylinderMesh.new()
+	spindle.top_radius = 0.004
+	spindle.bottom_radius = 0.004
+	spindle.height = 0.25
+	spindle.material = steel
+	var sv := MeshInstance3D.new()
+	sv.mesh = spindle
+	sv.position.y = 0.015
+	_vanes.add_child(sv)
+	# The spinstone, glowing as it turns (its own glow, `_glow`).
+	_glow.albedo_color = Color(0.78, 0.66, 0.95, 0.85)
+	_glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_glow.emission = Color(0.85, 0.7, 1.0)
+	_glow.roughness = 0.08
+	_glow.metallic_specular = 0.9
+	var stone := CozyMesh.new()
+	var lilac := Color(1, 1, 1)
+	stone.cyl(0.032, 0.032, 0.12, 6, CozyMesh.at(Vector3(0, 0.015, 0)), lilac)
+	stone.cyl(0.0, 0.032, 0.05, 6, CozyMesh.at(Vector3(0, 0.1, 0)), lilac)
+	stone.cyl(0.032, 0.0, 0.05, 6, CozyMesh.at(Vector3(0, -0.07, 0)), lilac)
+	# Three thin fins winding a third of a turn up the stone, each a
+	# smooth twisted blade from the stone's side outward.
+	var steps := 12
+	for f in 3:
+		var prev: Array = []
+		for k in steps + 1:
+			var t := float(k) / steps
+			var a := TAU * f / 3.0 + t * TAU / 3.0
+			var y := lerpf(-0.055, 0.085, t)
+			var out := Vector3(cos(a), 0, -sin(a))
+			# Narrower toward the ends, as the crystal's own fins taper.
+			var reach := 0.03 + 0.032 * sin(t * PI)
+			var row: Array[Vector3] = [out * 0.026 + Vector3.UP * y, out * reach + Vector3.UP * (y + 0.01)]
+			if not prev.is_empty():
+				var back: Vector3 = prev[0]
+				var n := (row[0] - back).cross(row[1] - row[0]).normalized()
+				stone.quad(prev[0], prev[1], row[1], row[0], n, lilac)
+				stone.quad(prev[0], prev[1], row[1], row[0], -n, lilac)
+			prev = row
+	var sm := MeshInstance3D.new()
+	sm.mesh = stone.commit(_glow)
+	_vanes.add_child(sm)
 
 
 func _add(mesh: Mesh, at: Vector3) -> MeshInstance3D:

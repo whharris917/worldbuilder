@@ -342,7 +342,7 @@ func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, f
 			var right := part.global_transform.basis * (Basis.from_euler(Vector3(part.pitch, part.yaw, 0.0)) * Vector3.RIGHT)
 			if not _landed.has(part):
 				_landed[part] = []
-			(_landed[part] as Array).append(OpticArrival.new(power >= THRESHOLD, dir.dot(right) > 0.0))
+			(_landed[part] as Array).append(OpticArrival.new(power >= THRESHOLD, dir.dot(right) > 0.0, power))
 			return
 		if c is LightGate and gates.has(c):
 			# Through the ring while the gate is open.
