@@ -385,7 +385,7 @@ func _process(delta: float) -> void:
 		Kind.RADIOMETER:
 			_vane_angle += spin * 14.0 * delta
 			_vanes.rotation.y = _vane_angle
-			_glow.emission_energy_multiplier = 0.15 + 2.2 * spin
+			_glow.emission_energy_multiplier = 0.1 + 0.8 * spin
 		_:
 			_glow.emission_energy_multiplier = 2.5 if out else 0.1
 
@@ -767,7 +767,9 @@ func _build_radiometer() -> void:
 	var tint := Color(0.78, 0.66, 0.95).lerp([Color(0.9, 0.7, 0.92), Color(0.66, 0.62, 0.98), Color(0.82, 0.74, 0.98)][rng.randi() % 3], rng.randf())
 	_glow.albedo_color = Color(tint, 0.85)
 	_glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_glow.emission = tint.lightened(0.2)
+	# Its own violet when lit, never washed to white: a deeper shade of its
+	# tint, its brightness kept low.
+	_glow.emission = Color.from_hsv(tint.h, minf(tint.s * 1.6, 1.0), tint.v * 0.75)
 	_glow.roughness = 0.08
 	_glow.metallic_specular = 0.9
 	var stone := CozyMesh.new()
