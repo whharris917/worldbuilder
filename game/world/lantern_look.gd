@@ -8,7 +8,8 @@ extends RefCounted
 ##
 ## - "bullseye": a police bullseye lantern. A tin drum with a chimney cap,
 ##   a domed bullseye lens on a collar; a cap on a side hinge closes over
-##   the lens and swings round against the drum to open.
+##   the lens and swings outward, away from the drum, to lie open beside
+##   the lens.
 ## - "signal": a ship's signal lamp. A brass tube, the lens in its front
 ##   bezel, a chimney; a venetian shutter of five slats before the lens
 ##   turns edge-on to open.
@@ -60,7 +61,7 @@ static func animate(look: Dictionary, open: float) -> void:
 	var parts: Array = look["parts"]
 	match str(look["style"]):
 		"bullseye":
-			(parts[0] as Node3D).rotation.y = lerpf(0.0, 2.5, open)
+			(parts[0] as Node3D).rotation.y = lerpf(0.0, -2.9, open)
 		"signal":
 			for slat: Node3D in parts:
 				slat.rotation.x = lerpf(0.0, PI * 0.5, open)
