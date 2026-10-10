@@ -33,6 +33,11 @@ extends Node3D
 ## square across its direction, twirling end over end: a spinning body
 ## losing energy ends turning about its axis of greatest inertia.)
 ##
+## At the row's west end a stand with two levers (WorksHandle): one lights
+## or darkens all three lanterns (their caps swinging open and shut), one
+## sets the stones still in fresh attitudes each time it is thrown. The
+## world hears of the first by `lamps_thrown`.
+##
 ## The gimbal: an outer ring on an upright pin in an arch, an inner ring
 ## pivoting inside it on a level pin, and the crystal on a spindle across
 ## the inner ring, its length along the spindle. The rings weigh nothing
@@ -67,6 +72,11 @@ var to_sun := Vector3.UP
 var to_moon := Vector3.UP
 
 var _stones: Array[Dictionary] = []
+var _lamps_lever: WorksHandle
+var _open := 1.0                        # the lanterns' caps, 0 shut to 1 open
+
+## The lanterns' lever thrown: lit or not.
+signal lamps_thrown(on: bool)
 var _beam_mat: StandardMaterial3D
 var _mats: Dictionary
 
@@ -86,6 +96,7 @@ func _ready() -> void:
 	rng.seed = 2026
 	for k in KINDS.size():
 		_build(k, rng)
+	_build_levers()
 	settle()
 
 
@@ -130,6 +141,46 @@ func _turning(s: Dictionary) -> Vector3:
 static func _turning_of(att: Basis, momentum: Vector3) -> Vector3:
 	var body := att.transposed() * momentum
 	return att * Vector3(body.x / INERTIA_ACROSS, body.y / INERTIA_ACROSS, body.z / INERTIA_ALONG)
+
+
+## The lanterns lit or not, from outside (the panel): the lever thrown to
+## match.
+func set_lit(on: bool) -> void:
+	lit = on
+	if _lamps_lever != null and _lamps_lever.on != on:
+		_lamps_lever.on = on
+		_lamps_lever.call("_show")
+
+
+func _process(delta: float) -> void:
+	_open = move_toward(_open, 1.0 if lit else 0.0, delta * 3.0)
+	for s in _stones:
+		LanternLook.animate(s["lamp"], _open)
+		LanternLook.set_lit(s["lamp"], lit)
+
+
+func _build_levers() -> void:
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.55, 0.4, 0.27)
+	var iron := StandardMaterial3D.new()
+	iron.albedo_color = Color(0.22, 0.22, 0.22)
+	var at := Vector3(-SPACING - 1.0, 0.0, 0.9)
+	var stand := CozyMesh.new()
+	stand.box(Vector3(0.9, 0.08, 0.4), CozyMesh.at(at + Vector3(0, 0.04, 0)), Color(0.5, 0.36, 0.24))
+	stand.box(Vector3(0.8, 0.5, 0.12), CozyMesh.at(at + Vector3(0, 0.33, 0)), Color(0.5, 0.36, 0.24))
+	_view(self, stand, _mats["wood"])
+	_lamps_lever = WorksHandle.new(WorksHandle.Kind.LEVER, at + Vector3(-0.2, 0.95, 0.0), wood, iron,
+			"Lanterns\nA click lights all three lanterns, or darkens them.")
+	_lamps_lever.on = lit
+	_lamps_lever.call("_show")
+	_lamps_lever.thrown.connect(func(on: bool) -> void:
+		lit = on
+		lamps_thrown.emit(on))
+	add_child(_lamps_lever)
+	var reset := WorksHandle.new(WorksHandle.Kind.LEVER, at + Vector3(0.2, 0.95, 0.0), wood, iron,
+			"Reset\nA click sets the three stones still, each lying a new way.")
+	reset.thrown.connect(func(_on: bool) -> void: settle())
+	add_child(reset)
 
 
 func _physics_process(delta: float) -> void:
@@ -256,6 +307,7 @@ func _build(k: int, rng: RandomNumberGenerator) -> void:
 	var look := LanternLook.build("bullseye", head, _mats)
 	LanternLook.animate(look, 1.0)
 	LanternLook.set_lit(look, true)
+	lamp.set_meta("look", look)
 	var beam := MeshInstance3D.new()
 	var bar := BoxMesh.new()
 	bar.size = Vector3(0.03, 0.03, LAMP_OFF - 0.2 - 0.1)
@@ -276,4 +328,4 @@ One end seeks the moon, wherever it stands, by day or night; light spins it on i
 	var body := HoverNote.new(at + Vector3(0, HEIGHT, 0), Vector3.ONE * OUTER_R * 2.0, text)
 	add_child(body)
 	_stones.append({"kind": kind[0], "title": kind[1], "outer": outer, "inner": inner, "rotor": rotor,
-			"glow": glow, "beam": beam, "body": body, "momentum": Vector3.ZERO, "attitude": Basis.IDENTITY})
+			"glow": glow, "beam": beam, "lamp": look, "body": body, "momentum": Vector3.ZERO, "attitude": Basis.IDENTITY})

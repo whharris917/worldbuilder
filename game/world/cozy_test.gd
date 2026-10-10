@@ -131,6 +131,9 @@ func _ready() -> void:
 			"glass": workshop.glass, "wood": workshop.wood})
 	gimbals.position = Vector3(-10.0, TOP, -6.0)
 	add_child(gimbals)
+	# Its lanterns' lever and the panel's switch kept as one.
+	gimbals.lamps_thrown.connect(func(on: bool) -> void:
+		(_panel.switches["Light the stones"] as CheckButton).button_pressed = on)
 	_build_panels()
 	LabGraphics.attach(self, _panel.panel("Graphics"), func(g: GraphicsSettings) -> void:
 		RenderingServer.directional_soft_shadow_filter_set_quality(
@@ -237,7 +240,7 @@ func _apply() -> void:
 	_sea_mat.roughness = 0.12 if toon else 0.05
 	windmill.set_cloth(_value("Sail cloth (%)") * 0.01)
 	windmill.swoosh_level = _value("Sails (%)") * 0.01
-	gimbals.lit = _on("Light the stones")
+	gimbals.set_lit(_on("Light the stones"))
 	gimbals.light_watts = _value("Light on each stone (W)")
 
 
