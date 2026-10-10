@@ -102,7 +102,8 @@ static func _bullseye(head: Node3D, mats: Dictionary, glow: Material, look: Dict
 	tin.cyl(0.03, 0.09, 0.06, 20, CozyMesh.at(Vector3(0, 0.14, 0.02)), black)
 	tin.cyl(0.035, 0.035, 0.06, 12, CozyMesh.at(Vector3(0, 0.2, 0.02)), black)
 	tin.cyl(0.055, 0.055, 0.01, 16, CozyMesh.at(Vector3(0, 0.235, 0.02)), black)
-	brass.cyl(0.062, 0.07, 0.09, 20, CozyMesh.at(Vector3(0, 0, -0.125), _facing()), gold)
+	# The collar runs back into the drum, so it meets its curve all round.
+	brass.cyl(0.062, 0.07, 0.16, 20, CozyMesh.at(Vector3(0, 0, -0.09), _facing()), gold)
 	brass.torus(0.07, 0.085, 20, 6, CozyMesh.at(Vector3(0, 0, -0.168), _facing()), gold)
 	brass.torus(0.04, 0.052, 16, 6, CozyMesh.at(Vector3(0, 0.04, 0.11), Basis(Vector3.FORWARD, PI * 0.5)), gold)
 	for y: float in [-0.1, 0.105]:
