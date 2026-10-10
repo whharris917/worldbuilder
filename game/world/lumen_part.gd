@@ -112,9 +112,10 @@ func _init(part_kind: Kind, part_title: String, at: Vector3, ground: float,
 	var metal: Material = look.get("metal", brass)
 	match kind:
 		Kind.LANTERN:
+			# "none": its head built by someone else (LanternLook).
 			if look.get("lamp", "box") == "drum":
 				_build_drum(metal)
-			else:
+			elif look.get("lamp", "box") != "none":
 				_build_lantern(brass)
 		Kind.TON when not look.has("design"):
 			_build_hourglass(brass)
@@ -263,6 +264,11 @@ func set_head_at(local: Vector3) -> void:
 			(c as CollisionShape3D).position = local
 
 
+## The turning head, for a head built from outside.
+func head_node() -> Node3D:
+	return _head
+
+
 ## Which way its beam leaves.
 func forward() -> Vector3:
 	return -(_head.global_transform.basis.z).normalized()
@@ -345,7 +351,8 @@ func evaluate(dt: float) -> void:
 func _process(delta: float) -> void:
 	match kind:
 		Kind.LANTERN:
-			_shutter.rotation.x = lerp_angle(_shutter.rotation.x, -1.4 if out else 0.0, 1.0 - exp(-10.0 * delta))
+			if _shutter != null:
+				_shutter.rotation.x = lerp_angle(_shutter.rotation.x, -1.4 if out else 0.0, 1.0 - exp(-10.0 * delta))
 			_glow.emission_energy_multiplier = 3.0 if out else 0.0
 		Kind.TON:
 			if _sand_top != null:
