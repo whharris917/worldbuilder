@@ -42,9 +42,9 @@ extends Node3D
 ## pivoting inside it on a level pin, and the crystal on a spindle across
 ## the inner ring, its length along the spindle. The rings weigh nothing
 ## and turn freely: they follow the crystal, their angles read from its
-## attitude (yaw, then tilt, then spin about its length). Where the inner
-## ring stands square to the outer, the gimbal locks, and the rings swing
-## through at once, as a real gimbal cannot.
+## attitude (`_pose`). The earthstone comes to rest where the gimbal is
+## locked, its length along the outer ring's upright pin; there the rings
+## hold still and it spins on its spindle.
 
 const KINDS := [
 	["earth", "Earthstone", Color(0.74, 0.62, 0.95)],
@@ -217,11 +217,25 @@ static func _twist(att: Basis, w: Vector3, toward: Vector3, watts: float) -> Vec
 
 
 ## The rings and the crystal set to the stone's attitude.
+## The rings read from where the crystal's length points: the outer ring
+## turned to its bearing, the inner ring tilted to its height, and what
+## is left of its attitude its spin on the spindle. Where the length lies
+## along the outer ring's upright pin the bearing means nothing (the
+## gimbal is locked), and the outer ring stays where it was, so the spin
+## goes to the spindle as in a real gimbal.
 func _pose(s: Dictionary) -> void:
-	var e := (s["attitude"] as Basis).get_euler(EULER_ORDER_YXZ)
-	(s["outer"] as Node3D).rotation = Vector3(0, e.y, 0)
-	(s["inner"] as Node3D).rotation = Vector3(e.x, 0, 0)
-	(s["rotor"] as Node3D).rotation = Vector3(0, 0, e.z)
+	var att: Basis = s["attitude"]
+	var length := (att * Vector3.BACK).normalized()
+	var yaw: float = s.get("yaw", 0.0)
+	if Vector2(length.x, length.z).length() > 0.02:
+		yaw = atan2(length.x, length.z)
+	s["yaw"] = yaw
+	var tilt := asin(clampf(-length.y, -1.0, 1.0))
+	var rings := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt)
+	var rest := rings.transposed() * att
+	(s["outer"] as Node3D).rotation = Vector3(0, yaw, 0)
+	(s["inner"] as Node3D).rotation = Vector3(tilt, 0, 0)
+	(s["rotor"] as Node3D).rotation = Vector3(0, 0, atan2(rest.x.y, rest.x.x))
 
 
 ## ---- building ----------------------------------------------------------------
