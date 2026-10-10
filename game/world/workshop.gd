@@ -257,6 +257,8 @@ var _ghost_red := false
 # Something picked up to move, gone from where it stood until set down.
 var _carried: Node3D = null
 var _riders: Array[Node3D] = []         # pieces standing on a carried tile
+var _carry_building := false            # whether something was in hand when the carrying began
+var _carry_item := 0                    # and what
 var _targets := {}                      # piece -> its target, for the pieces aimed again after a move
 ## What each piece was aimed at: piece -> {piece, sensor} for a piece or a
 ## gate's bulb, {tile, local} for a point on a floor tile, and always
@@ -920,6 +922,8 @@ func _take_up(n: Node3D) -> void:
 			if absf(local.x) < FloorTile.SIZE * 0.5 and absf(local.z) < FloorTile.SIZE * 0.5 \
 					and local.y > 0.0 and local.y < 5.0:
 				_riders.append(piece)
+	_carry_building = building
+	_carry_item = item
 	if not building:
 		_set_building(true)
 	for i in ITEMS.size():
@@ -1047,6 +1051,7 @@ func _put_down() -> void:
 	_rods_due = true
 	_clear_ground()
 	changed()
+	_end_carry()
 
 
 ## The carried thing back where it stood.
@@ -1058,6 +1063,15 @@ func _put_back() -> void:
 	_carried = null
 	_riders.clear()
 	_targets.clear()
+	_end_carry()
+
+
+## After carrying, the hands as they were: empty, or holding what they held.
+func _end_carry() -> void:
+	if _carry_building:
+		_pick(_carry_item)
+	else:
+		_set_building(false)
 
 
 ## ---- the see-through copy -----------------------------------------------------
