@@ -67,7 +67,9 @@ extends Node3D
 ##
 ## With empty hands: a click on a lantern opens or closes it; E on any
 ## other piece but a radiometer looks through it to aim it (BenchScope);
-## a right click on one takes it up to aim, its beam following the
+## a right click on a piece's brass rod takes the piece up to move it, as
+## G does (the rod has a solid of its own, fatter than it, naming its
+## piece); a right click on one takes it up to aim, its beam following the
 ## crosshair (settling on any piece it is on) until a click fixes it or a
 ## right click or Esc leaves it as it was.
 ##
@@ -112,6 +114,7 @@ const LIFT_STEP := 0.1
 const SETTLE := 1.0                     # m from the place beside a tile within which a tile settles there
 const MAX_TILE_RISE := 6.0              # a tile's top over the highest ground under it, at most
 const CLEAR := 0.4                      # pieces' middles kept this far apart
+const ROD_LAYER := 8                    # the rods' solids: met by the crosshair, not by beams
 
 ## What can be built, in the tray's order: key, name. The first ten have
 ## the number keys 1 to 9 and 0.
@@ -421,6 +424,8 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 
 ## A piece (a gate's sensor too) on collision layer `layer`.
 func _set_layer(n: Node3D, layer: int) -> void:
+	if n.has_meta("rod_body"):
+		(n.get_meta("rod_body") as CollisionObject3D).collision_layer = ROD_LAYER if layer != 0 else 0
 	if n is LightGate:
 		(n as LightGate).set_layer(layer)
 	elif n is BeamCart:
@@ -633,6 +638,8 @@ func _place_rods() -> void:
 		var from := piece.global_position - Vector3(0, 0.24 if glass_piece else 0.16, 0)
 		var q := PhysicsRayQueryParameters3D.create(from, from - Vector3(0, 12.0, 0), 1 | 4)
 		q.exclude = [(piece as CollisionObject3D).get_rid(), island.player.get_rid()]
+		if piece.has_meta("rod_body"):
+			q.exclude.append((piece.get_meta("rod_body") as CollisionObject3D).get_rid())
 		var hit := space.intersect_ray(q)
 		var bottom: float = (hit["position"] as Vector3).y if not hit.is_empty() else from.y - 12.0
 		var top := piece.global_position.y - (0.2 if glass_piece else 0.13)
@@ -663,6 +670,24 @@ func _place_rods() -> void:
 		rod.mesh = mesh
 		rod.global_position = Vector3(piece.global_position.x, (top + bottom) * 0.5, piece.global_position.z)
 		rod.global_rotation = Vector3.ZERO
+		# The rod is something to take hold of: a right click on it moves
+		# its piece. Its solid is fatter than the rod, to be easy to point at.
+		var body: StaticBody3D = piece.get_meta("rod_body") if piece.has_meta("rod_body") else null
+		if body == null:
+			body = StaticBody3D.new()
+			body.collision_layer = ROD_LAYER if piece.visible else 0
+			body.collision_mask = 0
+			body.set_meta("rod_of", piece)
+			var c := CollisionShape3D.new()
+			c.shape = CylinderShape3D.new()
+			body.add_child(c)
+			piece.add_child(body)
+			piece.set_meta("rod_body", body)
+		var shape := (body.get_child(0) as CollisionShape3D).shape as CylinderShape3D
+		shape.radius = 0.07
+		shape.height = maxf(top - bottom, 0.02)
+		body.global_position = rod.global_position
+		body.global_rotation = Vector3.ZERO
 
 
 ## ---- where the thing in hand goes -----------------------------------------
@@ -672,7 +697,7 @@ func _look_hit(exclude: Array[RID] = []) -> Dictionary:
 	var cam := island.player.camera
 	var from := cam.global_position
 	var dir := -cam.global_basis.z
-	var q := PhysicsRayQueryParameters3D.create(from, from + dir * (REACH + island.player.zoom_offset()), 1 | 4)
+	var q := PhysicsRayQueryParameters3D.create(from, from + dir * (REACH + island.player.zoom_offset()), 1 | 4 | ROD_LAYER)
 	var skip: Array[RID] = [island.player.get_rid()]
 	skip.append_array(exclude)
 	q.exclude = skip
@@ -680,6 +705,9 @@ func _look_hit(exclude: Array[RID] = []) -> Dictionary:
 	if not hit.is_empty() and (hit["collider"] as Node).has_meta("part_of"):
 		hit["collider"] = (hit["collider"] as Node).get_meta("part_of")
 		hit["sensor"] = true
+	elif not hit.is_empty() and (hit["collider"] as Node).has_meta("rod_of"):
+		hit["collider"] = (hit["collider"] as Node).get_meta("rod_of")
+		hit["rod"] = true
 	return hit
 
 
@@ -941,6 +969,7 @@ func _target_of(piece: Node3D) -> Dictionary:
 			origin = arrival[0]
 			dir = (incoming - 2.0 * incoming.dot(dir) * dir).normalized()
 	var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * BenchLight.REACH)
+	q.collision_mask = 0xFFFFFFFF & ~ROD_LAYER
 	q.exclude = [(piece as CollisionObject3D).get_rid(), island.player.get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	if hit.is_empty():
@@ -1198,12 +1227,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		# A right click with something in hand puts it away.
 		_set_building(false)
 	elif click != null and click.pressed and click.button_index == MOUSE_BUTTON_RIGHT:
-		# With empty hands, a right click changes a piece: aims it, or turns
-		# a gate's ring.
+		# With empty hands, a right click changes a piece: on its rod it
+		# takes the piece up to move it; on the piece it aims it, or turns a
+		# gate's ring (one that turns no beam is taken up instead).
 		var hit := _look_hit()
-		if hit.is_empty() or not is_piece(hit["collider"]) or not turns(hit["collider"]):
+		if hit.is_empty() or not is_piece(hit["collider"]):
 			return
-		_start_aim(hit["collider"])
+		if hit.get("rod", false) or not turns(hit["collider"]):
+			_take_up(hit["collider"] as Node3D)
+		else:
+			_start_aim(hit["collider"])
 	elif key != null and key.pressed and not key.echo and key.physical_keycode == KEY_I:
 		# I reads what the crosshair is on, or puts its card away.
 		_inspect(null if _inspected != null else _on_thing)

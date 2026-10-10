@@ -188,6 +188,9 @@ func _trace(source: LumenPart, origin: Vector3, dir: Vector3, reach: float, excl
 	var skip := exclude
 	while depth < MAX_BOUNCES and reach > 0.05:
 		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach)
+		# Everything stops a beam but the pieces' rods, which are solid only
+		# to the crosshair.
+		q.collision_mask = 0xFFFFFFFF & ~Workshop.ROD_LAYER
 		q.exclude = skip
 		var hit := space.intersect_ray(q)
 		if hit.is_empty():
