@@ -40,6 +40,8 @@ const WORLDS: Array[Dictionary] = [
 		"scene": "res://world/windows.tscn", "lab": true},
 	{"title": "COZY ISLAND", "note": "An island with a cabin and a dock in a calm sea, to be turned step by step from a photograph's look into a storybook's.",
 		"scene": "res://world/cozy_island.tscn", "lab": true},
+	{"title": "COZY ISLAND (TEST)", "note": "A small bare island with a campsite on the beach and a windmill at its middle, for working on the cozy island's models.",
+		"scene": "res://world/cozy_test.tscn", "lab": true},
 ]
 
 
