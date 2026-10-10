@@ -18,8 +18,17 @@ extends Node3D
 ## crystal's turning is its angular momentum divided out by its inertia
 ## as it lies at that moment, so a crystal holding angular momentum other
 ## than along its length or square across it wobbles and precesses, as a
-## spun book does. Its attitude is carried forward by its turning each
-## step (several steps a frame).
+## spun book does. Its momentum and attitude are carried forward together
+## by the midpoint rule, STEPS steps a frame (a cruder step settles the
+## stones wrongly: the physics' own outcome was checked at 240, 1000 and
+## 4000 steps a second, all alike).
+##
+## What happens: whatever its start, each stone tumbles for a minute or
+## two and then lies square across its direction, twirling end over end
+## about it. A spinning body that loses energy (here to the air) ends
+## turning about its axis of greatest inertia, across its length for a
+## long crystal (as the first American satellite, Explorer 1, tipped
+## over from spinning on its length).
 ##
 ## The gimbal: an outer ring on an upright pin in an arch, an inner ring
 ## pivoting inside it on a level pin, and the crystal on a spindle across
@@ -43,7 +52,7 @@ const INERTIA_ALONG := 0.0006           # kg m², about its length
 const INERTIA_ACROSS := 0.004           # kg m², across it
 const TURN := 1.0e-5                    # N m of turning for each watt of light
 const DRAG := 6.0e-6                    # N m s² of the air's drag on the turning
-const STEPS := 4
+const STEPS := 16
 
 ## Light reaching each stone, watts, while the lanterns are lit.
 var light_watts := 50.0
@@ -109,8 +118,11 @@ func _toward(s: Dictionary) -> Vector3:
 ## Its turning, radians a second (world): its angular momentum through
 ## its inertia as it lies.
 func _turning(s: Dictionary) -> Vector3:
-	var att: Basis = s["attitude"]
-	var body := att.transposed() * (s["momentum"] as Vector3)
+	return _turning_of(s["attitude"], s["momentum"])
+
+
+static func _turning_of(att: Basis, momentum: Vector3) -> Vector3:
+	var body := att.transposed() * momentum
 	return att * Vector3(body.x / INERTIA_ACROSS, body.y / INERTIA_ACROSS, body.z / INERTIA_ALONG)
 
 
@@ -119,14 +131,19 @@ func _physics_process(delta: float) -> void:
 	for s in _stones:
 		var push := _toward(s) * TURN * (light_watts if lit else 0.0)
 		for i in STEPS:
-			var w := _turning(s)
+			# Half a step to the middle, then the whole step by the middle's
+			# turning and pull.
+			var att: Basis = s["attitude"]
 			var momentum: Vector3 = s["momentum"]
-			momentum += (push - w * w.length() * DRAG) * dt
-			s["momentum"] = momentum
-			w = _turning(s)
-			var angle := w.length() * dt
-			if angle > 1e-9:
-				s["attitude"] = (Basis(w.normalized(), angle) * (s["attitude"] as Basis)).orthonormalized()
+			var w := _turning_of(att, momentum)
+			var half_momentum := momentum + (push - w * w.length() * DRAG) * dt * 0.5
+			var half_att := att
+			if w.length() > 1e-9:
+				half_att = (Basis(w.normalized(), w.length() * dt * 0.5) * att).orthonormalized()
+			var w_mid := _turning_of(half_att, half_momentum)
+			s["momentum"] = momentum + (push - w_mid * w_mid.length() * DRAG) * dt
+			if w_mid.length() > 1e-9:
+				s["attitude"] = (Basis(w_mid.normalized(), w_mid.length() * dt) * att).orthonormalized()
 		_pose(s)
 		(s["glow"] as StandardMaterial3D).emission_energy_multiplier = 0.1 + 0.8 * clampf(_turning(s).length() / 15.0, 0.0, 1.0)
 		(s["beam"] as Node3D).visible = lit
