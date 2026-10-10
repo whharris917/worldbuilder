@@ -1,8 +1,16 @@
 class_name SpinstoneGimbals
 extends Node3D
-## A demonstration: three spinstones, each free in a gyroscope's gimbal,
-## each lit by its own bullseye lantern, to see what light does to a
-## crystal that may take any attitude.
+## A demonstration: a row of spinstones, each free in a gyroscope's
+## gimbal, each lit by its own bullseye lantern, to see what light does to
+## a crystal that may take any attitude. Two rows stand on the test
+## island: the combination stones (COMBO: earthstone, sunstone, moonstone,
+## each both drawn to point at its body and spun by light) and the pure
+## stones (PURE): the gyres, only spun by light, about their length, as
+## much as it points at their body and the other way while it points
+## away, so that free they spin wherever they lie; and the tropes, only
+## drawn to point at their body, and only while lit, harder the brighter
+## their light, so that unlit they are inert stones and lit they swing
+## round, wobbling, to point at it without spinning.
 ##
 ## The kinds of spinstone differ in what they answer to: an earthstone
 ## to the upright (as gravity points), a sunstone to the line to the sun,
@@ -46,11 +54,37 @@ extends Node3D
 ## locked, its length along the outer ring's upright pin; there the rings
 ## hold still and it spins on its spindle.
 
-const KINDS := [
-	["earth", "Earthstone", Color(0.74, 0.62, 0.95)],
-	["sun", "Sunstone", Color(1.0, 0.72, 0.32)],
-	["moon", "Moonstone", Color(0.74, 0.84, 1.0)],
+## The stones of each row: their body (what they answer to), name, tint,
+## how light spins them ("combo": about their length as much as it points
+## at their body, none while it points away; "signed": the same, and the
+## other way while it points away; "none") and how they are drawn to
+## point at their body ("always", whether lit or not; "lit", in
+## proportion to their light; "none").
+const COMBO := [
+	["earth", "Earthstone", Color(0.74, 0.62, 0.95), "combo", "always"],
+	["sun", "Sunstone", Color(1.0, 0.72, 0.32), "combo", "always"],
+	["moon", "Moonstone", Color(0.74, 0.84, 1.0), "combo", "always"],
 ]
+const PURE := [
+	["earth", "Geogyre", Color(0.74, 0.62, 0.95), "signed", "none"],
+	["sun", "Heliogyre", Color(1.0, 0.72, 0.32), "signed", "none"],
+	["moon", "Lunagyre", Color(0.74, 0.84, 1.0), "signed", "none"],
+	["earth", "Geotrope", Color(0.62, 0.5, 0.85), "none", "lit"],
+	["sun", "Heliotrope", Color(0.9, 0.6, 0.22), "none", "lit"],
+	["moon", "Lunatrope", Color(0.6, 0.72, 0.95), "none", "lit"],
+]
+## What a player inspecting each reads. Drafts.
+const TEXTS := {
+	"Earthstone": "Earthstone in a gimbal\nOne end seeks the sky straight above, as a compass needle seeks the north; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point straight up.",
+	"Sunstone": "Sunstone in a gimbal\nOne end seeks the sun, wherever it stands; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point at the sun, and follows it across the sky.",
+	"Moonstone": "Moonstone in a gimbal\nOne end seeks the moon, wherever it stands, by day or night; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point at the moon.",
+	"Geogyre": "Geogyre in a gimbal\nLight spins it on its length, hardest while it stands upright, not at all while it lies level, the other way while it hangs upside down. Unlit, an inert stone. Free in its gimbal, it spins wherever it lies.",
+	"Heliogyre": "Heliogyre in a gimbal\nLight spins it on its length, hardest while it points at the sun, not at all square across it, the other way while it points away. Unlit, an inert stone. Free in its gimbal, it spins wherever it lies.",
+	"Lunagyre": "Lunagyre in a gimbal\nLight spins it on its length, hardest while it points at the moon, not at all square across it, the other way while it points away. Unlit, an inert stone. Free in its gimbal, it spins wherever it lies.",
+	"Geotrope": "Geotrope in a gimbal\nWhile lit, one end is drawn to point straight up, the harder the brighter its light; it does not spin. Unlit, an inert stone.",
+	"Heliotrope": "Heliotrope in a gimbal\nWhile lit, one end is drawn to point at the sun, the harder the brighter its light; it does not spin. Unlit, an inert stone.",
+	"Lunatrope": "Lunatrope in a gimbal\nWhile lit, one end is drawn to point at the moon, the harder the brighter its light; it does not spin. Unlit, an inert stone.",
+}
 const SPACING := 2.4                    # m between the gimbals
 const HEIGHT := 1.35                    # the crystals' middles over the ground
 const LAMP_OFF := 1.7                   # the lanterns stand this far south of their stones
@@ -61,6 +95,7 @@ const INERTIA_ACROSS := 0.004           # kg m², across it
 const TURN := 1.0e-5                    # N m of spin for each watt of light
 const DRAG := 6.0e-6                    # N m s² of the air's drag on the turning
 const PULL := 0.01                      # N m: the polarity's twist, the length at a right angle to its body
+const PULL_PER_WATT := 2.0e-4           # N m a watt: a trope's twist, by its light (50 W makes PULL)
 const PIVOT_DAMP := 0.003               # N m s: the gimbal pivots' friction on the length's swinging
 const STEPS := 16
 
@@ -79,11 +114,14 @@ var _open := 1.0                        # the lanterns' caps, 0 shut to 1 open
 signal lamps_thrown(on: bool)
 var _beam_mat: StandardMaterial3D
 var _mats: Dictionary
+var _kinds: Array
 
 
-## `mats`: "brass", "copper", "iron", "glass", "wood".
-func _init(materials: Dictionary) -> void:
-	name = "SpinstoneGimbals"
+## `mats`: "brass", "copper", "iron", "glass", "wood". `pure`: the row of
+## pure stones (PURE) in place of the combination stones (COMBO).
+func _init(materials: Dictionary, pure := false) -> void:
+	name = "PureSpinstones" if pure else "SpinstoneGimbals"
+	_kinds = PURE if pure else COMBO
 	_mats = materials
 	_beam_mat = StandardMaterial3D.new()
 	_beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -94,7 +132,7 @@ func _init(materials: Dictionary) -> void:
 func _ready() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2026
-	for k in KINDS.size():
+	for k in _kinds.size():
 		_build(k, rng)
 	_build_levers()
 	settle()
@@ -118,13 +156,16 @@ func report() -> String:
 		var turning := _turning(s).length()
 		var length := (att * Vector3.BACK).normalized()
 		var off := rad_to_deg(acos(clampf(length.dot(_toward(s)), -1.0, 1.0)))
-		lines.append("%s: %.1f turns a second; pointing %d degrees off %s." % [s["title"], turning / TAU, roundi(off),
-				{"earth": "straight up", "sun": "the sun", "moon": "the moon"}[s["kind"]]])
+		# Turning backward: about its length the other way, as a gyre does
+		# pointing away from its body.
+		var backward := _turning(s).dot(length) < -0.05
+		lines.append("%s: %.1f turns a second%s; pointing %d degrees off %s." % [s["title"], turning / TAU,
+				" backward" if backward else "", roundi(off), {"earth": "straight up", "sun": "the sun", "moon": "the moon"}[s["body"]]])
 	return "\n".join(lines)
 
 
 func _toward(s: Dictionary) -> Vector3:
-	match str(s["kind"]):
+	match str(s["body"]):
 		"sun":
 			return to_sun
 		"moon":
@@ -164,13 +205,13 @@ func _build_levers() -> void:
 	wood.albedo_color = Color(0.55, 0.4, 0.27)
 	var iron := StandardMaterial3D.new()
 	iron.albedo_color = Color(0.22, 0.22, 0.22)
-	var at := Vector3(-SPACING - 1.0, 0.0, 0.9)
+	var at := Vector3(-(_kinds.size() - 1) * 0.5 * SPACING - 1.0, 0.0, 0.9)
 	var stand := CozyMesh.new()
 	stand.box(Vector3(0.9, 0.08, 0.4), CozyMesh.at(at + Vector3(0, 0.04, 0)), Color(0.5, 0.36, 0.24))
 	stand.box(Vector3(0.8, 0.5, 0.12), CozyMesh.at(at + Vector3(0, 0.33, 0)), Color(0.5, 0.36, 0.24))
 	_view(self, stand, _mats["wood"])
 	_lamps_lever = WorksHandle.new(WorksHandle.Kind.LEVER, at + Vector3(-0.2, 0.95, 0.0), wood, iron,
-			"Lanterns\nA click lights all three lanterns, or darkens them.")
+			"Lanterns\nA click lights all the lanterns, or darkens them.")
 	_lamps_lever.on = lit
 	_lamps_lever.call("_show")
 	_lamps_lever.thrown.connect(func(on: bool) -> void:
@@ -178,7 +219,7 @@ func _build_levers() -> void:
 		lamps_thrown.emit(on))
 	add_child(_lamps_lever)
 	var reset := WorksHandle.new(WorksHandle.Kind.LEVER, at + Vector3(0.2, 0.95, 0.0), wood, iron,
-			"Reset\nA click sets the three stones still, each lying a new way.")
+			"Reset\nA click sets the stones still, each lying a new way.")
 	reset.thrown.connect(func(_on: bool) -> void: settle())
 	add_child(reset)
 
@@ -194,12 +235,12 @@ func _physics_process(delta: float) -> void:
 			var att: Basis = s["attitude"]
 			var momentum: Vector3 = s["momentum"]
 			var w := _turning_of(att, momentum)
-			var half_momentum := momentum + _twist(att, w, toward, watts) * dt * 0.5
+			var half_momentum := momentum + _twist(s, att, w, toward, watts) * dt * 0.5
 			var half_att := att
 			if w.length() > 1e-9:
 				half_att = (Basis(w.normalized(), w.length() * dt * 0.5) * att).orthonormalized()
 			var w_mid := _turning_of(half_att, half_momentum)
-			s["momentum"] = momentum + _twist(half_att, w_mid, toward, watts) * dt
+			s["momentum"] = momentum + _twist(s, half_att, w_mid, toward, watts) * dt
 			if w_mid.length() > 1e-9:
 				s["attitude"] = (Basis(w_mid.normalized(), w_mid.length() * dt) * att).orthonormalized()
 		_pose(s)
@@ -207,16 +248,28 @@ func _physics_process(delta: float) -> void:
 		(s["beam"] as Node3D).visible = lit
 
 
-## Everything turning a stone lying `att`, turning `w`: its polarity's
-## twist toward its body, the light's spin about its length, the air's
-## drag, the pivots' friction on its length's swinging.
-static func _twist(att: Basis, w: Vector3, toward: Vector3, watts: float) -> Vector3:
+## Everything turning stone `s` lying `att`, turning `w`, by its laws:
+## its polarity's twist toward its body, the light's spin about its
+## length, the air's drag, the pivots' friction on its length's swinging.
+static func _twist(s: Dictionary, att: Basis, w: Vector3, toward: Vector3, watts: float) -> Vector3:
 	var length := (att * Vector3.BACK).normalized()
 	var swing := w - length * w.dot(length)
-	return length.cross(toward) * PULL + length * TURN * watts * maxf(length.dot(toward), 0.0) 			- w * w.length() * DRAG - swing * PIVOT_DAMP
+	var lined := length.dot(toward)
+	var spin := 0.0
+	match str(s["spin"]):
+		"combo":
+			spin = maxf(lined, 0.0)
+		"signed":
+			spin = lined
+	var pull := 0.0
+	match str(s["pull"]):
+		"always":
+			pull = PULL
+		"lit":
+			pull = PULL_PER_WATT * watts
+	return length.cross(toward) * pull + length * TURN * watts * spin - w * w.length() * DRAG - swing * PIVOT_DAMP
 
 
-## The rings and the crystal set to the stone's attitude.
 ## The rings read from where the crystal's length points: the outer ring
 ## turned to its bearing, the inner ring tilted to its height, and what
 ## is left of its attitude its spin on the spindle. Where the length lies
@@ -247,8 +300,8 @@ func _view(parent: Node3D, m: CozyMesh, mat: Material) -> void:
 
 
 func _build(k: int, rng: RandomNumberGenerator) -> void:
-	var kind: Array = KINDS[k]
-	var at := Vector3((k - 1) * SPACING, 0.0, 0.0)
+	var kind: Array = _kinds[k]
+	var at := Vector3((k - (_kinds.size() - 1) * 0.5) * SPACING, 0.0, 0.0)
 	var gold := Color(0.85, 0.66, 0.32)
 	var oak := Color(0.5, 0.36, 0.24)
 	# A stand: a wooden plinth, an arch of brass over the gimbal, the
@@ -331,15 +384,8 @@ func _build(k: int, rng: RandomNumberGenerator) -> void:
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(beam)
 	# Something to inspect: what this stone is.
-	var text: String = {
-		"earth": "Earthstone in a gimbal
-One end seeks the sky straight above, as a compass needle seeks the north; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point straight up.",
-		"sun": "Sunstone in a gimbal
-One end seeks the sun, wherever it stands; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point at the sun, and follows it across the sky.",
-		"moon": "Moonstone in a gimbal
-One end seeks the moon, wherever it stands, by day or night; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point at the moon.",
-	}[kind[0]]
+	var text: String = TEXTS[kind[1]]
 	var body := HoverNote.new(at + Vector3(0, HEIGHT, 0), Vector3.ONE * OUTER_R * 2.0, text)
 	add_child(body)
-	_stones.append({"kind": kind[0], "title": kind[1], "outer": outer, "inner": inner, "rotor": rotor,
-			"glow": glow, "beam": beam, "lamp": look, "body": body, "momentum": Vector3.ZERO, "attitude": Basis.IDENTITY})
+	_stones.append({"body": kind[0], "title": kind[1], "spin": kind[3], "pull": kind[4], "outer": outer, "inner": inner, "rotor": rotor,
+			"glow": glow, "beam": beam, "lamp": look, "note": body, "momentum": Vector3.ZERO, "attitude": Basis.IDENTITY})

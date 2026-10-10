@@ -55,6 +55,7 @@ var campsite: Campsite
 var windmill: Windmill
 var workshop: Workshop
 var gimbals: SpinstoneGimbals
+var pure_stones: SpinstoneGimbals
 var _panel: BenchPanel
 var _env: Environment
 var _mats: Array[Dictionary] = []       # the model materials and their outlines
@@ -131,9 +132,15 @@ func _ready() -> void:
 			"glass": workshop.glass, "wood": workshop.wood})
 	gimbals.position = Vector3(-10.0, TOP, -6.0)
 	add_child(gimbals)
-	# Its lanterns' lever and the panel's switch kept as one.
-	gimbals.lamps_thrown.connect(func(on: bool) -> void:
-		(_panel.switches["Light the stones"] as CheckButton).button_pressed = on)
+	# The pure stones' row to the north of it.
+	pure_stones = SpinstoneGimbals.new({"brass": workshop.brass, "copper": workshop.copper, "iron": workshop.get("_iron"),
+			"glass": workshop.glass, "wood": workshop.wood}, true)
+	pure_stones.position = Vector3(-10.0, TOP, -12.5)
+	add_child(pure_stones)
+	# Their lanterns' levers and the panel's switch kept as one.
+	for row: SpinstoneGimbals in [gimbals, pure_stones]:
+		row.lamps_thrown.connect(func(on: bool) -> void:
+			(_panel.switches["Light the stones"] as CheckButton).button_pressed = on)
 	_build_panels()
 	LabGraphics.attach(self, _panel.panel("Graphics"), func(g: GraphicsSettings) -> void:
 		RenderingServer.directional_soft_shadow_filter_set_quality(
@@ -200,8 +207,10 @@ func _build_panels() -> void:
 	var stones := _panel.panel("Spinstones")
 	_panel.switch(stones, "Light the stones", true, redraw)
 	_panel.slider(stones, "Light on each stone (W)", 0.0, 2000.0, 10.0, 50.0, redraw)
-	_panel.button(stones, "Set them still", func() -> void: gimbals.settle())
-	_panel.note(stones, "Three spinstones west of the mill, each free in a gyroscope's gimbal and lit by its own lantern: an earthstone, given turning about the upright; a sunstone, about the line to the sun; a moonstone, about the line to the moon. Set still, each lies as it happened to come to rest.")
+	_panel.button(stones, "Set them still", func() -> void:
+		gimbals.settle()
+		pure_stones.settle())
+	_panel.note(stones, "Two rows of spinstones west of the mill, each free in a gyroscope's gimbal and lit by its own lantern. Nearer the mill the combination stones: an earthstone, a sunstone, a moonstone, each drawn to point at its body and spun by light. North of them the pure stones: the gyres, only spun by light; the tropes, only drawn round by it. Set still, each lies a new way.")
 	_stones_note = _panel.note(stones, "")
 	var sound := _panel.panel("Sound")
 	_panel.slider(sound, "Master volume (dB)", -24.0, 12.0, 0.5, AudioOutput.master_db, func(v: float) -> void: AudioOutput.set_master_db(v))
@@ -240,8 +249,9 @@ func _apply() -> void:
 	_sea_mat.roughness = 0.12 if toon else 0.05
 	windmill.set_cloth(_value("Sail cloth (%)") * 0.01)
 	windmill.swoosh_level = _value("Sails (%)") * 0.01
-	gimbals.set_lit(_on("Light the stones"))
-	gimbals.light_watts = _value("Light on each stone (W)")
+	for row: SpinstoneGimbals in [gimbals, pure_stones]:
+		row.set_lit(_on("Light the stones"))
+		row.light_watts = _value("Light on each stone (W)")
 
 
 ## ---- the hour and the sun ---------------------------------------------------
@@ -277,9 +287,10 @@ func _update_sky() -> void:
 	_env.fog_light_color = sky.haze_colour
 	workshop.light.sun = sky.sun.global_basis.z.normalized()
 	workshop.light.sunlight = sunlight_at(at.x)
-	gimbals.to_sun = workshop.light.sun
-	gimbals.to_moon = sky.moon_direction()
-	_stones_note.text = gimbals.report()
+	for row: SpinstoneGimbals in [gimbals, pure_stones]:
+		row.to_sun = workshop.light.sun
+		row.to_moon = sky.moon_direction()
+	_stones_note.text = gimbals.report() + "\n" + pure_stones.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
 	_time_note.text = "%02d:%02d. %s" % [floori(hour), floori(fmod(hour, 1.0) * 60.0),
 			("The sun is %d degrees up in the %s; its direct light %d watts a square metre." % [roundi(at.x), where, roundi(workshop.light.sunlight)])
