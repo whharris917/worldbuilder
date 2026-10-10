@@ -8,9 +8,9 @@ Writes to game/audio/:
   music_loop.wav  40 s seamless clockwork sequencer piece in D minor:
                   a tick on every beat, a sixteenth-note pluck arpeggio,
                   a pulsing sub bass, detuned pads, a sparse lead
-  step_1..4.wav   footsteps: a soft thud of the sole, a faint strike, a
-                  light floor knock, the roll on to the toe
-  land.wav        heavier landing thump
+  step_1..4.wav   footsteps on earth: a soft dull thud, a little grit of
+                  soil, the roll on to the toe
+  land.wav        heavier landing thud
   surf_loop.wav   16 s seamless surf on a ledge, swells breaking as hiss
   wind_loop.wav   12 s seamless wind off the water, gusting
   gull_1..3.wav   herring gull cries: one long, a long call, a pair
@@ -333,47 +333,70 @@ def make_music() -> None:
 
 def make_step(path: Path, f0: float, decay: float, noise_amp: float,
               duration: float = 0.28, level: float = 0.30) -> None:
-    """A shoe on a floor: a soft thud. The sole meeting the floor is noise
-    from about 120 to 450 Hz over some 40 ms, rising over 3 ms; a faint
-    strike on top, noise from 300 Hz to 1.5 kHz fading over 9 ms; a light
-    knock of the floor near 140 Hz; and 50 to 90 ms later the roll on to
-    the ball of the foot, softer. A crack up at 1 to 6 kHz dying in a
-    millisecond, with a little tone of the sole, sounded like clicks; a low
-    thump with no strike at all, before that, like a heartbeat.
+    """A foot on earth: a soft, dull thud with a little grit. Packed soil
+    under turf gives way a little and does not ring, so the heel's thud is
+    noise below about 2.4 x `f0` (some 175 Hz for a step), coming up over
+    12 ms as the ground yields and dying at `decay` x 1.8 a second; on it
+    a faint grit: a few dozen tiny grains of noise between 300 Hz and
+    1.4 kHz (crumbs of soil, dry stems) scattered over the first 60 ms,
+    thinning out, `noise_amp` setting how many; then 50 to 90 ms after the
+    heel the roll on to the ball of the foot, a softer thud with a few
+    grains of its own. No tone at all: a pitched knock under a band of
+    noise sounded like a hollow box; a quicker onset, a higher thud or
+    brighter grit, like a slap.
 
     The shared generator gives the same draws as before (one stretch of
     noise as long as the sound), so every sound made after the steps
-    stays as it was; the new parts draw on their own generator, seeded
-    from the step's tuning."""
+    stays as it was; the step's own parts draw on their own generator,
+    seeded from its tuning."""
     n = int(duration * SR)
-    floor_noise = brown_noise(n, leak=0.97, gain=0.3)   # the shared draws, kept
+    brown_noise(n, leak=0.97, gain=0.3)                 # the shared draws, kept
     r = random.Random(int(f0 * 1000 + decay * 10 + noise_amp * 100))
     white = _noise_r(r, n)
 
-    def band(low_hz: float, high_hz: float) -> list[float]:
-        top = 1.0 - math.exp(-2.0 * math.pi * high_hz / SR)
-        bottom = 1.0 - math.exp(-2.0 * math.pi * low_hz / SR)
-        upper = _lowpass(_lowpass(white, top), top)
-        under = _lowpass(_lowpass(upper, bottom), bottom)
-        return [upper[i] - under[i] for i in range(n)]
+    def low(buf: list[float], hz: float) -> list[float]:
+        a = 1.0 - math.exp(-2.0 * math.pi * hz / SR)
+        return _lowpass(_lowpass(_lowpass(buf, a), a), a)
 
-    sole = band(120.0, 450.0)
-    strike = band(300.0, 1500.0)
-    floor_low = _lowpass(floor_noise, 1.0 - math.exp(-2.0 * math.pi * 400.0 / SR))
+    thud_noise = low(white, f0 * 2.4)
+    # The thud's lowest part taken off below 45 Hz: only a rumble, and
+    # what turns a thud into a heartbeat.
+    thud = [thud_noise[k] - v for k, v in enumerate(low(thud_noise, 45.0))]
+    peak = max(abs(v) for v in thud) or 1.0
+    thud = [v / peak for v in thud]
+    grit_noise = _noise_r(r, n)
+    grit_hi = low(grit_noise, 1400.0)
+    grit = [grit_hi[k] - v for k, v in enumerate(low(grit_hi, 300.0))]
+    peak = max(abs(v) for v in grit) or 1.0
+    grit = [v / peak for v in grit]
+
+    def grains(start: float, count: int, spread: float, gain: float) -> list[float]:
+        out = [0.0] * n
+        for _ in range(count):
+            at = start + spread * r.random() ** 1.8            # most early
+            length = int(SR * (0.0015 + 0.004 * r.random()))
+            a = gain * (0.3 + 0.7 * r.random())
+            first = int(at * SR)
+            for k in range(length):
+                if first + k >= n:
+                    break
+                env = math.sin(math.pi * k / length)
+                out[first + k] += grit[first + k] * a * env
+        return out
+
+    rate = decay * 1.8
     roll = 0.05 + r.random() * 0.04                      # heel to ball of the foot, s
-    knock_hz = 95.0 + f0 * 0.6
+    heel_grit = grains(0.004, int(14 + 30 * noise_amp), 0.06, 0.08)
+    toe_grit = grains(roll + 0.004, int(4 + 10 * noise_amp), 0.04, 0.045)
     buf = [0.0] * n
-    for i in range(n):
-        t = i / SR
-        rise = min(1.0, t / 0.003)
-        hit = sole[i] * 2.4 * math.exp(-t * 26.0) + strike[i] * 0.35 * math.exp(-t * 110.0)
-        knock = math.sin(2.0 * math.pi * knock_hz * t) * 0.12 * math.exp(-t * 55.0)
-        body = floor_low[i] * noise_amp * 0.25 * math.exp(-t * 35.0)
+    for k in range(n):
+        t = k / SR
+        heel = thud[k] * min(1.0, t / 0.012) * math.exp(-t * rate)
         tr = t - roll
         toe = 0.0
         if tr > 0.0:
-            toe = (sole[i] * 0.9 * math.exp(-tr * 40.0) + strike[i] * 0.1 * math.exp(-tr * 150.0)) * min(1.0, tr / 0.004)
-        buf[i] = (hit + knock + body) * rise + toe
+            toe = thud[k] * 0.45 * min(1.0, tr / 0.012) * math.exp(-tr * rate * 1.3)
+        buf[k] = heel + toe + heel_grit[k] + toe_grit[k]
     write_wav(path, [buf], normalize_to=level)
 
 
@@ -1534,7 +1557,7 @@ def main() -> None:
             [(72.0, 16.0, 0.50), (78.0, 18.0, 0.42), (66.0, 15.0, 0.55), (84.0, 17.0, 0.38)],
             start=1):
         make_step(OUT_DIR / f"step_{idx}.wav", f0, decay, noise_amp)
-    make_step(OUT_DIR / "land.wav", 46.0, 7.0, 0.50, duration=0.55, level=0.42)
+    make_step(OUT_DIR / "land.wav", 62.0, 7.0, 0.50, duration=0.55, level=0.42)
     make_rain()
     make_gale()
     make_thunders()
