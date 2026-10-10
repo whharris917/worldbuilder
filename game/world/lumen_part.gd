@@ -715,7 +715,7 @@ func _build_hourglass(brass: Material) -> void:
 ## The luminous rotor: a round brass base, two posts and a bridge over
 ## the top, a jewel bearing in each, a steel spindle between them, and on
 ## it the spinstone: a faceted crystal of photogyrite, each one shaped
-## and tinted its own way (`_grow_spinstone`), glowing faintly as it
+## and tinted its own way (`grow_spinstone`), glowing faintly as it
 ## turns.
 func _build_radiometer() -> void:
 	var brass := StandardMaterial3D.new()
@@ -773,7 +773,7 @@ func _build_radiometer() -> void:
 	_glow.roughness = 0.08
 	_glow.metallic_specular = 0.9
 	var stone := CozyMesh.new()
-	_grow_spinstone(stone, rng)
+	grow_spinstone(stone, rng)
 	var sm := MeshInstance3D.new()
 	sm.mesh = stone.commit(_glow)
 	_vanes.add_child(sm)
@@ -785,7 +785,7 @@ func _build_radiometer() -> void:
 ## stone or stands out as a growth; kept within
 ## the rotor's frame (STONE_R round the spindle, STONE_LOW to STONE_HIGH
 ## up it), so it turns clear of the posts and bearings.
-func _grow_spinstone(m: CozyMesh, rng: RandomNumberGenerator) -> void:
+static func grow_spinstone(m: CozyMesh, rng: RandomNumberGenerator) -> void:
 	var faces: Array = []
 	_crystal_faces(faces, rng, rng.randf_range(0.04, 0.062), Transform3D.IDENTITY)
 	# Fitted to the frame: narrowed round the spindle, squeezed between

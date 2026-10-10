@@ -54,6 +54,7 @@ var sky: IslandSky
 var campsite: Campsite
 var windmill: Windmill
 var workshop: Workshop
+var gimbals: SpinstoneGimbals
 var _panel: BenchPanel
 var _env: Environment
 var _mats: Array[Dictionary] = []       # the model materials and their outlines
@@ -71,6 +72,7 @@ var _hour_saved := -1.0
 var _sky_left := 0.0
 var _slider_left := 0.0
 var _time_note: Label
+var _stones_note: Label
 var _gust := FastNoiseLite.new()
 var _wind_sound: AudioStreamPlayer
 var _readout: Label
@@ -124,6 +126,11 @@ func _ready() -> void:
 	player.floor_snap_length = 0.35
 	workshop = Workshop.new(self, BUILD_PATH, false, true)
 	add_child(workshop)
+	# The spinstone demonstration, on the grass west of the mill.
+	gimbals = SpinstoneGimbals.new({"brass": workshop.brass, "copper": workshop.copper, "iron": workshop.get("_iron"),
+			"glass": workshop.glass, "wood": workshop.wood})
+	gimbals.position = Vector3(-10.0, TOP, -6.0)
+	add_child(gimbals)
 	_build_panels()
 	LabGraphics.attach(self, _panel.panel("Graphics"), func(g: GraphicsSettings) -> void:
 		RenderingServer.directional_soft_shadow_filter_set_quality(
@@ -187,6 +194,12 @@ func _build_panels() -> void:
 	_panel.slider(wind, "Sail cloth (%)", 0.0, 100.0, 5.0, 100.0, redraw)
 	_panel.note(wind, "How much of the cloth is spread on the sails. A miller took cloth in as the wind rose, to keep the sails from running too fast.")
 	_readout = _panel.note(wind, "")
+	var stones := _panel.panel("Spinstones")
+	_panel.switch(stones, "Light the stones", true, redraw)
+	_panel.slider(stones, "Light on each stone (W)", 0.0, 2000.0, 10.0, 50.0, redraw)
+	_panel.button(stones, "Set them still", func() -> void: gimbals.settle())
+	_panel.note(stones, "Three spinstones west of the mill, each free in a gyroscope's gimbal and lit by its own lantern: an earthstone, given turning about the upright; a sunstone, about the line to the sun; a moonstone, about the line to the moon. Set still, each lies as it happened to come to rest.")
+	_stones_note = _panel.note(stones, "")
 	var sound := _panel.panel("Sound")
 	_panel.slider(sound, "Master volume (dB)", -24.0, 12.0, 0.5, AudioOutput.master_db, func(v: float) -> void: AudioOutput.set_master_db(v))
 	_panel.note(sound, "Everything the game plays, in every world.")
@@ -224,6 +237,8 @@ func _apply() -> void:
 	_sea_mat.roughness = 0.12 if toon else 0.05
 	windmill.set_cloth(_value("Sail cloth (%)") * 0.01)
 	windmill.swoosh_level = _value("Sails (%)") * 0.01
+	gimbals.lit = _on("Light the stones")
+	gimbals.light_watts = _value("Light on each stone (W)")
 
 
 ## ---- the hour and the sun ---------------------------------------------------
@@ -259,6 +274,9 @@ func _update_sky() -> void:
 	_env.fog_light_color = sky.haze_colour
 	workshop.light.sun = sky.sun.global_basis.z.normalized()
 	workshop.light.sunlight = sunlight_at(at.x)
+	gimbals.to_sun = workshop.light.sun
+	gimbals.to_moon = sky.moon_direction()
+	_stones_note.text = gimbals.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
 	_time_note.text = "%02d:%02d. %s" % [floori(hour), floori(fmod(hour, 1.0) * 60.0),
 			("The sun is %d degrees up in the %s; its direct light %d watts a square metre." % [roundi(at.x), where, roundi(workshop.light.sunlight)])
