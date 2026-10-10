@@ -35,32 +35,24 @@ extends Node3D
 ## Sunlight (`sun_rules`, the test island's): no light comes from
 ## nowhere. Its only source is a sun collector, a lantern-bodied piece
 ## with meta "collector": a mirror reflecting the sun into a lens tube.
-## Its beam carries real power: the direct sunlight (`sunlight`, watts a
-## square metre, set by the world from the sun's height) on the
-## mirror's area (MIRROR_D across), less COLLECT, while its shutter is
-## open, nothing while its mirror is in shadow (a ray toward the sun
-## meets anything). The mirror is set for the sun as it stood when the
+## Its beam carries power: the direct sunlight (`sunlight`, watts a
+## square metre, set by the world from the sun's height) on the mirror's
+## area (MIRROR_D across), less COLLECT, while its shutter is open,
+## nothing while its mirror is in shadow (a ray toward the sun meets
+## anything). The mirror is set for the sun as it stood when the
 ## collector was last aimed (meta "sun_set"); as the sun moves on, the
 ## gathered light slides off the tube, falling to nothing ACCEPT radians
 ## off.
 ##
-## The beam spreads. The sun is not a point but SUN_HALF radians across
-## each way, and no lens or mirror makes light brighter than its source
-## (the conservation of etendue): squeezing the light from a mirror D
-## across into a beam w across makes it spread D / w times the sun's own
-## half-width each way. So a beam leaves the collector BEAM_W across
-## spreading THETA each way, and is w0 + 2 L THETA across after L metres.
-## What a piece catches of it is the share of the beam falling on its
-## own aperture (APERTURES: the whole beam while it is narrower). A
-## crystal, a gate's bulb or a radiometer responds when it catches
-## THRESHOLD watts or more. A gate's ring, a mirror, a splitter and a lens
-## pass only what falls on them, so a beam wider than they are is cut
-## down to their size and keeps spreading as before; a mirror loses a
-## tenth, a splitter sends half each way. A lens widens a beam narrower
-## than itself to its own width, which spreads it that much more slowly
-## (the width times the spread is what cannot change). Crystals and every
-## other part only read light; none sends any. A beam is traced until even
-## the widest aperture would catch too little from it to matter.
+## The beam stays a narrow, focused line (no spreading, unlike real
+## sunlight: a choice for play) and fades with the distance it has run:
+## its power falls by e every FADE metres, halving about every 5.5 m. A
+## piece in its path catches all of it: a crystal, a gate's bulb or a
+## radiometer responds while what reaches it is THRESHOLD watts or more.
+## A gate's ring passes it whole; a mirror loses a tenth; a splitter
+## sends half each way; past a lens the beam fades half as fast. Crystals
+## and every other part only read light; none sends any. A beam is traced
+## until it carries too little to matter.
 ##
 ## Drawn as flat ribbons turned to the eye, only where lit, in one warm
 ## gold (BEAM) laid over what is behind (not added to it, which turns a
@@ -75,15 +67,11 @@ const HISTORY := 30.0
 const BEAM := Color(1.0, 0.72, 0.22)
 const PUSH := Color(1.0, 0.24, 0.18)
 const PULL := Color(0.3, 0.95, 0.4)
-const SUN_HALF := 0.00465               # the sun's half-width, radians
 const MIRROR_D := 0.6                   # a collector's mirror, m across
-const BEAM_W := 0.1                     # its beam as it leaves the tube, m across
-const THETA := SUN_HALF * MIRROR_D / BEAM_W
 const COLLECT := 0.8                    # the share of the light the mirror and lenses pass
 const ACCEPT := 0.052                   # 3 degrees: the sun this far off its setting and the tube gets nothing
-const THRESHOLD := 3.0                  # watts caught to respond
-## Apertures, m across: what each kind of piece catches of a beam.
-const APERTURES := {"crystal": 0.3, "bulb": 0.15, "ring": 0.23, "glass": 0.38}
+const THRESHOLD := 3.0                  # watts reaching a piece for it to respond
+const FADE := 8.0                       # metres over which a beam's power falls by e
 
 var parts: Array[LumenPart] = []
 var elements: Array[OpticElement] = []
@@ -206,7 +194,7 @@ func step(dt: float) -> void:
 		for p in parts:
 			if p.has_meta("collector"):
 				var skip: Array[RID] = [p.get_rid()]
-				_trace_sun(p, p.lens_point(), p.forward(), 1.0, BEAM_W, THETA, 0.0, skip, 0, p == held)
+				_trace_sun(p, p.lens_point(), p.forward(), 1.0, 0.0, 1.0 / FADE, 0.0, skip, 0, p == held)
 		return
 	for p in parts:
 		if p.kind != LumenPart.Kind.RADIOMETER:
@@ -272,15 +260,11 @@ func power_at(p: LumenPart, t: float) -> float:
 	return 0.0
 
 
-## The share of a beam `w` across that falls on an aperture `a` across.
-static func caught(a: float, w: float) -> float:
-	return minf(1.0, (a * a) / maxf(w * w, 1e-6))
-
-
 ## A collector's beam from `origin` along `dir`, `s` metres along it so
-## far: `gain` the share of its power left, `w0` its width at `origin`,
-## `theta` its spread each way. Straight on until it strikes something.
-func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, w0: float, theta: float,
+## far: `gain` the share of its power the glass has left it, `faded` how
+## far it has faded already (the exponent), `rate` how fast it fades
+## from here, per metre. Straight on until it strikes something.
+func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, faded: float, rate: float,
 		s: float, exclude: Array[RID], depth: int, mark: bool) -> void:
 	var hot := mark
 	var space := get_world_3d().direct_space_state
@@ -289,15 +273,14 @@ func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, w
 	for e: Array in _history.get(source, []):
 		strongest = maxf(strongest, float(e[1]))
 	while depth < MAX_BOUNCES:
-		# As far as even the widest aperture would still catch a tenth of
-		# what anything needs.
-		var wide: float = APERTURES["glass"]
-		var w_cut := wide * sqrt(maxf(strongest * gain, 0.0) / (THRESHOLD * 0.1))
-		var reach := clampf((w_cut - w0) / (2.0 * theta), 1.0, 200.0)
-		if strongest * gain <= 0.0:
+		# As far as it still carries a third of what anything needs.
+		var reach := 0.0
+		if strongest * gain > THRESHOLD * 0.3:
+			reach = clampf((log(strongest * gain / (THRESHOLD * 0.3)) - faded) / rate, 0.0, 200.0)
+		elif hot:
 			# A dark beam is traced only to show where a held piece would send it.
-			reach = 25.0 if hot else 0.0
-		if reach <= 0.0:
+			reach = 25.0
+		if reach <= 0.05:
 			return
 		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach)
 		q.collision_mask = 0xFFFFFFFF & ~Workshop.ROD_LAYER
@@ -306,32 +289,29 @@ func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, w
 		q.exclude = ex
 		var hit := space.intersect_ray(q)
 		if hit.is_empty():
-			_segments.append([origin, origin + dir * reach, s, s + reach, gain, w0, theta, source, hot])
+			_segments.append([origin, origin + dir * reach, s, s + reach, gain, faded, rate, source, hot])
 			return
 		var p: Vector3 = hit["position"]
 		var d := origin.distance_to(p)
-		_segments.append([origin, p, s, s + d, gain, w0, theta, source, hot])
+		_segments.append([origin, p, s, s + d, gain, faded, rate, source, hot])
 		if mark:
 			struck = p
 			mark = false
 		s += d
-		var w := w0 + 2.0 * theta * d
-		var power := power_at(source, _clock - s / SPEED) * gain
+		faded += rate * d
+		var power := power_at(source, _clock - s / SPEED) * gain * exp(-faded)
 		var c: Object = hit["collider"]
 		if c is LumenPart and parts.has(c):
 			var part := c as LumenPart
 			var right := part.global_transform.basis * (Basis.from_euler(Vector3(part.pitch, part.yaw, 0.0)) * Vector3.RIGHT)
 			if not _landed.has(part):
 				_landed[part] = []
-			var got := power * caught(APERTURES["crystal"], w)
-			(_landed[part] as Array).append(OpticArrival.new(got >= THRESHOLD, dir.dot(right) > 0.0))
+			(_landed[part] as Array).append(OpticArrival.new(power >= THRESHOLD, dir.dot(right) > 0.0))
 			return
 		if c is LightGate and gates.has(c):
-			# Through the ring while the gate is open, cut to the ring.
+			# Through the ring while the gate is open.
 			if not (c as LightGate).open:
 				return
-			gain *= caught(APERTURES["ring"], w)
-			w0 = minf(w, APERTURES["ring"])
 			origin = p
 			skip = [(c as LightGate).get_rid()]
 			depth += 1
@@ -341,7 +321,7 @@ func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, w
 			if gates.has(gate):
 				if not _landed.has(gate):
 					_landed[gate] = []
-				(_landed[gate] as Array).append(OpticArrival.new(power * caught(APERTURES["bulb"], w) >= THRESHOLD, false))
+				(_landed[gate] as Array).append(OpticArrival.new(power >= THRESHOLD, false))
 			return
 		if not (c is OpticElement and elements.has(c)):
 			return
@@ -349,29 +329,22 @@ func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, w
 		var n := e.normal()
 		if not arrivals.has(e):
 			arrivals[e] = [p, dir]
-		var a: float = APERTURES["glass"]
-		var share := caught(a, w)
-		var w_in := minf(w, a)
 		match e.kind:
 			OpticElement.Kind.MIRROR:
 				if dir.dot(n) >= 0.0:
 					return
 				dir = (dir - 2.0 * dir.dot(n) * n).normalized()
-				gain *= 0.9 * share
-				w0 = w_in
+				gain *= 0.9
 			OpticElement.Kind.SPLITTER:
 				var through: Array[RID] = [e.get_rid()]
-				_trace_sun(source, p, dir, gain * 0.5 * share, w_in, theta, s, through, depth + 1, e == held)
+				_trace_sun(source, p, dir, gain * 0.5, faded, rate, s, through, depth + 1, e == held)
 				dir = (dir - 2.0 * dir.dot(n) * n).normalized()
-				gain *= 0.5 * share
-				w0 = w_in
+				gain *= 0.5
 			OpticElement.Kind.LENS:
 				if absf(dir.dot(n)) < 0.5:
 					return
-				gain *= 0.92 * share
-				# Widened to the lens, it spreads that much more slowly.
-				theta *= w_in / a
-				w0 = a
+				gain *= 0.95
+				rate *= 0.5
 		if e == held:
 			mark = true
 			hot = true
@@ -380,8 +353,8 @@ func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, w
 		depth += 1
 
 
-## The sunlit beams drawn: each stretch in short pieces, as wide as the
-## beam is there and as bright as its light is strong for its width.
+## The sunlit beams drawn: thin ribbons, as bright as their light is
+## strong, fading out as it falls below what anything can read.
 func _draw_sun(eye: Vector3, points: PackedVector3Array, colours: PackedColorArray) -> void:
 	for seg: Array in _segments:
 		var a: Vector3 = seg[0]
@@ -389,8 +362,8 @@ func _draw_sun(eye: Vector3, points: PackedVector3Array, colours: PackedColorArr
 		var s0: float = seg[2]
 		var s1: float = seg[3]
 		var gain: float = seg[4]
-		var w0: float = seg[5]
-		var theta: float = seg[6]
+		var faded: float = seg[5]
+		var rate: float = seg[6]
 		var source := seg[7] as LumenPart
 		var hot: bool = seg[8]
 		if s1 - s0 < 0.01 or not is_instance_valid(source):
@@ -404,25 +377,20 @@ func _draw_sun(eye: Vector3, points: PackedVector3Array, colours: PackedColorArr
 			var cross := (pb - pa).cross(eye - pa)
 			if cross.length_squared() < 1e-8:
 				continue
-			var side := cross.normalized()
-			var ends: Array = []
+			var side := cross.normalized() * 0.022
+			var alphas: Array[float] = []
 			for f: float in [f0, f1]:
 				var d := (s1 - s0) * f
-				var w := w0 + 2.0 * theta * d
-				var power := power_at(source, _clock - (s0 + d) / SPEED) * gain
-				var bright := power / (w * w)
-				var alpha := clampf(0.12 + 0.22 * log(maxf(bright, 1.0) / 100.0) / log(10.0), 0.0, 0.7) if power > 0.0 else 0.0
-				if hot and alpha < 0.25:
-					alpha = 0.25
-					w = minf(w, 0.02)
-				ends.append([minf(w * 0.5, 1.2), alpha])
-			if float(ends[0][1]) <= 0.0 and float(ends[1][1]) <= 0.0:
+				var power := power_at(source, _clock - (s0 + d) / SPEED) * gain * exp(-(faded + rate * d))
+				var alpha := clampf(0.35 + 0.6 * power / 150.0, 0.0, 0.95) * smoothstep(THRESHOLD * 0.3, THRESHOLD, power)
+				if hot:
+					alpha = maxf(alpha, 0.3)
+				alphas.append(alpha)
+			if alphas[0] <= 0.0 and alphas[1] <= 0.0:
 				continue
-			var sa := side * float(ends[0][0])
-			var sb := side * float(ends[1][0])
-			var ca := Color(BEAM, float(ends[0][1]))
-			var cb := Color(BEAM, float(ends[1][1]))
-			points.append_array([pa - sa, pa + sa, pb + sb, pa - sa, pb + sb, pb - sb])
+			var ca := Color(BEAM, alphas[0])
+			var cb := Color(BEAM, alphas[1])
+			points.append_array([pa - side, pa + side, pb + side, pa - side, pb + side, pb - side])
 			colours.append_array([ca, ca, cb, ca, cb, cb])
 
 
