@@ -302,6 +302,11 @@ func _update_sky() -> void:
 	_env.fog_light_color = sky.haze_colour
 	workshop.light.sun = sky.sun.global_basis.z.normalized()
 	workshop.light.sunlight = sunlight_at(at.x) * left
+	# The sea's colour is mostly the sky it reflects: in an eclipse it
+	# darkens with the sky, where its painted blue lit by the light left
+	# would glow under a dim sky.
+	var sea := lerpf(0.3, 1.0, smoothstep(0.0, 0.3, left))
+	_sea_mat.albedo_color = Color(sea, sea, sea)
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.to_sun = workshop.light.sun
 		row.to_moon = sky.moon_direction()

@@ -319,7 +319,10 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 	_story.sky_horizon_color = key[2]
 	_story.ground_horizon_color = key[2]
 	_story.ground_bottom_color = (key[2] as Color).darkened(0.5)
-	haze_colour = key[3]
+	# In an eclipse the haze is lit by what is left of the sun: dusk's
+	# colours, but dimmed, not the glow of a sun on the horizon.
+	haze_colour = (key[3] as Color) * lerpf(0.25, 1.0, smoothstep(0.0, 0.25, sun_left))
+	haze_colour.a = 1.0
 
 	# The storybook moon is about three times the real one's half degree.
 	_moon_radius = MOON_D * tan(deg_to_rad(0.8 if story else MOON_ACROSS * 0.5))
