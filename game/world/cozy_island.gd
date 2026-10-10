@@ -82,6 +82,21 @@ const SPITS := [Vector3(-112.0, 183.0, 70.0), Vector3(-98.0, 194.0, 80.0)]   # b
 const WIDE_BEARING := 203.0
 const WIDE_HALF := 17.0                 # degrees either side, fading over 8 more
 const WIDE_BEACH := 62.0
+# The south-east plain: a broad flat of grass reaching PLAIN_OUT past the
+# old shore at its middle, between the lagoon and the dock, ringed on its
+# seaward side and flanks by small hills, each holding a spring of
+# glowing liquid in a hollow at its top (GlowSprings).
+const PLAIN_BEARING := 65.0
+const PLAIN_HALF := 12.0                # degrees either side at full reach, fading over PLAIN_FADE more
+const PLAIN_FADE := 9.0
+const PLAIN_OUT := 160.0
+const PLAIN_H := 2.2                    # the plain's height over the sea
+const SPRING_BOWL := 3.6                # the hollow at a spring hill's top, its radius
+const SPRING_DEPTH := 1.4               # its level floor under the hill's top
+const SPRING_COLOURS := [Color(0.72, 0.38, 1.0), Color(0.3, 0.9, 1.0), Color(1.0, 0.7, 0.2),
+		Color(1.0, 0.42, 0.62), Color(0.3, 1.0, 0.5), Color(0.32, 0.45, 1.0), Color(1.0, 0.26, 0.24),
+		Color(0.75, 1.0, 0.3), Color(1.0, 0.92, 0.66)]
+const SPRING_NAMES := ["violet", "sky-blue", "amber", "rose", "green", "cobalt", "crimson", "lime", "pale gold"]
 const FIRE_BEARING := 105.0            # degrees round from +x toward +z
 const LANTERNS := 5
 const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", "Outlines",
@@ -142,6 +157,11 @@ var _good: Array[Vector4] = []          # recent places stood freely on the grou
 var _good_left := 0.0
 var _wedged := 0.0                      # seconds found inside something
 var _probe_capsule := CapsuleShape3D.new()
+## The plain's hills: x, z, height, radius; a spring in the hollow of each.
+var spring_hills: Array[Vector4] = []
+## Each hill's height at its middle before its hollow is made: the hollow's
+## level floor lies SPRING_DEPTH below it.
+var spring_tops: Array[float] = []
 
 
 func _ready() -> void:
@@ -165,6 +185,7 @@ func _ready() -> void:
 	_roll_noise.seed = 19
 	_roll_noise.frequency = 0.012
 	_sandbar = shore_radius(deg_to_rad(LAGOON_BEARING)) + LAGOON_OUT
+	_plan_spring_hills()
 	_build_environment()
 	_build_ground()
 	_build_sea()
@@ -194,6 +215,7 @@ func _ready() -> void:
 	add_child(workshop)
 	aurora = Aurora.new(self)
 	add_child(aurora)
+	add_child(GlowSprings.new(self))
 	var line := AuroraLine.new(self)
 	add_child(line)
 	_works.append(line)
@@ -502,7 +524,71 @@ func _noise_bumps(seed_value: int, frequency: float, strength: float) -> NoiseTe
 ## from the middle wavering with the bearing) at a beach's slope and
 ## levelling off inland at about five metres, falling the same way under
 ## the sea to a flat seabed; inland, hills, rolling meadows and hummocks.
+## The ground's height: the island as first made (`base_height`), and in
+## the south-east the plain laid out past its old shore, with its ring of
+## spring hills.
 func height(x: float, z: float) -> float:
+	var h := base_height(x, z)
+	var bearing := atan2(z, x)
+	var w := plain_weight(bearing)
+	if w <= 0.0:
+		return h
+	var r := sqrt(x * x + z * z)
+	var shore := shore_radius(bearing)
+	var s_old := shore - r
+	if s_old > 25.0:
+		return h
+	# Flat to a few centimetres, falling to a beach and the sea at its
+	# reach; blended into the old land over 17 m inland of the old shore.
+	var s_new := shore + PLAIN_OUT * w - r
+	var plain := PLAIN_H * tanh(s_new / 20.0) + 0.05 * _hump_noise.get_noise_2d(x * 0.5, z * 0.5)
+	h = lerpf(h, maxf(plain, FLOOR), smoothstep(25.0, 8.0, s_old) * w)
+	for hill: Vector4 in spring_hills:
+		var d := Vector2(x - hill.x, z - hill.y).length()
+		if d < hill.w * 3.0:
+			h += hill.z * exp(-d * d / (hill.w * hill.w))
+	# Each hollow: a low lip round it, and inside a level floor, so its
+	# pool lies flat and full however the hill leans.
+	if spring_tops.size() == spring_hills.size():
+		for i in spring_hills.size():
+			var hill := spring_hills[i]
+			var d := Vector2(x - hill.x, z - hill.y).length()
+			if d < SPRING_BOWL + 3.0:
+				h += 0.5 * exp(-pow((d - SPRING_BOWL) / 1.0, 2.0))
+				if d < SPRING_BOWL:
+					h = lerpf(spring_tops[i] - SPRING_DEPTH, h, smoothstep(SPRING_BOWL - 1.0, SPRING_BOWL, d))
+	return maxf(h, FLOOR)
+
+
+## How far into the south-east plain a bearing lies, 0 outside to 1 inside.
+static func plain_weight(bearing: float) -> float:
+	var off := absf(angle_difference(bearing, deg_to_rad(PLAIN_BEARING)))
+	return smoothstep(deg_to_rad(PLAIN_HALF + PLAIN_FADE), deg_to_rad(PLAIN_HALF), off)
+
+
+## The plain's ring of hills: five along its seaward edge, two up each
+## flank, sizes and places varied a little.
+func _plan_spring_hills() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 6565
+	var spots: Array[Vector2] = []           # bearing (degrees), metres in from the plain's reach
+	for k in 5:
+		spots.append(Vector2(PLAIN_BEARING - 12.0 + 6.0 * k, 28.0))
+	for side: float in [-1.0, 1.0]:
+		for inland: float in [70.0, 120.0]:
+			spots.append(Vector2(PLAIN_BEARING + side * (PLAIN_HALF + 1.5), inland))
+	for s: Vector2 in spots:
+		var a := deg_to_rad(s.x + rng.randf_range(-1.0, 1.0))
+		var reach := shore_radius(a) + PLAIN_OUT * plain_weight(a)
+		var r := reach - s.y + rng.randf_range(-4.0, 4.0)
+		spring_hills.append(Vector4(cos(a) * r, sin(a) * r, rng.randf_range(4.5, 7.5), rng.randf_range(12.0, 16.0)))
+	for hill: Vector4 in spring_hills:
+		spring_tops.append(height(hill.x, hill.y))
+
+
+## The island as first made, before the plain: where its trees and
+## flowers were chosen to stand, so they stand where they always have.
+func base_height(x: float, z: float) -> float:
 	var bearing := atan2(z, x)
 	var north := north_weight(bearing)
 	var shore := shore_radius(bearing)
@@ -1175,9 +1261,9 @@ func _build_trees() -> void:
 		Vector3(HILL.x, HILL.y, 20.0), Vector3(cabin.x, cabin.z, 7.0), Vector3(BAY.x, BAY.y, BAY_R + 8.0)]
 	var placed: Array[Vector2] = []
 	var try_tree := func(p: Vector2, spacing: float, round_share: float) -> bool:
-		var h := height(p.x, p.y)
-		if _grassiness(p.x, p.y, h) < 0.4:
+		if _grassiness(p.x, p.y, base_height(p.x, p.y)) < 0.4:
 			return false
+		var h := height(p.x, p.y)
 		if absf(p.x - DOCK_X) < 4.0 and p.y > cabin.z:
 			return false
 		for c: Vector3 in keep_clear:
@@ -1350,14 +1436,13 @@ func _build_flowers() -> void:
 		var reach := rng.randf_range(2.5, 5.5)
 		for k in rng.randi_range(70, 140):
 			var p := c + Vector2(rng.randfn(0.0, reach), rng.randfn(0.0, reach))
-			var h := height(p.x, p.y)
-			if _grassiness(p.x, p.y, h) < 0.5 or p.distance_to(Vector2(cabin.x, cabin.z)) < 4.0:
+			if _grassiness(p.x, p.y, base_height(p.x, p.y)) < 0.5 or p.distance_to(Vector2(cabin.x, cabin.z)) < 4.0:
 				continue
 			var key := Vector2i(floori(p.x / 50.0), floori(p.y / 50.0))
 			if not tiles.has(key):
 				tiles[key] = []
 			var tall := rng.randf_range(0.22, 0.42)
-			(tiles[key] as Array).append([Vector3(p.x, h, p.y), tall, rng.randf() * TAU, colour])
+			(tiles[key] as Array).append([Vector3(p.x, height(p.x, p.y), p.y), tall, rng.randf() * TAU, colour])
 	for key: Vector2i in tiles:
 		var view := MeshInstance3D.new()
 		view.name = "Flowers"
