@@ -1366,7 +1366,7 @@ func _physics_process(dt: float) -> void:
 		# The vanes' whir, as loud and high as they spin: a soft sound,
 		# heard close by.
 		var whir := _whirs[r] as AudioStreamPlayer3D
-		whir.volume_db = linear_to_db(clampf(r.spin, 0.0001, 1.0)) - 34.0
+		whir.volume_db = linear_to_db(clampf(r.spin, 0.0001, 1.0)) - 28.0
 		whir.pitch_scale = 0.6 + 0.6 * r.spin
 
 

@@ -165,8 +165,8 @@ func _build_panels() -> void:
 	var sound := _panel.panel("Sound")
 	_panel.slider(sound, "Master volume (dB)", -24.0, 12.0, 0.5, AudioOutput.master_db, func(v: float) -> void: AudioOutput.set_master_db(v))
 	_panel.note(sound, "Everything the game plays, in every world.")
-	_panel.slider(sound, "Wind (%)", 0.0, 200.0, 5.0, 100.0, redraw)
-	_panel.slider(sound, "Sails (%)", 0.0, 200.0, 5.0, 100.0, redraw)
+	_panel.slider(sound, "Wind (%)", 0.0, 200.0, 5.0, 55.0, redraw)
+	_panel.slider(sound, "Sails (%)", 0.0, 200.0, 5.0, 50.0, redraw)
 	_panel.note(sound, "The wind heard everywhere, and the sails' swoosh as each sweeps past the tower.")
 
 
