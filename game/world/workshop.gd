@@ -12,8 +12,9 @@ extends Node3D
 ## a camera in the game when the world opens, grouped by kind (GROUPS),
 ## its name under it and what it does along the bottom as the pointer
 ## rests on it. A click picks one and goes back to the view with it in
-## hand; Empty hands stops building; Tab, Esc, a right click or a click
-## outside the menu go back to the view as it was. The number keys still
+## hand. Opening the menu, or a right click while something is in hand,
+## puts it away. Empty hands stops building; Tab, Esc, a right click or a
+## click outside the menu go back to the view. The number keys still
 ## pick the first ten pieces while building.
 ##
 ## While building, a see-through copy of what is in hand, whole, stands where it would go, at
@@ -1124,6 +1125,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_end_aim()
 		else:
 			return
+	elif building and click != null and click.pressed and click.button_index == MOUSE_BUTTON_RIGHT:
+		# A right click with something in hand puts it away.
+		_set_building(false)
 	elif click != null and click.pressed and click.button_index == MOUSE_BUTTON_RIGHT:
 		var hit := _look_hit()
 		if hit.is_empty() or not is_piece(hit["collider"]) or not turns(hit["collider"]):
@@ -1215,6 +1219,8 @@ func _pick(i: int) -> void:
 
 func _set_building(on: bool) -> void:
 	building = on
+	for k: int in _cards:
+		(_cards[k] as Button).add_theme_stylebox_override("normal", _picked if on and k == item else _plain)
 	if not on:
 		_put_back()
 		_drop_ghost()
@@ -1317,7 +1323,7 @@ func _hint_text() -> String:
 	var height := ""
 	if not is_zero_approx(lift):
 		height = "     %+.2f m" % lift
-	return "%s%s\nTab: the menu     Shift and wheel: higher, lower     G: move     X: take away     Right click a piece: aim it" % [place, height]
+	return "%s%s\nRight click: put it away     Tab: the menu     Shift and wheel: higher, lower     G: move     X: take away" % [place, height]
 
 
 ## ---- the screen ------------------------------------------------------------------
@@ -1468,7 +1474,9 @@ func _index_of(key: String) -> int:
 	return 0
 
 
+## Opening the menu puts away what was in hand.
 func _open_menu() -> void:
+	_set_building(false)
 	_menu_open = true
 	_menu.visible = true
 	_about.text = MENU_HELP
