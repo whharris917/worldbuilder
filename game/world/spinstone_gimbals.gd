@@ -4,7 +4,8 @@ extends Node3D
 ## gimbal, each lit by its own bullseye lantern, to see what light does to
 ## a crystal that may take any attitude. Two rows stand on the test
 ## island: the combination stones (COMBO: earthstone, sunstone, moonstone,
-## each both drawn to point at its body and spun by light) and the pure
+## each both drawn to point at its body and spun by light, and inert
+## unlit, as every spinstone is) and the pure
 ## stones (PURE): the gyres, only spun by light, about their length, as
 ## much as it points at their body and the other way while it points
 ## away, so that free they spin wherever they lie; and the tropes, only
@@ -61,9 +62,9 @@ extends Node3D
 ## point at their body ("always", whether lit or not; "lit", in
 ## proportion to their light; "none").
 const COMBO := [
-	["earth", "Earthstone", Color(0.74, 0.62, 0.95), "combo", "always"],
-	["sun", "Sunstone", Color(1.0, 0.72, 0.32), "combo", "always"],
-	["moon", "Moonstone", Color(0.74, 0.84, 1.0), "combo", "always"],
+	["earth", "Earthstone", Color(0.74, 0.62, 0.95), "combo", "lit"],
+	["sun", "Sunstone", Color(1.0, 0.72, 0.32), "combo", "lit"],
+	["moon", "Moonstone", Color(0.74, 0.84, 1.0), "combo", "lit"],
 ]
 const PURE := [
 	["earth", "Geogyre", Color(0.74, 0.62, 0.95), "signed", "none"],
@@ -75,9 +76,9 @@ const PURE := [
 ]
 ## What a player inspecting each reads. Drafts.
 const TEXTS := {
-	"Earthstone": "Earthstone in a gimbal\nOne end seeks the sky straight above, as a compass needle seeks the north; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point straight up.",
-	"Sunstone": "Sunstone in a gimbal\nOne end seeks the sun, wherever it stands; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point at the sun, and follows it across the sky.",
-	"Moonstone": "Moonstone in a gimbal\nOne end seeks the moon, wherever it stands, by day or night; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point at the moon.",
+	"Earthstone": "Earthstone in a gimbal\nWhile lit, one end seeks the sky straight above, as a compass needle seeks the north, and the light spins it on its length. Free in its gimbal, it swings round, wobbling, to point straight up. Unlit, an inert stone.",
+	"Sunstone": "Sunstone in a gimbal\nWhile lit, one end seeks the sun, wherever it stands, and the light spins it on its length. Free in its gimbal, it swings round, wobbling, to point at the sun, and follows it across the sky. Unlit, an inert stone.",
+	"Moonstone": "Moonstone in a gimbal\nWhile lit, one end seeks the moon, wherever it stands, by day or night, and the light spins it on its length. Free in its gimbal, it swings round, wobbling, to point at the moon. Unlit, an inert stone.",
 	"Geogyre": "Geogyre in a gimbal\nLight spins it on its length, hardest while it stands upright, not at all while it lies level, the other way while it hangs upside down. Unlit, an inert stone. Free in its gimbal, it spins wherever it lies.",
 	"Heliogyre": "Heliogyre in a gimbal\nLight spins it on its length, hardest while it points at the sun, not at all square across it, the other way while it points away. Unlit, an inert stone. Free in its gimbal, it spins wherever it lies.",
 	"Lunagyre": "Lunagyre in a gimbal\nLight spins it on its length, hardest while it points at the moon, not at all square across it, the other way while it points away. Unlit, an inert stone. Free in its gimbal, it spins wherever it lies.",
