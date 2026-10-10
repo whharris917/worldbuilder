@@ -4,31 +4,34 @@ extends Node3D
 ## each lit by its own bullseye lantern, to see what light does to a
 ## crystal that may take any attitude.
 ##
-## The kinds of spinstone differ in the direction their light-given turning
-## takes: an earthstone's about the upright (as gravity points), a
-## sunstone's about the line to the sun, a moonstone's about the line to
-## the moon (where they stand in the sky at that moment).
+## The kinds of spinstone differ in what they answer to: an earthstone
+## to the upright (as gravity points), a sunstone to the line to the sun,
+## a moonstone to the line to the moon (where they stand in the sky at
+## that moment). Each is polarised along its length, one end seeking its
+## body as a compass needle's north end seeks the north.
 ##
-## The physics, nothing assumed beyond that law: each crystal is a rigid
-## body, longer than it is wide, so it turns more easily about its length
-## than across it (its moments of inertia, INERTIA_ALONG and
-## INERTIA_ACROSS). The light reaching it gives it angular momentum in its
-## kind's direction at TURN newton metres for each watt; the air takes it
-## away, its drag growing with the square of the turning (DRAG). The
-## crystal's turning is its angular momentum divided out by its inertia
-## as it lies at that moment, so a crystal holding angular momentum other
-## than along its length or square across it wobbles and precesses, as a
-## spun book does. Its momentum and attitude are carried forward together
-## by the midpoint rule, STEPS steps a frame (a cruder step settles the
-## stones wrongly: the physics' own outcome was checked at 240, 1000 and
-## 4000 steps a second, all alike).
+## The physics, with those two laws: each crystal is a rigid body, longer
+## than it is wide, so it turns more easily about its length than across
+## it (INERTIA_ALONG, INERTIA_ACROSS). Its polarity twists its seeking end
+## toward its body, PULL newton metres at a right angle, less as it comes
+## round. Light reaching it spins it about its own length, TURN newton
+## metres a watt, as much as its length points at its body (none while it
+## points away). The air holds back all its turning, with the square of
+## the turning (DRAG); the friction of the gimbal's pivots holds back the
+## swinging of its length, not its spin on the spindle (PIVOT_DAMP).
+## Angular momentum is conserved between those: so the stone does not
+## swing straight round but precesses as a gyroscope does, its wobble
+## dying away. Its turning is its angular momentum through its inertia as
+## it lies; momentum and attitude are carried forward together by the
+## midpoint rule, STEPS steps a frame (checked against much finer steps).
 ##
-## What happens: whatever its start, each stone tumbles for a minute or
-## two and then lies square across its direction, twirling end over end
-## about it. A spinning body that loses energy (here to the air) ends
-## turning about its axis of greatest inertia, across its length for a
-## long crystal (as the first American satellite, Explorer 1, tipped
-## over from spinning on its length).
+## What happens: from any start each stone swings round, wobbling, and
+## settles with its length pointing at its body, spinning about it as
+## fast as its light allows: within half a minute or so in a lantern's
+## light or none, a couple of minutes in a sun collector's, where the
+## faster spin holds it stiffer. (Without the polarity it would end lying
+## square across its direction, twirling end over end: a spinning body
+## losing energy ends turning about its axis of greatest inertia.)
 ##
 ## The gimbal: an outer ring on an upright pin in an arch, an inner ring
 ## pivoting inside it on a level pin, and the crystal on a spindle across
@@ -50,8 +53,10 @@ const OUTER_R := 0.42
 const INNER_R := 0.34
 const INERTIA_ALONG := 0.0006           # kg m², about its length
 const INERTIA_ACROSS := 0.004           # kg m², across it
-const TURN := 1.0e-5                    # N m of turning for each watt of light
+const TURN := 1.0e-5                    # N m of spin for each watt of light
 const DRAG := 6.0e-6                    # N m s² of the air's drag on the turning
+const PULL := 0.01                      # N m: the polarity's twist, the length at a right angle to its body
+const PIVOT_DAMP := 0.003               # N m s: the gimbal pivots' friction on the length's swinging
 const STEPS := 16
 
 ## Light reaching each stone, watts, while the lanterns are lit.
@@ -101,8 +106,9 @@ func report() -> String:
 		var att: Basis = s["attitude"]
 		var turning := _turning(s).length()
 		var length := (att * Vector3.BACK).normalized()
-		var off := rad_to_deg(acos(clampf(absf(length.dot(_toward(s))), 0.0, 1.0)))
-		lines.append("%s: %.1f turns a second; its length %d degrees off its direction." % [s["title"], turning / TAU, roundi(off)])
+		var off := rad_to_deg(acos(clampf(length.dot(_toward(s)), -1.0, 1.0)))
+		lines.append("%s: %.1f turns a second; pointing %d degrees off %s." % [s["title"], turning / TAU, roundi(off),
+				{"earth": "straight up", "sun": "the sun", "moon": "the moon"}[s["kind"]]])
 	return "\n".join(lines)
 
 
@@ -129,24 +135,34 @@ static func _turning_of(att: Basis, momentum: Vector3) -> Vector3:
 func _physics_process(delta: float) -> void:
 	var dt := delta / STEPS
 	for s in _stones:
-		var push := _toward(s) * TURN * (light_watts if lit else 0.0)
+		var toward := _toward(s)
+		var watts := light_watts if lit else 0.0
 		for i in STEPS:
 			# Half a step to the middle, then the whole step by the middle's
 			# turning and pull.
 			var att: Basis = s["attitude"]
 			var momentum: Vector3 = s["momentum"]
 			var w := _turning_of(att, momentum)
-			var half_momentum := momentum + (push - w * w.length() * DRAG) * dt * 0.5
+			var half_momentum := momentum + _twist(att, w, toward, watts) * dt * 0.5
 			var half_att := att
 			if w.length() > 1e-9:
 				half_att = (Basis(w.normalized(), w.length() * dt * 0.5) * att).orthonormalized()
 			var w_mid := _turning_of(half_att, half_momentum)
-			s["momentum"] = momentum + (push - w_mid * w_mid.length() * DRAG) * dt
+			s["momentum"] = momentum + _twist(half_att, w_mid, toward, watts) * dt
 			if w_mid.length() > 1e-9:
 				s["attitude"] = (Basis(w_mid.normalized(), w_mid.length() * dt) * att).orthonormalized()
 		_pose(s)
 		(s["glow"] as StandardMaterial3D).emission_energy_multiplier = 0.1 + 0.8 * clampf(_turning(s).length() / 15.0, 0.0, 1.0)
 		(s["beam"] as Node3D).visible = lit
+
+
+## Everything turning a stone lying `att`, turning `w`: its polarity's
+## twist toward its body, the light's spin about its length, the air's
+## drag, the pivots' friction on its length's swinging.
+static func _twist(att: Basis, w: Vector3, toward: Vector3, watts: float) -> Vector3:
+	var length := (att * Vector3.BACK).normalized()
+	var swing := w - length * w.dot(length)
+	return length.cross(toward) * PULL + length * TURN * watts * maxf(length.dot(toward), 0.0) 			- w * w.length() * DRAG - swing * PIVOT_DAMP
 
 
 ## The rings and the crystal set to the stone's attitude.
@@ -251,11 +267,11 @@ func _build(k: int, rng: RandomNumberGenerator) -> void:
 	# Something to inspect: what this stone is.
 	var text: String = {
 		"earth": "Earthstone in a gimbal
-Light gives it turning about the upright. Free to lie any way it likes, it takes whatever motion that turning gives it.",
+One end seeks the sky straight above, as a compass needle seeks the north; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point straight up.",
 		"sun": "Sunstone in a gimbal
-Light gives it turning about the line to the sun, wherever the sun stands. Free to lie any way it likes, it takes whatever motion that gives it.",
+One end seeks the sun, wherever it stands; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point at the sun, and follows it across the sky.",
 		"moon": "Moonstone in a gimbal
-Light gives it turning about the line to the moon, wherever the moon stands, by day or night. Free to lie any way it likes, it takes whatever motion that gives it.",
+One end seeks the moon, wherever it stands, by day or night; light spins it on its length. Free in its gimbal, it swings round, wobbling, to point at the moon.",
 	}[kind[0]]
 	var body := HoverNote.new(at + Vector3(0, HEIGHT, 0), Vector3.ONE * OUTER_R * 2.0, text)
 	add_child(body)
