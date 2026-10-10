@@ -5,10 +5,18 @@ extends Node3D
 ## tiles (FloorTile) to make level ground, and the parts and glass that
 ## stand on it.
 ##
-## B starts and stops building. While building, a tray along the bottom
-## shows what is in hand (ITEMS: the number keys choose, or Tab and
-## Shift and Tab step through them)
-## and a see-through copy of it, whole, stands where it would go, at
+## Tab opens the building menu: the view stops turning and the game's
+## own pointer (a brass arrow) appears, the world going on round it; it
+## is the game's, not the engine's release of the mouse that Esc gives.
+## The menu shows every piece as a picture of the piece itself, taken by
+## a camera in the game when the world opens, grouped by kind (GROUPS),
+## its name under it and what it does along the bottom as the pointer
+## rests on it. A click picks one and goes back to the view with it in
+## hand; Empty hands stops building; Tab, Esc, a right click or a click
+## outside the menu go back to the view as it was. The number keys still
+## pick the first ten pieces while building.
+##
+## While building, a see-through copy of what is in hand, whole, stands where it would go, at
 ## what the crosshair is on within REACH metres, turned square to the
 ## view; a left click puts it there. Nothing keeps to a grid. A floor
 ## tile is centred where the crosshair meets the ground, its top just
@@ -142,6 +150,34 @@ const NOTES := {
 	"splitter": "Splitter\nSends a beam on through and aside as well, each with half its reach.",
 	"lens": "Lens\nA beam passing through it reaches twice as far again.",
 }
+## The menu's groups, in order, and what each piece does, one line
+## each. Drafts.
+const GROUPS := [[["Floors", ["floor"]], ["Lamps", ["lantern", "push_lamp", "pull_lamp"]]],
+		[["Crystals", ["and", "or", "not", "latch", "on_delay", "off_delay", "rise", "fall"]]],
+		[["Gates", ["gate", "closing_gate"]], ["Glass", ["mirror", "splitter", "lens"]]],
+		[["Machines", ["radiometer", "track"]]]]
+const MENU_NOTES := {
+	"floor": "boards two metres square, to build on.",
+	"lantern": "sends a gold beam while its shutter is open.",
+	"push_lamp": "its red beam pushes a cart's copper ball away from it.",
+	"pull_lamp": "its green beam pulls a cart's copper ball toward it.",
+	"and": "shines while every beam striking it is lit.",
+	"or": "shines while any beam striking it is lit.",
+	"not": "shines while no lit beam strikes it.",
+	"latch": "lit by a beam on its left, put out by one on its right; remembers between.",
+	"on_delay": "shines once a beam striking it has stayed lit a while.",
+	"off_delay": "shines while a beam striking it is lit, and a while after.",
+	"rise": "one flash when a beam striking it lights.",
+	"fall": "one flash when a beam striking it goes dark.",
+	"gate": "lets a beam through its ring while its bulb is lit.",
+	"closing_gate": "stops a beam at its ring while its bulb is lit.",
+	"mirror": "turns a beam off its silvered face.",
+	"splitter": "sends a beam on through and aside, each with half its reach.",
+	"lens": "a beam through it reaches twice as far again.",
+	"radiometer": "its vanes spin in the light; a bell rings as they start.",
+	"track": "a cart on rails, driven by push and pull beams on its copper ball.",
+}
+const MENU_HELP := "Click a piece to take it in hand.     Tab or right click: back to the view."
 const AIM_NOTE := "\nE: look through it.  Right click: aim it at what you look at."
 
 var island: BuildWorld
@@ -193,8 +229,12 @@ var _ui := CanvasLayer.new()
 var _cross := Label.new()
 var _on_piece: Node3D = null            # the piece the crosshair is on, within reach
 var _hint := Label.new()
-var _tray := HFlowContainer.new()
-var _tray_cells: Array[PanelContainer] = []
+var _menu: PanelContainer
+var _menu_open := false
+var _cards := {}                        # item index -> its button in the menu
+var _pictures := {}                     # item index -> its picture
+var _about: Label                       # the line saying what a piece does
+var _pointer: ImageTexture
 var _picked := StyleBoxFlat.new()
 var _plain := StyleBoxFlat.new()
 
@@ -233,9 +273,13 @@ func _ready() -> void:
 		_load()
 		if _demo and not _demo_built:
 			build_demo()
+	if DisplayServer.get_name() != "headless":
+		_take_pictures.call_deferred()
 
 
 func _exit_tree() -> void:
+	if _menu_open:
+		Input.set_custom_mouse_cursor(null)
 	if _save_in >= 0.0:
 		_save()
 
@@ -1035,14 +1079,24 @@ func _follow_aim() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	var player := island.player
+	var key := event as InputEventKey
+	var click := event as InputEventMouseButton
+	if _menu_open:
+		# Back to the view: Tab, Esc, a right click, or a click outside
+		# the menu (a click on it is the menu's own).
+		if (key != null and key.pressed and not key.echo and key.physical_keycode == KEY_TAB) \
+				or event.is_action_pressed("ui_cancel") or (click != null and click.pressed \
+				and click.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]):
+			_close_menu()
+			get_viewport().set_input_as_handled()
+		return
 	if scope.held != null or player.input_locked or player.look_held_by != null:
 		return
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and not MouseMode.probe:
 		return
-	var key := event as InputEventKey
-	var click := event as InputEventMouseButton
-	if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_B:
-		_set_building(not building)
+	if key != null and key.pressed and not key.echo and key.physical_keycode == KEY_TAB:
+		if _carried == null and _aiming == null:
+			_open_menu()
 	elif _carried != null and event.is_action_pressed("ui_cancel"):
 		_put_back()
 	elif key != null and key.pressed and not key.echo and key.physical_keycode == KEY_G and _aiming == null:
@@ -1120,8 +1174,6 @@ func _build_input(event: InputEvent) -> bool:
 		_:
 			if key.physical_keycode >= KEY_0 and key.physical_keycode <= KEY_9:
 				_pick(9 if key.physical_keycode == KEY_0 else key.physical_keycode - KEY_1)
-			elif key.physical_keycode == KEY_TAB:
-				_pick((item + (-1 if key.shift_pressed else 1) + ITEMS.size()) % ITEMS.size())
 			else:
 				return false
 	return true
@@ -1157,8 +1209,8 @@ func _pick(i: int) -> void:
 	item = i
 	if _ghost != null and _ghost_key != _held_key():
 		_drop_ghost()
-	for k in _tray_cells.size():
-		_tray_cells[k].add_theme_stylebox_override("panel", _picked if k == item else _plain)
+	for k: int in _cards:
+		(_cards[k] as Button).add_theme_stylebox_override("normal", _picked if k == item else _plain)
 
 
 func _set_building(on: bool) -> void:
@@ -1201,7 +1253,7 @@ func _process(delta: float) -> void:
 	var free := scope.held == null and not player.input_locked and player.look_held_by == null
 	if _aiming != null and free:
 		_follow_aim()
-	if building and free and _aiming == null:
+	if building and free and _aiming == null and not _menu_open:
 		_find_place()
 	elif _ghost != null:
 		_ghost.visible = false
@@ -1215,9 +1267,9 @@ func _process(delta: float) -> void:
 			_on_piece = hit["collider"] as Node3D
 	_cross.visible = looking
 	_cross.add_theme_color_override("font_color", Color(1.0, 0.82, 0.35, 1.0) if _on_piece != null else Color(1, 1, 1, 0.7))
-	_tray.get_parent().visible = building and free
-	# The hint sits just above the tray, however many rows it takes.
-	_hint.offset_bottom = -((_tray.get_parent() as Control).size.y + 20.0) if building else -40.0
+	# The menu closes if the view was taken back some other way.
+	if _menu_open and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or not free):
+		_close_menu(false)
 	_hint.visible = looking and (building or _aiming != null or _on_piece != null)
 	if _hint.visible:
 		_hint.text = _hint_text()
@@ -1265,7 +1317,7 @@ func _hint_text() -> String:
 	var height := ""
 	if not is_zero_approx(lift):
 		height = "     %+.2f m" % lift
-	return "%s%s\n1 to 0, Tab: choose     Shift and wheel: higher, lower     G: move     X: take away     Right click a piece: aim it     B: stop building" % [place, height]
+	return "%s%s\nTab: the menu     Shift and wheel: higher, lower     G: move     X: take away     Right click a piece: aim it" % [place, height]
 
 
 ## ---- the screen ------------------------------------------------------------------
@@ -1293,70 +1345,7 @@ func _build_ui() -> void:
 	_cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cross.visible = false
 	root.add_child(_cross)
-	var frame := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.06, 0.04, 0.6)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(5)
-	frame.add_theme_stylebox_override("panel", style)
-	frame.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	frame.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	frame.offset_left = 150.0
-	frame.offset_right = -150.0
-	frame.offset_bottom = -10.0
-	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	frame.visible = false
-	root.add_child(frame)
-	_tray.add_theme_constant_override("h_separation", 3)
-	_tray.add_theme_constant_override("v_separation", 3)
-	_tray.alignment = FlowContainer.ALIGNMENT_CENTER
-	_tray.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	frame.add_child(_tray)
-	_plain.bg_color = Color(1, 1, 1, 0.05)
-	_plain.set_corner_radius_all(4)
-	_plain.set_content_margin_all(4)
-	_picked.bg_color = Color(1.0, 0.9, 0.6, 0.3)
-	_picked.border_color = Color(1.0, 0.9, 0.6, 0.9)
-	_picked.set_border_width_all(2)
-	_picked.set_corner_radius_all(4)
-	_picked.set_content_margin_all(4)
-	for i in ITEMS.size():
-		var key: String = ITEMS[i][0]
-		var cell := PanelContainer.new()
-		cell.custom_minimum_size = Vector2(70, 46)
-		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 2)
-		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		cell.add_child(col)
-		var swatch := ColorRect.new()
-		swatch.custom_minimum_size = Vector2(28, 5)
-		swatch.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var shade: Color = GLASS_COLOUR
-		if key == "floor":
-			shade = FLOOR_COLOUR
-		elif key == "track":
-			shade = TRACK_COLOUR
-		elif LOOKS.get(key, {}).has("colour"):
-			shade = LOOKS[key]["colour"]
-		elif KINDS.has(key):
-			shade = LumenPart.COLOURS[KINDS[key]]
-		elif GATES.has(key):
-			shade = GATE_COLOUR
-		swatch.color = shade
-		col.add_child(swatch)
-		var name_label := Label.new()
-		name_label.text = str(ITEMS[i][1])
-		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(name_label)
-		var number := Label.new()
-		number.text = str((i + 1) % 10) if i < 10 else " "
-		number.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		number.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
-		col.add_child(number)
-		_tray.add_child(cell)
-		_tray_cells.append(cell)
+	_build_menu(root)
 	_hint.add_theme_font_size_override("font_size", 14)
 	_hint.add_theme_color_override("font_color", Color(0.97, 0.93, 0.82))
 	_hint.add_theme_color_override("font_outline_color", Color(0.1, 0.08, 0.06))
@@ -1365,11 +1354,226 @@ func _build_ui() -> void:
 	_hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint.offset_bottom = -92.0
+	_hint.offset_bottom = -40.0
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hint.visible = false
 	root.add_child(_hint)
 	_pick(0)
+
+
+## ---- the building menu --------------------------------------------------------
+
+## The menu, closed: a row for each group of pieces, a card for each
+## piece (its picture once taken, its name), Empty hands, and the line
+## saying what the piece under the pointer does.
+func _build_menu(root: Control) -> void:
+	_plain.bg_color = Color(1, 1, 1, 0.04)
+	_plain.set_corner_radius_all(6)
+	_plain.set_content_margin_all(4)
+	_picked.bg_color = Color(1.0, 0.9, 0.6, 0.22)
+	_picked.border_color = Color(1.0, 0.85, 0.5, 0.95)
+	_picked.set_border_width_all(2)
+	_picked.set_corner_radius_all(6)
+	_picked.set_content_margin_all(4)
+	var hover := StyleBoxFlat.new()
+	hover.bg_color = Color(1, 1, 1, 0.14)
+	hover.set_corner_radius_all(6)
+	hover.set_content_margin_all(4)
+	_menu = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.09, 0.07, 0.05, 0.86)
+	style.border_color = Color(0.72, 0.56, 0.3, 0.8)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(10)
+	style.set_content_margin_all(14)
+	_menu.add_theme_stylebox_override("panel", style)
+	_menu.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_menu.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_menu.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_menu.visible = false
+	root.add_child(_menu)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 8)
+	_menu.add_child(column)
+	for line: Array in GROUPS:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		column.add_child(row)
+		for group: Array in line:
+			var heading := Label.new()
+			heading.text = str(group[0])
+			heading.custom_minimum_size = Vector2(76, 0)
+			heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			heading.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			heading.add_theme_color_override("font_color", Color(0.95, 0.82, 0.55))
+			heading.add_theme_font_size_override("font_size", 15)
+			row.add_child(heading)
+			for key: String in group[1]:
+				var i := _index_of(key)
+				var card := Button.new()
+				card.custom_minimum_size = Vector2(90, 98)
+				card.focus_mode = Control.FOCUS_NONE
+				card.add_theme_stylebox_override("normal", _plain)
+				card.add_theme_stylebox_override("hover", hover)
+				card.add_theme_stylebox_override("pressed", _picked)
+				var inner := VBoxContainer.new()
+				inner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+				inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				inner.add_theme_constant_override("separation", 2)
+				card.add_child(inner)
+				var picture := TextureRect.new()
+				picture.custom_minimum_size = Vector2(80, 76)
+				picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				inner.add_child(picture)
+				_pictures[i] = picture
+				var label := Label.new()
+				label.text = str(ITEMS[i][1])
+				label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				label.clip_text = true
+				inner.add_child(label)
+				card.pressed.connect(func() -> void:
+					_pick(i)
+					building = true
+					_close_menu())
+				card.mouse_entered.connect(func() -> void: _about.text = "%s: %s" % [ITEMS[i][1], MENU_NOTES.get(key, "")])
+				card.mouse_exited.connect(func() -> void: _about.text = MENU_HELP)
+				row.add_child(card)
+				_cards[i] = card
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 12)
+	column.add_child(foot)
+	var empty := Button.new()
+	empty.text = "Empty hands"
+	empty.focus_mode = Control.FOCUS_NONE
+	empty.pressed.connect(func() -> void:
+		_set_building(false)
+		_close_menu())
+	foot.add_child(empty)
+	_about = Label.new()
+	_about.text = MENU_HELP
+	_about.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_about.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_about.add_theme_color_override("font_color", Color(0.95, 0.92, 0.84))
+	foot.add_child(_about)
+	_pointer = _brass_pointer()
+
+
+func _index_of(key: String) -> int:
+	for i in ITEMS.size():
+		if str(ITEMS[i][0]) == key:
+			return i
+	return 0
+
+
+func _open_menu() -> void:
+	_menu_open = true
+	_menu.visible = true
+	_about.text = MENU_HELP
+	if _ghost != null:
+		_ghost.visible = false
+	MouseMode.release()
+	Input.set_custom_mouse_cursor(_pointer, Input.CURSOR_ARROW, Vector2(1, 1))
+	Input.warp_mouse(get_viewport().get_visible_rect().size * 0.5)
+
+
+## Back to the view; `capture` takes the mouse back for looking about.
+func _close_menu(capture := true) -> void:
+	_menu_open = false
+	_menu.visible = false
+	Input.set_custom_mouse_cursor(null)
+	if capture:
+		MouseMode.capture()
+
+
+## The game's own pointer: a brass arrow with a dark rim.
+static func _brass_pointer() -> ImageTexture:
+	var arrow := PackedVector2Array([Vector2(1, 1), Vector2(1, 21), Vector2(6.5, 16), Vector2(10, 24),
+			Vector2(13.5, 22.5), Vector2(10, 15), Vector2(17, 15)])
+	var img := Image.create(26, 26, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var inside := func(x: int, y: int) -> bool:
+		return Geometry2D.is_point_in_polygon(Vector2(x + 0.5, y + 0.5), arrow)
+	for y in 26:
+		for x in 26:
+			if not inside.call(x, y):
+				continue
+			var rim := false
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				if not inside.call(x + d.x, y + d.y):
+					rim = true
+			var shine := clampf(1.0 - float(x + y) / 40.0, 0.0, 1.0)
+			img.set_pixel(x, y, Color(0.18, 0.12, 0.06) if rim else Color(0.82, 0.62, 0.28).lerp(Color(1.0, 0.9, 0.6), shine))
+	return ImageTexture.create_from_image(img)
+
+
+## Each piece's picture for the menu: the piece itself built in a small
+## world of its own with a sun and a camera framing it, drawn once, kept
+## as a picture, and the small world put away.
+func _take_pictures() -> void:
+	var studios: Array = []
+	for i in ITEMS.size():
+		var key := str(ITEMS[i][0])
+		var studio := SubViewport.new()
+		studio.size = Vector2i(160, 152)
+		studio.own_world_3d = true
+		studio.transparent_bg = true
+		studio.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		add_child(studio)
+		var env := Environment.new()
+		env.background_mode = Environment.BG_CLEAR_COLOR
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0.62, 0.64, 0.7)
+		env.ambient_light_energy = 0.7
+		env.tonemap_mode = Environment.TONE_MAPPER_AGX
+		var world_env := WorldEnvironment.new()
+		world_env.environment = env
+		studio.add_child(world_env)
+		var sun := DirectionalLight3D.new()
+		sun.rotation = Vector3(deg_to_rad(-48.0), deg_to_rad(35.0), 0.0)
+		sun.light_energy = 1.3
+		studio.add_child(sun)
+		var thing: Node3D
+		if key == "floor":
+			thing = FloorTile.new(self, Vector3(0.0, island.height(0.0, 0.0) + 0.45, 0.0), 0.35)
+		else:
+			thing = _make(key, Vector3.ZERO)
+		studio.add_child(thing)
+		if thing.has_method("aim"):
+			# Lamps turned to show their glass to the camera.
+			thing.call("aim", 0.6 + (PI if KINDS.get(key, -1) == LumenPart.Kind.LANTERN else 0.0), -0.12)
+		var box := AABB()
+		var first := true
+		for v: Node in thing.find_children("*", "MeshInstance3D", true, false):
+			if not (v as MeshInstance3D).is_visible_in_tree():
+				continue
+			var b := (v as MeshInstance3D).global_transform * (v as MeshInstance3D).get_aabb()
+			# The track's rails run 16 m: framed on its cart instead.
+			if b.get_longest_axis_size() > 3.0:
+				continue
+			box = b if first else box.merge(b)
+			first = false
+		var cam := Camera3D.new()
+		cam.fov = 30.0
+		studio.add_child(cam)
+		var r := maxf(box.size.length() * 0.5, 0.05)
+		if key == "track":
+			# Close on the cart, the track running away behind it.
+			r = 0.9
+			box = AABB(Vector3(0.0, 0.3, 0.0), Vector3.ZERO)
+		cam.position = box.get_center() + Vector3(0.55, 0.42, 1.0).normalized() * r / sin(deg_to_rad(15.0)) * 1.05
+		cam.look_at(box.get_center())
+		studios.append([i, studio])
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	for pair: Array in studios:
+		var studio := pair[1] as SubViewport
+		var picture := studio.get_texture().get_image()
+		if picture != null and _pictures.has(pair[0]):
+			(_pictures[pair[0]] as TextureRect).texture = ImageTexture.create_from_image(picture)
+		studio.queue_free()
 
 
 ## ---- keeping what is built -------------------------------------------------

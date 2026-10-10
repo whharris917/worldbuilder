@@ -22,7 +22,7 @@ extends BuildWorld
 ## driven by it; its gasworks (GasWorks) is the machine on its spindle.
 ## The mill's and the gasworks' state is kept in MILL_PATH.
 ##
-## The player builds here as on the cozy island (Workshop, B to build),
+## The player builds here as on the cozy island (Workshop, Tab for its menu),
 ## what they build kept in BUILD_PATH, apart from the island's.
 
 const STATE_PATH := "user://cozy_test.json"
