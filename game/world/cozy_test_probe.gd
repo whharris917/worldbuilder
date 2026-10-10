@@ -15,9 +15,20 @@ const VIEWS := [
 	["camp", 60.0, Vector3(5.0, 2.4, 4.5), Vector3(-1.2, 0.5, -0.8), "camp"],
 	["tent", 55.0, Vector3(0.3, 1.5, 1.6), Vector3(-2.7, 0.6, -1.5), "camp"],
 	["fire", 55.0, Vector3(2.0, 1.3, 2.6), Vector3(0.0, 0.3, 0.8), "camp"],
-	["mill", 58.0, Vector3(0.0, 1.7, 22.0), Vector3(0.0, 9.0, 0.0), ""],
-	["mill_side", 58.0, Vector3(-20.0, 3.0, 8.0), Vector3(0.0, 8.0, 0.0), ""],
-	["mill_back", 58.0, Vector3(6.0, 3.0, -18.0), Vector3(0.0, 10.0, 0.0), ""],
+	["mill", 58.0, Vector3(-15.0, 2.9, 15.0), Vector3(0.0, 9.0, 0.0), ""],
+	["mill_door", 60.0, Vector3(0.0, 2.9, 9.0), Vector3(0.0, 3.0, 0.0), ""],
+	["mill_side", 58.0, Vector3(-20.0, 3.0, -8.0), Vector3(0.0, 8.0, 0.0), ""],
+	["mill_back", 58.0, Vector3(14.0, 3.0, -14.0), Vector3(0.0, 10.0, 0.0), ""],
+	["sails", 50.0, Vector3(-9.0, 9.0, 9.0), Vector3(0.0, 11.5, 0.0), ""],
+	["ground_floor", 70.0, Vector3(-0.4, 3.3, 1.9), Vector3(1.0, 2.2, -1.2), ""],
+	["ground_up", 70.0, Vector3(0.4, 2.6, 1.7), Vector3(0.0, 4.4, -0.2), ""],
+	["bench", 60.0, Vector3(0.3, 3.1, -0.5), Vector3(0.0, 2.4, -1.9), ""],
+	["stairs", 70.0, Vector3(0.6, 3.0, 2.0), Vector3(-1.3, 3.6, -0.6), ""],
+	["bin_floor", 70.0, Vector3(0.9, 5.8, 1.0), Vector3(-1.0, 4.7, -1.0), ""],
+	["stone_floor", 70.0, Vector3(-0.9, 8.1, -0.9), Vector3(0.9, 7.2, 1.0), ""],
+	["dust_floor", 70.0, Vector3(1.0, 10.2, -0.9), Vector3(-0.4, 11.0, 0.5), ""],
+	["gasworks", 60.0, Vector3(2.0, 3.5, 10.0), Vector3(8.0, 2.0, 0.5), ""],
+	["holders", 60.0, Vector3(15.0, 3.2, -7.0), Vector3(8.0, 2.5, 1.0), ""],
 ]
 
 var _world: CozyTest

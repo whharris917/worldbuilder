@@ -15,8 +15,15 @@ extends Node3D
 ## sloping into the sea and the seabed falling away. Invisible walls
 ## along the waterline keep the player ashore; R returns them to the
 ## campsite.
+##
+## The wind is the world's: a speed and the bearing it blows from, set on
+## the Wind panel, with gusts (two slow noises, one for the speed, one
+## for the direction) when they are on. The windmill turns to it and is
+## driven by it; its gasworks (GasWorks) is the machine on its spindle.
+## The mill's and the gasworks' state is kept in MILL_PATH.
 
 const STATE_PATH := "user://cozy_test.json"
+const MILL_PATH := "user://cozy_test_mill.json"
 const R := 44.0                         # the coast's mean radius, at the profile's 1.0
 const TOP := 1.2                        # the level top's height over the sea
 const SEABED := -3.5
@@ -43,6 +50,11 @@ var _clock := 0.0
 var _spawn := Vector3.ZERO
 var _spawn_facing := 0.0
 var _was_soft := 0
+var _gust := FastNoiseLite.new()
+var _readout: Label
+var _readout_left := 0.0
+var _save_left := 5.0
+var _hovered: Node = null
 
 
 func _ready() -> void:
@@ -65,11 +77,30 @@ func _ready() -> void:
 	campsite.rotation.y = -a + PI * 0.5
 	add_child(campsite)
 	campsite.build(height)
-	windmill = Windmill.new(material(), material(false))
+	var glass := StandardMaterial3D.new()
+	glass.vertex_color_use_as_albedo = true
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.cull_mode = BaseMaterial3D.CULL_DISABLED
+	glass.roughness = 0.05
+	glass.metallic_specular = 0.6
+	var glow := StandardMaterial3D.new()
+	glow.vertex_color_use_as_albedo = true
+	glow.emission_enabled = true
+	glow.emission = Color(1.0, 0.72, 0.38)
+	glow.emission_energy_multiplier = 2.0
+	windmill = Windmill.new({"out": material(), "out_plain": material(false), "in": material(true, true),
+			"in_plain": material(false, true), "glass": glass, "glow": glow})
 	windmill.position = Vector3(0.0, TOP, 0.0)
-	# The sails face the campsite.
+	# The door faces the campsite.
 	windmill.rotation.y = -a + PI * 0.5
 	add_child(windmill)
+	windmill.attach(GasWorks.new())
+	_load_mill()
+	_gust.seed = 13
+	_gust.frequency = 1.0
+	# The mill's stairs are steeper than the player's usual limit.
+	player.floor_max_angle = deg_to_rad(50.0)
+	player.floor_snap_length = 0.35
 	_build_panels()
 	LabGraphics.attach(self, _panel.panel("Graphics"), func(g: GraphicsSettings) -> void:
 		RenderingServer.directional_soft_shadow_filter_set_quality(
@@ -89,6 +120,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	_save_mill()
 	RenderingServer.directional_soft_shadow_filter_set_quality(_was_soft as RenderingServer.ShadowQuality)
 
 
@@ -106,7 +138,6 @@ func _build_panels() -> void:
 	_panel.switch(look, "Soft shadows", false, redraw)
 	_panel.note(look, "The sun given a larger size in the sky, so shadows blur farther from what casts them. It costs a good deal of drawing time.")
 	_panel.switch(look, "Storybook sky", false, redraw)
-	_panel.switch(look, "Sails turning", true, redraw)
 	var light := _panel.panel("Sun and moon")
 	_panel.slider(light, "Sun height", -30.0, 85.0, 0.5, 38.0, redraw)
 	_panel.slider(light, "Sun direction", 0.0, 360.0, 1.0, 215.0, redraw)
@@ -114,6 +145,15 @@ func _build_panels() -> void:
 	_panel.slider(light, "Moon height", -30.0, 85.0, 0.5, 25.0, redraw)
 	_panel.slider(light, "Moon direction", 0.0, 360.0, 1.0, 120.0, redraw)
 	_panel.note(light, "Heights in degrees above the horizon; directions from north toward east. The campsite is on the south beach.")
+	var wind := _panel.panel("Wind")
+	_panel.slider(wind, "Wind speed (m/s)", 0.0, 20.0, 0.5, 7.0, redraw)
+	_panel.slider(wind, "Wind from", 0.0, 360.0, 1.0, 225.0, redraw)
+	_panel.note(wind, "The bearing the wind blows from, from north toward east. A light breeze is 3 metres a second, a fresh one 8, a gale 18.")
+	_panel.switch(wind, "Gusts", true, redraw)
+	_panel.note(wind, "The wind rising and falling by about a fifth and veering a few degrees either way, over tens of seconds.")
+	_panel.slider(wind, "Sail cloth (%)", 0.0, 100.0, 5.0, 100.0, redraw)
+	_panel.note(wind, "How much of the cloth is spread on the sails. A miller took cloth in as the wind rose, to keep the sails from running too fast.")
+	_readout = _panel.note(wind, "")
 
 
 func _on(title: String) -> bool:
@@ -145,7 +185,7 @@ func _apply() -> void:
 	_sea_mat.roughness = 0.12 if toon else 0.05
 	var night := 1.0 - sky.daylight
 	campsite.set_night(night)
-	windmill.turning = _on("Sails turning")
+	windmill.set_cloth(_value("Sail cloth (%)") * 0.01)
 	_env.fog_light_color = sky.haze_colour
 
 
@@ -153,11 +193,22 @@ func _apply() -> void:
 
 ## A material taking the vertex colours as its albedo, reached by the
 ## Look panel's switches; `lined` gives it an outline pass.
-func material(lined := true) -> StandardMaterial3D:
+##
+## `inside` is for surfaces indoors: their share of the light from the
+## sky (the ambient light, which the engine gives every surface alike,
+## walls or no walls) cut to a third through a plain ambient-occlusion
+## map, so a room is lit mostly by its windows, door and lamps.
+func material(lined := true, inside := false) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
 	m.metallic_specular = 0.0
 	m.roughness = 0.85
+	if inside:
+		var grey := Image.create(1, 1, false, Image.FORMAT_RGB8)
+		grey.fill(Color(0.33, 0.33, 0.33))
+		m.ao_enabled = true
+		m.ao_texture = ImageTexture.create_from_image(grey)
+		m.ao_light_affect = 0.0
 	var s := {"mat": m}
 	if lined:
 		var line := StandardMaterial3D.new()
@@ -487,8 +538,20 @@ func _process(delta: float) -> void:
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:
 		sky.follow(camera.global_position)
+	_blow(delta)
+	_save_left -= delta
+	if _save_left <= 0.0:
+		_save_left = 5.0
+		_save_mill()
 	if MouseMode.probe or player == null:
 		return
+	var view: Node = player.look_view()
+	if view != _hovered:
+		if _hovered != null and is_instance_valid(_hovered) and _hovered.has_method("show_label"):
+			_hovered.call("show_label", false)
+		_hovered = view
+		if view != null and view.has_method("show_label"):
+			view.call("show_label", true)
 	if player.position.y < -1.5 or (Input.is_physical_key_pressed(KEY_R) and not player.input_locked):
 		_put_player()
 
@@ -497,3 +560,56 @@ func _put_player() -> void:
 	player.global_position = _spawn
 	player.rotation.y = _spawn_facing
 	player.velocity = Vector3.ZERO
+
+
+## ---- the wind and the mill -------------------------------------------------
+
+## The wind given to the mill, gusting if asked; the readout four times a
+## second.
+func _blow(delta: float) -> void:
+	var speed := _value("Wind speed (m/s)")
+	var from := _value("Wind from")
+	if _on("Gusts"):
+		speed *= 1.0 + 0.2 * _gust.get_noise_1d(_clock * 0.08)
+		from += 8.0 * _gust.get_noise_1d(_clock * 0.02 + 300.0)
+	windmill.wind_speed = maxf(speed, 0.0)
+	windmill.wind_from = wrapf(from, 0.0, 360.0)
+	_readout_left -= delta
+	if _readout_left > 0.0:
+		return
+	_readout_left = 0.25
+	var off := absf(windmill.off_wind())
+	var turning := "The sails are still." if absf(windmill.rpm()) < 0.1 else "The sails turn %.1f times a minute." % windmill.rpm()
+	var facing := "They face the wind." if off < 3.0 else "They stand %d degrees off the wind; the fantail is turning the cap." % roundi(off)
+	if windmill.rpm() > 30.0:
+		turning += " That is dangerously fast: take in cloth."
+	if windmill.brake_on:
+		turning += " The brake is on."
+	if not windmill.in_gear:
+		turning += " The spindle is out of gear."
+	_readout.text = "Wind %.1f m/s from %d.
+%s
+%s
+Power to the spindle: %.1f kW.
+%s" % [windmill.wind_speed,
+			roundi(windmill.wind_from), turning, facing, windmill.power * 0.001, windmill.load.report()]
+
+
+func _save_mill() -> void:
+	# Not for the probes, which set the mill as they need it.
+	if windmill == null or MouseMode.probe:
+		return
+	var file := FileAccess.open(MILL_PATH, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(windmill.state()))
+
+
+func _load_mill() -> void:
+	var saved := {}
+	if FileAccess.file_exists(MILL_PATH):
+		var file := FileAccess.open(MILL_PATH, FileAccess.READ)
+		if file != null:
+			var parsed: Variant = JSON.parse_string(file.get_as_text())
+			if parsed is Dictionary:
+				saved = parsed
+	windmill.restore(saved)

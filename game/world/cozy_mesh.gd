@@ -91,6 +91,45 @@ static func at(p: Vector3, b := Basis.IDENTITY) -> Transform3D:
 	return Transform3D(b, p)
 
 
+## A flat four-sided face a, b, c, d (in order round its edge), facing
+## the side `normal` points to.
+func quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, normal: Vector3, colour: Color) -> void:
+	quad_normals(a, b, c, d, [normal, normal, normal, normal], colour)
+
+
+## A four-sided face with a normal at each corner, for a curved surface
+## drawn smooth; it faces the side of the corners' mean normal.
+func quad_normals(a: Vector3, b: Vector3, c: Vector3, d: Vector3, normals: Array, colour: Color) -> void:
+	var base := _verts.size()
+	var c_lin := colour.srgb_to_linear()
+	var points := [a, b, c, d]
+	for k in 4:
+		_verts.append(points[k])
+		_normals.append((normals[k] as Vector3).normalized())
+		_colours.append(c_lin)
+	var mean: Vector3 = normals[0] + normals[1] + normals[2] + normals[3]
+	# The engine draws a triangle's front where its corners run clockwise
+	# seen from that side.
+	if (b - a).cross(c - a).dot(mean) <= 0.0:
+		_index.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+	else:
+		_index.append_array([base, base + 2, base + 1, base, base + 3, base + 2])
+
+
+## A primitive shape seen from inside: its faces turned inward, for the
+## inner side of a hollow thing.
+func add_inside(mesh: PrimitiveMesh, xf: Transform3D, colour: Color) -> void:
+	var start_v := _verts.size()
+	var start_i := _index.size()
+	add(mesh, xf, colour)
+	for i in range(start_v, _verts.size()):
+		_normals[i] = -_normals[i]
+	for t in range(start_i, _index.size(), 3):
+		var keep := _index[t + 1]
+		_index[t + 1] = _index[t + 2]
+		_index[t + 2] = keep
+
+
 func is_empty() -> bool:
 	return _verts.is_empty()
 
