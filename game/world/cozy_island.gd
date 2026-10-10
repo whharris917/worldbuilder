@@ -1,5 +1,5 @@
 class_name CozyIsland
-extends Node3D
+extends BuildWorld
 ## An island about 300 m across in a calm sea under an afternoon sun: a
 ## beach all round, meadows above it with hills, woods, rocky outcrops
 ## and wild flowers, dunes to the north, a cabin, a dock. A
@@ -102,7 +102,6 @@ const LANTERNS := 5
 const STEPS := ["Flat colours", "Toon light", "Coloured shade", "Soft shadows", "Outlines",
 		"Gentle grade", "Glow", "Haze", "Soft focus", "Storybook sky", "Foam line"]
 
-var player: Player
 var sky: IslandSky
 var clouds: IslandClouds
 var workshop: Workshop

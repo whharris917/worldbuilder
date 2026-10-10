@@ -1,5 +1,5 @@
 class_name CozyTest
-extends Node3D
+extends BuildWorld
 ## Cozy Island (Test): a small flat island in a calm sea, for working on
 ## the cozy island's models one at a time where nothing else stands
 ## near them. Grass on a level top, a ring of beach round it, a campsite
@@ -21,9 +21,13 @@ extends Node3D
 ## for the direction) when they are on. The windmill turns to it and is
 ## driven by it; its gasworks (GasWorks) is the machine on its spindle.
 ## The mill's and the gasworks' state is kept in MILL_PATH.
+##
+## The player builds here as on the cozy island (Workshop, B to build),
+## what they build kept in BUILD_PATH, apart from the island's.
 
 const STATE_PATH := "user://cozy_test.json"
 const MILL_PATH := "user://cozy_test_mill.json"
+const BUILD_PATH := "user://cozy_test_build.json"
 const R := 44.0                         # the coast's mean radius, at the profile's 1.0
 const TOP := 1.2                        # the level top's height over the sea
 const SEABED := -3.5
@@ -35,10 +39,10 @@ const CAMP_BEARING := 90.0              # degrees round from +x toward +z: due s
 const CAMP_OUT := 0.74                  # the campsite's centre, a share of the radius out
 const GROUND_OUT := 90.0                # how far the ground's disc reaches
 
-var player: Player
 var sky: IslandSky
 var campsite: Campsite
 var windmill: Windmill
+var workshop: Workshop
 var _panel: BenchPanel
 var _env: Environment
 var _mats: Array[Dictionary] = []       # the model materials and their outlines
@@ -101,6 +105,8 @@ func _ready() -> void:
 	# The mill's stairs are steeper than the player's usual limit.
 	player.floor_max_angle = deg_to_rad(50.0)
 	player.floor_snap_length = 0.35
+	workshop = Workshop.new(self, BUILD_PATH, false)
+	add_child(workshop)
 	_build_panels()
 	LabGraphics.attach(self, _panel.panel("Graphics"), func(g: GraphicsSettings) -> void:
 		RenderingServer.directional_soft_shadow_filter_set_quality(
@@ -218,6 +224,30 @@ func material(lined := true, inside := false) -> StandardMaterial3D:
 		line.grow_amount = 0.025
 		line.disable_receive_shadows = true
 		line.albedo_color = Color(0.26, 0.2, 0.16)
+		s["line"] = line
+	_mats.append(s)
+	return m
+
+
+## A built piece's material: its flat colour, reached by the Look
+## panel's switches, outlined unless `extra` says "no_line".
+func surface(_dir: String, scale: float, _real: Color, rough: float, flat: Color,
+		extra: Dictionary = {}) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = flat
+	m.roughness = rough
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE * scale
+	var s := {"mat": m}
+	if not extra.get("no_line", false):
+		var line := StandardMaterial3D.new()
+		line.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		line.cull_mode = BaseMaterial3D.CULL_FRONT
+		line.grow = true
+		line.grow_amount = 0.025
+		line.disable_receive_shadows = true
+		line.albedo_color = flat.darkened(0.55)
 		s["line"] = line
 	_mats.append(s)
 	return m
@@ -552,7 +582,7 @@ func _process(delta: float) -> void:
 		_hovered = view
 		if view != null and view.has_method("show_label"):
 			view.call("show_label", true)
-	if player.position.y < -1.5 or (Input.is_physical_key_pressed(KEY_R) and not player.input_locked):
+	if player.position.y < -1.5 or (Input.is_physical_key_pressed(KEY_R) and not player.input_locked and player.look_held_by == null):
 		_put_player()
 
 

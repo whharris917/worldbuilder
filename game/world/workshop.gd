@@ -73,7 +73,10 @@ extends Node3D
 ##
 ## The light is one for every piece (BenchLight), travelling slowly. A
 ## radiometer rings its bell when its vanes start, and whirs as they spin. Everything built is
-## kept in SAVE_PATH.
+## kept in the world's own save (SAVE_PATH on the cozy island).
+##
+## It stands in any BuildWorld: the world gives it the player, the
+## ground's height and the pieces' materials in its look.
 
 const SAVE_PATH := "user://cozy_island_build.json"
 const DEMO_AT := Vector3(21.3, 0.0, 108.9)   # the shuttle's track middle, in the meadow by the cabin
@@ -141,7 +144,9 @@ const NOTES := {
 }
 const AIM_NOTE := "\nE: look through it.  Right click: aim it at what you look at."
 
-var island: CozyIsland
+var island: BuildWorld
+var _save_path := SAVE_PATH
+var _demo := true
 var light := BenchLight.new()
 var scope: BenchScope
 var tiles: Array[FloorTile] = []
@@ -194,8 +199,12 @@ var _picked := StyleBoxFlat.new()
 var _plain := StyleBoxFlat.new()
 
 
-func _init(owner_island: CozyIsland) -> void:
+## `save_path` is where what is built is kept; `demo` builds the shuttle
+## on a first visit (the cozy island's).
+func _init(owner_island: BuildWorld, save_path := SAVE_PATH, demo := true) -> void:
 	island = owner_island
+	_save_path = save_path
+	_demo = demo
 	name = "Workshop"
 
 
@@ -222,7 +231,7 @@ func _ready() -> void:
 	_build_ui()
 	if not MouseMode.probe:
 		_load()
-		if not _demo_built:
+		if _demo and not _demo_built:
 			build_demo()
 
 
@@ -1404,15 +1413,15 @@ func _save() -> void:
 				link["local"] = [local.x, local.y, local.z]
 			entry["link"] = link
 		list.append(entry)
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var file := FileAccess.open(_save_path, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify({"floor": floor_list, "pieces": list, "demo": DEMO_VERSION if _demo_built else 0}))
 
 
 func _load() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
+	if not FileAccess.file_exists(_save_path):
 		return
-	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var file := FileAccess.open(_save_path, FileAccess.READ)
 	if file == null:
 		return
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
