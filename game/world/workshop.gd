@@ -108,10 +108,11 @@ extends Node3D
 ## to come from somewhere: the menu offers the sun collector in place of
 ## the lantern, the push and pull lamps and the track, the crystals read
 ## light without sending any, and the pieces' texts say so (SUN_TEXTS).
-## A collector is a lantern-bodied piece with a round mirror behind its
-## tube, turned each frame to send the sun, as it stood when the
-## collector was last aimed or set down (meta "sun_set"), along the
-## tube.
+## A collector is a parabolic dish on a fork mount above a lantern-bodied
+## turning head (SunDish), the dish turned each frame to face the sun as
+## it stood when the collector was last aimed or set down (meta
+## "sun_set"); the light comes down the mount to the head, which aims the
+## beam.
 
 const SAVE_PATH := "user://cozy_island_build.json"
 const DEMO_AT := Vector3(21.3, 0.0, 108.9)   # the shuttle's track middle, in the meadow by the cabin
@@ -236,9 +237,9 @@ const DETAILS := {
 ## Drafts.
 const SUN_TEXTS := {
 	"collector": {
-		"note": "Sun collector\nA mirror sends the sun along a lens tube and out as a beam, while its shutter is open (a click). A right click aims the beam and sets the mirror for the sun where it stands now; as the sun moves on, the beam fades.",
-		"menu": "a mirror and a lens tube that send the sun out as a beam.",
-		"details": "The first light that can be made: a round mirror sixty centimetres across catches the sun and sends it along a lens tube, which squeezes it into a beam ten centimetres across. At noon in clear air it carries about two hundred watts; less as the sun sinks, nothing in shadow or at night. A click opens and shuts its shutter. A right click aims the beam, and sets the mirror for where the sun is now; the sun moves fifteen degrees an hour, and three degrees off its setting the mirror misses the tube, so aim it again from time to time. The beam runs straight and narrow, and fades as it goes, losing half its light about every five and a half metres: at noon it lights a crystal some thirty metres off, less as the sun sinks. A lens along the way makes it fade half as fast from there.",
+		"note": "Sun collector\nA dish gathers the sun and sends it down its mount and out of the head as a beam, while the shutter is open (a click). A right click aims the beam and turns the dish to the sun where it stands now; as the sun moves on, the beam fades.",
+		"menu": "a mirrored dish that gathers the sun into a beam.",
+		"details": "The first light that can be made. A dish two metres across, its face a paraboloid of polished metal, gathers the sun to a point eighty centimetres in front of it; a small curved mirror held on three struts just short of that point sends the light back through a hole in the dish's middle, along the axle, down the fork and the column to the head, which sends it out as a beam wherever it is aimed. At noon in clear air it carries over two kilowatts; less as the sun sinks, nothing in shadow or at night. A click opens and shuts its shutter. A right click aims the beam, and turns the dish to the sun where it is now; the sun moves fifteen degrees an hour, and three degrees off it the dish's light misses the hole, so turn it again from time to time. The beam runs straight and narrow, and fades as it goes, losing half its light about every five and a half metres: at noon it lights a crystal some fifty metres off, less as the sun sinks. A lens along the way makes it fade half as fast from there.",
 	},
 	"and": {"note": "AND crystal\nGlows while every beam striking it is lit. It sends no light of its own.",
 		"menu": "glows while every beam striking it is lit; it sends no light.",
@@ -260,7 +261,7 @@ const SUN_TEXTS := {
 	"fall": {"menu": "one flash when a beam striking it goes dark; sends no light."},
 	"gate": {"details": "The piece that lets one beam govern another. A brass ring with a glass bulb above it: a beam through the ring passes only while a lit beam strikes the bulb (three watts or more). Gates in a row along one beam make an AND; two beams brought to the same place make an OR. A right click turns its ring toward what you look at."},
 	"closing_gate": {"details": "Like the opening gate, but it stops the beam through its ring while its bulb is lit, and lets it pass while the bulb is dark: the NOT. A right click turns its ring toward what you look at."},
-	"mirror": {"details": "A silvered glass that turns a beam off its face, losing a tenth of its light. A right click aims the beam it sends on."},
+	"mirror": {"details": "A silvered glass that turns a beam off its face without losing any of it. A right click aims the beam it sends on."},
 	"splitter": {"details": "Half-silvered glass: a beam striking it goes on straight through and is turned aside as well, half its light each way."},
 	"lens": {"menu": "a beam passing through it fades half as fast from there.",
 		"details": "A beam passing through a lens loses a twentieth of its light there, and from there fades half as fast, so it carries a signal twice as far again."},
@@ -282,6 +283,8 @@ var brass: StandardMaterial3D
 var copper: StandardMaterial3D
 var silver: StandardMaterial3D
 var glass: StandardMaterial3D
+var _polish: StandardMaterial3D         # a collector's dish
+var _iron: StandardMaterial3D           # its back and mount
 var building := false
 var item := 0
 var lift := 0.0
@@ -369,6 +372,9 @@ func _ready() -> void:
 	copper.metallic = 0.9
 	silver = island.surface("", 1.0, Color(0.78, 0.78, 0.8), 0.22, Color(0.88, 0.9, 0.95))
 	silver.metallic = 0.9
+	_polish = island.surface("", 1.0, Color(0.9, 0.92, 0.95), 0.08, Color(0.92, 0.94, 0.98))
+	_polish.metallic = 0.95
+	_iron = island.surface("", 1.0, Color(0.3, 0.32, 0.33), 0.55, Color(0.4, 0.43, 0.45))
 	glass = StandardMaterial3D.new()
 	glass.albedo_color = Color(0.85, 0.95, 1.0, 0.18)
 	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -471,45 +477,9 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 		part.set_meta("beam", BEAMS[key])
 	if key == "collector":
 		part.set_meta("collector", true)
-		var mirror := Node3D.new()
-		mirror.name = "SunMirror"
-		mirror.set_meta(StaticMerge.MOVES, true)
-		var disc := CylinderMesh.new()
-		disc.top_radius = BenchLight.MIRROR_D * 0.5
-		disc.bottom_radius = BenchLight.MIRROR_D * 0.5
-		disc.height = 0.025
-		disc.radial_segments = 24
-		disc.material = silver
-		var face := MeshInstance3D.new()
-		face.mesh = disc
-		mirror.add_child(face)
-		var rim := TorusMesh.new()
-		rim.inner_radius = BenchLight.MIRROR_D * 0.5 - 0.01
-		rim.outer_radius = BenchLight.MIRROR_D * 0.5 + 0.025
-		rim.material = brass
-		var ring := MeshInstance3D.new()
-		ring.mesh = rim
-		mirror.add_child(ring)
-		var back := CylinderMesh.new()
-		back.top_radius = BenchLight.MIRROR_D * 0.5
-		back.bottom_radius = BenchLight.MIRROR_D * 0.5
-		back.height = 0.02
-		back.material = timber
-		var board := MeshInstance3D.new()
-		board.mesh = back
-		board.position.y = -0.022
-		mirror.add_child(board)
-		part.add_child(mirror)
-		part.set_meta("mirror", mirror)
-		var arm := CylinderMesh.new()
-		arm.top_radius = 0.015
-		arm.bottom_radius = 0.015
-		arm.height = 1.0
-		arm.material = brass
-		var strut := MeshInstance3D.new()
-		strut.mesh = arm
-		part.add_child(strut)
-		part.set_meta("mirror_arm", strut)
+		var dish := SunDish.new(_polish, _iron, brass)
+		part.add_child(dish)
+		part.set_meta("dish", dish)
 	return part
 
 
@@ -525,21 +495,12 @@ func _text(table: Dictionary, which: String, key: String) -> String:
 	return table.get(key, "")
 
 
-## A collector's mirror: behind its tube, turned to send the sun as it
-## stood when the collector was set along the tube, on a brass arm.
-func _turn_mirror(part: LumenPart) -> void:
-	var mirror: Node3D = part.get_meta("mirror")
-	var forward := part.forward()
-	var sun_set: Vector3 = part.get_meta("sun_set", light.sun)
-	var at := part.global_position - forward * 0.5
-	var n := (forward + sun_set).normalized()
-	if n.length_squared() < 0.5:
-		n = Vector3.UP
-	mirror.global_transform = Transform3D(CozyMesh.aligned(n), at)
-	part.set_meta("mirror_at", at)
-	var strut: MeshInstance3D = part.get_meta("mirror_arm")
-	var from := part.global_position
-	strut.global_transform = Transform3D(CozyMesh.aligned(at - from) * Basis.from_scale(Vector3(1.0, from.distance_to(at), 1.0)), (from + at) * 0.5)
+## A collector's dish turned to the sun as it stood when the collector
+## was last aimed or set down.
+func _turn_dish(part: LumenPart) -> void:
+	var dish: SunDish = part.get_meta("dish")
+	dish.point_at(part.get_meta("sun_set", light.sun))
+	part.set_meta("mirror_at", dish.centre())
 
 
 ## A piece (a gate's sensor too) on collision layer `layer`.
@@ -1506,7 +1467,7 @@ func _process(delta: float) -> void:
 		_follow_aim()
 	for piece in pieces:
 		if piece.has_meta("collector") and piece.visible:
-			_turn_mirror(piece as LumenPart)
+			_turn_dish(piece as LumenPart)
 	if building and free and _aiming == null and not _menu_open:
 		_find_place()
 	elif _ghost != null:
@@ -1824,7 +1785,7 @@ func _take_pictures() -> void:
 			thing.call("aim", 0.6 + (PI if KINDS.get(key, -1) == LumenPart.Kind.LANTERN else 0.0), -0.12)
 		if thing.has_meta("collector"):
 			thing.set_meta("sun_set", Vector3(-0.4, 0.8, 0.45).normalized())
-			_turn_mirror(thing as LumenPart)
+			_turn_dish(thing as LumenPart)
 		var box := AABB()
 		var first := true
 		for v: Node in thing.find_children("*", "MeshInstance3D", true, false):

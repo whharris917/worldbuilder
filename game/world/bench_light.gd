@@ -34,22 +34,22 @@ extends Node3D
 ##
 ## Sunlight (`sun_rules`, the test island's): no light comes from
 ## nowhere. Its only source is a sun collector, a lantern-bodied piece
-## with meta "collector": a mirror reflecting the sun into a lens tube.
+## with meta "collector" under a parabolic dish (SunDish).
 ## Its beam carries power: the direct sunlight (`sunlight`, watts a
 ## square metre, set by the world from the sun's height) on the mirror's
-## area (MIRROR_D across), less COLLECT, while its shutter is open,
+## area (SunDish.DISH_D across), less COLLECT, while its shutter is open,
 ## nothing while its mirror is in shadow (a ray toward the sun meets
-## anything). The mirror is set for the sun as it stood when the
-## collector was last aimed (meta "sun_set"); as the sun moves on, the
-## gathered light slides off the tube, falling to nothing ACCEPT radians
-## off.
+## anything). The dish faces the sun as it stood when the collector was
+## last aimed (meta "sun_set"); as the sun moves on, the gathered light
+## slides off the hole it is sent through, falling to nothing ACCEPT
+## radians off.
 ##
 ## The beam stays a narrow, focused line (no spreading, unlike real
 ## sunlight: a choice for play) and fades with the distance it has run:
 ## its power falls by e every FADE metres, halving about every 5.5 m. A
 ## piece in its path catches all of it: a crystal, a gate's bulb or a
 ## radiometer responds while what reaches it is THRESHOLD watts or more.
-## A gate's ring passes it whole; a mirror loses a tenth; a splitter
+## A gate's ring and a mirror pass it whole; a splitter
 ## sends half each way; past a lens the beam fades half as fast. Crystals
 ## and every other part only read light; none sends any. A beam is traced
 ## until it carries too little to matter.
@@ -67,8 +67,7 @@ const HISTORY := 30.0
 const BEAM := Color(1.0, 0.72, 0.22)
 const PUSH := Color(1.0, 0.24, 0.18)
 const PULL := Color(0.3, 0.95, 0.4)
-const MIRROR_D := 0.6                   # a collector's mirror, m across
-const COLLECT := 0.8                    # the share of the light the mirror and lenses pass
+const COLLECT := 0.75                   # the share of the light the dish, its mirrors and lenses pass
 const ACCEPT := 0.052                   # 3 degrees: the sun this far off its setting and the tube gets nothing
 const THRESHOLD := 3.0                  # watts reaching a piece for it to respond
 const FADE := 8.0                       # metres over which a beam's power falls by e
@@ -238,7 +237,7 @@ func collector_power(p: LumenPart) -> float:
 	q.exclude = [p.get_rid()]
 	if not get_world_3d().direct_space_state.intersect_ray(q).is_empty():
 		return 0.0
-	return sunlight * PI * MIRROR_D * MIRROR_D * 0.25 * COLLECT * align
+	return sunlight * PI * SunDish.DISH_D * SunDish.DISH_D * 0.25 * COLLECT * align
 
 
 func _record_power(p: LumenPart, power: float) -> void:
@@ -334,7 +333,6 @@ func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, f
 				if dir.dot(n) >= 0.0:
 					return
 				dir = (dir - 2.0 * dir.dot(n) * n).normalized()
-				gain *= 0.9
 			OpticElement.Kind.SPLITTER:
 				var through: Array[RID] = [e.get_rid()]
 				_trace_sun(source, p, dir, gain * 0.5, faded, rate, s, through, depth + 1, e == held)
