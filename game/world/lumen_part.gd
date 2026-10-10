@@ -780,25 +780,14 @@ func _build_radiometer() -> void:
 
 
 ## A spinstone's crystal into `m`, flat-faced: a prism of four to eight
-## uneven sides, pointed at its ends (one end sometimes broken flat),
-## sometimes with a smaller twin grown into it at a slant; kept within
+## uneven sides, pointed at its ends (one end sometimes broken flat); one
+## crystal alone, as a second grown into it shows through the glassy
+## stone or stands out as a growth; kept within
 ## the rotor's frame (STONE_R round the spindle, STONE_LOW to STONE_HIGH
 ## up it), so it turns clear of the posts and bearings.
 func _grow_spinstone(m: CozyMesh, rng: RandomNumberGenerator) -> void:
 	var faces: Array = []
-	var host := rng.randf_range(0.04, 0.062)
-	_crystal_faces(faces, rng, host, Transform3D.IDENTITY)
-	if rng.randf() < 0.35:
-		# A twin grows out of the host's side, leaning outward, only its
-		# root inside the host (seen through the glassy stone otherwise).
-		var a := rng.randf() * TAU
-		var side := Vector3(cos(a), 0.0, sin(a))
-		var lean := rng.randf_range(0.5, 0.85)
-		var axis := (side * sin(lean) + Vector3.UP * cos(lean)).normalized()
-		var root := side * host * 0.62 + Vector3.UP * rng.randf_range(-0.02, 0.035)
-		var turn := Basis(Vector3.UP.cross(axis).normalized(), lean)
-		_crystal_faces(faces, rng, rng.randf_range(0.016, 0.024),
-				Transform3D(turn.scaled(Vector3.ONE * 0.6), root + axis * 0.05))
+	_crystal_faces(faces, rng, rng.randf_range(0.04, 0.062), Transform3D.IDENTITY)
 	# Fitted to the frame: narrowed round the spindle, squeezed between
 	# the bearings, as needed.
 	var widest := 0.0
