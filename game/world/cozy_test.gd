@@ -68,9 +68,13 @@ var _clock := 0.0
 var _spawn := Vector3.ZERO
 var _spawn_facing := 0.0
 var _was_soft := 0
-## The hour of the day, 0 to 24.
+## The hour of the day, 0 to 24, and the day, counted from the first
+## morning (the moon's orbit runs on them: MoonOrbit).
 var hour := 10.0
+var day := 0
 var _hour_saved := -1.0
+var _moon_note: Label
+var _eclipse_note: Label
 var _sky_left := 0.0
 var _slider_left := 0.0
 var _time_note: Label
@@ -189,6 +193,7 @@ func _build_panels() -> void:
 	_panel.note(look, "The sun given a larger size in the sky, so shadows blur farther from what casts them. It costs a good deal of drawing time.")
 	_panel.switch(look, "Storybook sky", false, redraw)
 	var light := _panel.panel("Sun and moon")
+
 	var time := _panel.panel("Time")
 	_panel.slider(time, "Time of day", 0.0, 24.0, 0.05, 10.0, func(v: float) -> void:
 		hour = v
@@ -198,9 +203,10 @@ func _build_panels() -> void:
 	_panel.note(time, "How many minutes of play an hour of the day takes. At ten, a day lasts four hours; the sun moves a degree and a half a minute.")
 	_time_note = _panel.note(time, "")
 	_panel.slider(light, "Sun brightness", 0.0, 3.0, 0.01, 1.4, redraw)
-	_panel.slider(light, "Moon height", -30.0, 85.0, 0.5, 25.0, redraw)
-	_panel.slider(light, "Moon direction", 0.0, 360.0, 1.0, 120.0, redraw)
-	_panel.note(light, "The sun follows the hour (the Time panel). Brightness is how bright it looks; the light it gives the collectors follows from its height. Moon heights in degrees above the horizon; directions from north toward east. The campsite is on the south beach.")
+	_panel.note(light, "The sun follows the hour (the Time panel). Brightness is how bright it looks; the light it gives the collectors follows from its height. The moon goes round in four and a half days, rising later each day, and now and then passes in front of the sun. The campsite is on the south beach.")
+	_panel.button(light, "Go to the next eclipse", _to_next_eclipse)
+	_eclipse_note = _panel.note(light, "")
+	_moon_note = _panel.note(light, "")
 	var wind := _panel.panel("Wind")
 	_panel.slider(wind, "Wind speed (m/s)", 0.0, 20.0, 0.5, 7.0, redraw)
 	_panel.slider(wind, "Wind from", 0.0, 360.0, 1.0, 225.0, redraw)
@@ -288,20 +294,66 @@ static func sunlight_at(height: float) -> float:
 ## The sky, the night lights and the collectors' sunlight for the hour.
 func _update_sky() -> void:
 	var at := sun_at(hour)
-	sky.set_state(at.x, at.y, _value("Sun brightness"), _value("Moon height"), _value("Moon direction"),
-			_on("Storybook sky"))
+	var t := day + hour / 24.0
+	var moon := MoonOrbit.moon_at(t)
+	var left := 1.0 - MoonOrbit.covered(t)
+	sky.set_state(at.x, at.y, _value("Sun brightness"), moon.x, moon.y, _on("Storybook sky"), left)
 	campsite.set_night(1.0 - sky.daylight)
 	_env.fog_light_color = sky.haze_colour
 	workshop.light.sun = sky.sun.global_basis.z.normalized()
-	workshop.light.sunlight = sunlight_at(at.x)
+	workshop.light.sunlight = sunlight_at(at.x) * left
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.to_sun = workshop.light.sun
 		row.to_moon = sky.moon_direction()
 	_stones_note.text = gimbals.report() + "\n" + pure_stones.report() + "\n" + built_stones.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
-	_time_note.text = "%02d:%02d. %s" % [floori(hour), floori(fmod(hour, 1.0) * 60.0),
+	_moon_note.text = _moon_words(t, moon, left)
+	_time_note.text = "Day %d, %02d:%02d. %s" % [day + 1, floori(hour), floori(fmod(hour, 1.0) * 60.0),
 			("The sun is %d degrees up in the %s; its direct light %d watts a square metre." % [roundi(at.x), where, roundi(workshop.light.sunlight)])
 			if at.x > 0.0 else "The sun is down."]
+
+
+## The moon in words: its age and shape, where it stands, and how much
+## of the sun it covers.
+func _moon_words(t: float, moon: Vector2, left: float) -> String:
+	var age := MoonOrbit.age(t)
+	var share := age / MoonOrbit.MONTH
+	var shape := "new"
+	if share > 0.03 and share < 0.97:
+		var lit := (1.0 - cos(share * TAU)) * 0.5
+		shape = "full" if lit > 0.97 else ("a crescent" if lit < 0.35 else ("half" if lit < 0.65 else "gibbous"))
+		if shape != "full":
+			shape = ("waxing " if share < 0.5 else "waning ") + shape
+	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(moon.y / 45.0) % 8]
+	var words := "The moon is new; " if shape == "new" else "The moon is %s, %.1f days old; " % [shape, age]
+	words += ("%d degrees up in the %s." % [roundi(moon.x), where]) if moon.x > 0.0 else "below the horizon."
+	if left < 1.0:
+		words += " It covers %d%% of the sun." % roundi((1.0 - left) * 100.0)
+	return words
+
+
+## The day and hour set an hour before the next eclipse seen from the
+## island begins.
+func _to_next_eclipse() -> void:
+	var now := day + hour / 24.0
+	var next := MoonOrbit.next_eclipse(now)
+	if next.is_empty():
+		_eclipse_note.text = "No eclipse in sight."
+		return
+	var t := float(next["start"]) - 1.0 / 24.0
+	day = floori(t)
+	hour = (t - day) * 24.0
+	(_panel.sliders["Time of day"] as HSlider).set_value_no_signal(hour)
+	var share := float(next["share"])
+	_eclipse_note.text = "The eclipse: day %d, %s to %s, deepest at %s with %s." % [floori(float(next["start"])) + 1,
+			_clock_words(float(next["start"])), _clock_words(float(next["end"])), _clock_words(float(next["deepest"])),
+			"the whole sun covered" if share >= 0.999 else "%d%% of the sun covered" % roundi(share * 100.0)]
+	_update_sky()
+
+
+static func _clock_words(t: float) -> String:
+	var h := fposmod(t, 1.0) * 24.0
+	return "%02d:%02d" % [floori(h), floori(fmod(h, 1.0) * 60.0)]
 
 
 ## ---- materials -------------------------------------------------------------
@@ -679,7 +731,10 @@ func _process(delta: float) -> void:
 		sky.follow(camera.global_position)
 	_blow(delta)
 	var pace := 1.0 / (_value("Minutes per hour") * 60.0) if _on("Time passes") else 0.0
-	hour = fposmod(hour + delta * pace, 24.0)
+	hour += delta * pace
+	if hour >= 24.0:
+		hour -= 24.0
+		day += 1
 	workshop.light.hours_per_second = pace
 	_sky_left -= delta
 	if _sky_left <= 0.0:
@@ -760,6 +815,7 @@ func _save_mill() -> void:
 	if file != null:
 		var state := windmill.state()
 		state["hour"] = hour
+		state["day"] = day
 		file.store_string(JSON.stringify(state))
 
 
@@ -774,3 +830,4 @@ func _load_mill() -> void:
 	windmill.restore(saved)
 	if saved.has("hour"):
 		_hour_saved = fposmod(float(saved["hour"]), 24.0)
+	day = int(saved.get("day", 0))

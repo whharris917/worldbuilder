@@ -44,6 +44,8 @@ const TAU_AIR := Vector3(0.12, 0.18, 0.32)
 const MOONLIGHT := 0.18                # its energy when full and high
 const MOON_COLOUR := Color(0.62, 0.72, 1.0)
 const STAR_HOURS := 21.0
+const SUN_ACROSS := 0.533               # degrees: the sun's disc
+const MOON_ACROSS := 0.544              # degrees: the moon's
 # Sun height (degrees); sky top; horizon; haze.
 const KEYS := [
 	[-18.0, Color(0.02, 0.035, 0.1), Color(0.05, 0.08, 0.18), Color(0.04, 0.06, 0.12)],
@@ -98,6 +100,10 @@ func _init() -> void:
 	add_child(sun)
 	_sky_sun = DirectionalLight3D.new()
 	_sky_sun.sky_mode = DirectionalLight3D.SKY_MODE_SKY_ONLY
+	# The physical sky draws its disc twice the light's size across: set
+	# so the disc is as large as the real sun, and the moon's ball
+	# covers it as it should.
+	_sky_sun.light_angular_distance = SUN_ACROSS * 0.5
 	add_child(_sky_sun)
 	moonlight = DirectionalLight3D.new()
 	moonlight.shadow_enabled = true
@@ -132,6 +138,7 @@ func _build_moon() -> void:
 	for m: StandardMaterial3D in [_moon_real, _moon_story]:
 		m.disable_fog = true
 		m.disable_ambient_light = true
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	var ball := SphereMesh.new()
 	ball.radius = 1.0
 	ball.height = 2.0
@@ -271,12 +278,26 @@ static func _light(light: DirectionalLight3D, to_body: Vector3, height: float, e
 	light.visible = light.light_energy > 0.0005
 
 
-## Everything set for the sun and moon where they stand.
+## Everything set for the sun and moon where they stand. `sun_left`: the
+## share of the sun's disc not covered by the moon, 1 but in an eclipse.
+##
+## In an eclipse the sunlight and the sky's light fall with the share of
+## the disc left; the sky's colours, the stars and the island's night
+## lights follow a sun as far down as the light that is left, so near
+## the whole disc covered it is as dark as late dusk. The moon's ball is
+## drawn as dark as its unlit side, which by day the sky's light in front
+## of it hides: by day it shows as much as it is lit, and wholly where it
+## stands over the sun's disc.
 func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_height: float,
-		moon_bearing: float, story: bool) -> void:
+		moon_bearing: float, story: bool, sun_left := 1.0) -> void:
 	self.sun_height = sun_height
 	var to_sun := direction(sun_height, sun_bearing)
-	_light(sun, to_sun, sun_height, sun_energy, Color.WHITE)
+	_light(sun, to_sun, sun_height, sun_energy * sun_left, Color.WHITE)
+	# The height of a sun giving the light that is left, for the colours
+	# and the night lights: a quarter of the disc left looks like full day.
+	var seen_height := sun_height
+	if sun_left < 1.0 and sun_height > -12.0:
+		seen_height = lerpf(-12.0, sun_height, smoothstep(0.0, 0.25, sun_left))
 	_moon_dir = direction(moon_height, moon_bearing)
 	_moon_sun.look_at_from_position(Vector3.ZERO, -to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD)
 	var lit := (1.0 - to_sun.dot(_moon_dir)) * 0.5
@@ -287,13 +308,13 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 	# only cost.
 	moonlight.visible = moonlight.visible and sun_height < 0.0
 	_sky_sun.look_at_from_position(Vector3.ZERO, -to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD)
-	_sky_sun.light_energy = sun_energy
+	_sky_sun.light_energy = sun_energy * maxf(sun_left, 0.002)
 	_sky_sun.light_color = Color.WHITE if not story else \
-			Color(1.0, 0.95, 0.85).lerp(Color(1.0, 0.55, 0.3), 1.0 - smoothstep(0.0, 12.0, sun_height))
-	daylight = smoothstep(-10.0, 8.0, sun_height)
+			Color(1.0, 0.95, 0.85).lerp(Color(1.0, 0.55, 0.3), 1.0 - smoothstep(0.0, 12.0, seen_height))
+	daylight = smoothstep(-10.0, 8.0, seen_height)
 
 	sky.sky_material = _story if story else _physical
-	var key := _key(sun_height)
+	var key := _key(seen_height)
 	_story.sky_top_color = key[1]
 	_story.sky_horizon_color = key[2]
 	_story.ground_horizon_color = key[2]
@@ -301,12 +322,17 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 	haze_colour = key[3]
 
 	# The storybook moon is about three times the real one's half degree.
-	_moon_radius = MOON_D * tan(deg_to_rad(0.8 if story else 0.26))
-	_moon.material_override = _moon_story if story else _moon_real
+	_moon_radius = MOON_D * tan(deg_to_rad(0.8 if story else MOON_ACROSS * 0.5))
+	var shown: StandardMaterial3D = _moon_story if story else _moon_real
+	_moon.material_override = shown
 	_moon.visible = moon_height > -2.0
+	var over_sun := 1.0 - smoothstep(SUN_ACROSS * 0.5 + MOON_ACROSS * 0.5, SUN_ACROSS * 0.5 + MOON_ACROSS * 0.5 + 0.3,
+			rad_to_deg(acos(clampf(to_sun.dot(_moon_dir), -1.0, 1.0))))
+	var day := smoothstep(-4.0, 4.0, sun_height)
+	shown.albedo_color.a = maxf(lerpf(1.0, clampf(lit * 6.0, 0.0, 1.0), day), over_sun)
 	# Stars come out through twilight, the brightest at the sun 2 degrees
 	# down, all by 14; moonlight hides the faint ones a little.
-	var stars := smoothstep(-2.0, -14.0, sun_height) * (1.0 - 0.4 * lit * float(moon_height > 0.0))
+	var stars := smoothstep(-2.0, -14.0, seen_height) * (1.0 - 0.4 * lit * float(moon_height > 0.0))
 	for m in _star_mats:
 		m.albedo_color = Color(1, 1, 1, stars)
 	_stars_real.visible = not story and stars > 0.0
