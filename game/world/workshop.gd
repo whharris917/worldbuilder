@@ -134,14 +134,14 @@ const ITEMS := [["floor", "Floor"], ["lantern", "Lantern"], ["gate", "Opening ga
 		["on_delay", "Hourglass"], ["off_delay", "Afterglow"], ["rise", "Rising spark"], ["fall", "Falling spark"],
 		["radiometer", "Radiometer"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"],
 		["push_lamp", "Push lamp"], ["pull_lamp", "Pull lamp"], ["track", "Track and cart"],
-		["collector", "Sun collector"], ["oil_lamp", "Oil lantern"],
-		["oil_bullseye", "Bullseye lantern"], ["oil_signal", "Signal lamp"], ["oil_lighthouse", "Lighthouse lamp"],
-		["oil_carriage", "Carriage lamp"], ["oil_globe", "Globe lamp"]]
-## Oil lanterns in the designs on review (LanternLook), by key.
-const LANTERN_STYLES := {"oil_bullseye": "bullseye", "oil_signal": "signal", "oil_lighthouse": "lighthouse",
-		"oil_carriage": "carriage", "oil_globe": "globe"}
+		["collector", "Sun collector"], ["oil_bullseye", "Bullseye lantern"], ["oil_globe", "Globe lamp"]]
+## The oil lanterns' designs (LanternLook), by key.
+const LANTERN_STYLES := {"oil_bullseye": "bullseye", "oil_globe": "globe"}
+## Oil lanterns of designs since let go, kept in old saves: built as these.
+const LANTERN_SINCE := {"oil_lamp": "oil_bullseye", "oil_signal": "oil_bullseye", "oil_lighthouse": "oil_bullseye",
+		"oil_carriage": "oil_bullseye"}
 ## Under sunlight only: what makes light honestly.
-const HONEST_LIGHT := ["collector", "oil_lamp", "oil_bullseye", "oil_signal", "oil_lighthouse", "oil_carriage", "oil_globe"]
+const HONEST_LIGHT := ["collector", "oil_bullseye", "oil_globe"]
 ## Free light: kept out of the menu under sunlight.
 const FREE_LIGHT := ["lantern", "push_lamp", "pull_lamp", "track"]
 const BEAMS := {"push_lamp": "push", "pull_lamp": "pull"}   # lamps sending force beams, by kind
@@ -152,9 +152,8 @@ const KINDS := {"lantern": LumenPart.Kind.LANTERN, "and": LumenPart.Kind.AND, "o
 		"not": LumenPart.Kind.NOT, "latch": LumenPart.Kind.LATCH, "on_delay": LumenPart.Kind.TON,
 		"off_delay": LumenPart.Kind.TOF, "rise": LumenPart.Kind.RISE, "fall": LumenPart.Kind.FALL,
 		"radiometer": LumenPart.Kind.RADIOMETER, "push_lamp": LumenPart.Kind.LANTERN,
-		"pull_lamp": LumenPart.Kind.LANTERN, "collector": LumenPart.Kind.LANTERN, "oil_lamp": LumenPart.Kind.LANTERN,
-		"oil_bullseye": LumenPart.Kind.LANTERN, "oil_signal": LumenPart.Kind.LANTERN, "oil_lighthouse": LumenPart.Kind.LANTERN,
-		"oil_carriage": LumenPart.Kind.LANTERN, "oil_globe": LumenPart.Kind.LANTERN}
+		"pull_lamp": LumenPart.Kind.LANTERN, "collector": LumenPart.Kind.LANTERN,
+		"oil_bullseye": LumenPart.Kind.LANTERN, "oil_globe": LumenPart.Kind.LANTERN}
 const GLASS := {"mirror": OpticElement.Kind.MIRROR, "splitter": OpticElement.Kind.SPLITTER,
 		"lens": OpticElement.Kind.LENS}
 ## Each kind's cut and setting (LumenPart's `look`); a metal by name.
@@ -167,9 +166,7 @@ const LOOKS := {
 	"push_lamp": {"lamp": "drum", "metal": "copper", "colour": Color(1.0, 0.3, 0.22)},
 	"pull_lamp": {"lamp": "drum", "metal": "silver", "colour": Color(0.35, 1.0, 0.45)},
 	"collector": {"lamp": "drum", "metal": "brass"},
-	"oil_lamp": {"lamp": "drum", "metal": "copper", "colour": Color(1.0, 0.62, 0.26)},
-	"oil_bullseye": {"lamp": "none"}, "oil_signal": {"lamp": "none"}, "oil_lighthouse": {"lamp": "none"},
-	"oil_carriage": {"lamp": "none"}, "oil_globe": {"lamp": "none"},
+	"oil_bullseye": {"lamp": "none"}, "oil_globe": {"lamp": "none"},
 }
 const FLOOR_COLOUR := Color(0.85, 0.7, 0.5)
 const GLASS_COLOUR := Color(0.85, 0.9, 1.0)
@@ -198,11 +195,10 @@ const NOTES := {
 }
 ## The menu's groups, in order, and what each piece does, one line
 ## each. Drafts.
-const GROUPS := [[["Floors", ["floor"]], ["Lamps", ["collector", "oil_lamp", "lantern", "push_lamp", "pull_lamp"]]],
+const GROUPS := [[["Floors", ["floor"]], ["Lamps", ["collector", "oil_bullseye", "oil_globe", "lantern", "push_lamp", "pull_lamp"]]],
 		[["Crystals", ["and", "or", "not", "latch", "on_delay", "off_delay", "rise", "fall"]]],
 		[["Gates", ["gate", "closing_gate"]], ["Glass", ["mirror", "splitter", "lens"]]],
-		[["Machines", ["radiometer", "track"]]],
-		[["Lanterns", ["oil_bullseye", "oil_signal", "oil_lighthouse", "oil_carriage", "oil_globe"]]]]
+		[["Machines", ["radiometer", "track"]]]]
 const MENU_NOTES := {
 	"floor": "boards two metres square, to build on.",
 	"lantern": "sends a gold beam while its shutter is open.",
@@ -255,30 +251,10 @@ const SUN_TEXTS := {
 		"menu": "a mirrored dish that gathers the sun into a beam.",
 		"details": "The first light that can be made: a burning mirror. A dish two metres across, a bowl of flat silvered-glass facets set in a brass frame and shaped as a paraboloid, sends every ray of sun striking it to one point ninety centimetres in front of it, its focus. There, in a glass globe held out on four brass arms, the light gathers and glows, and the head inside sends it out as a beam wherever it is aimed. At noon in clear air it carries over two kilowatts; less as the sun sinks, nothing in shadow or at night. A click opens and shuts its shutter. A right click aims the beam, and turns the dish to the sun where it is now (the fork turns on its toothed table, the dish on its quadrant gear); the sun moves fifteen degrees an hour, and three degrees off it the gathered light misses the globe, so turn it again from time to time. The beam runs straight and narrow, and fades as it goes, losing half its light about every five and a half metres: at noon it lights a crystal some fifty metres off. A lens along the way makes it fade half as fast from there.",
 	},
-	"oil_lamp": {
-		"note": "Oil lantern\nA flame behind a lens, sending a beam while it burns, day or night. A click lights it or puts it out; a click on its glass font fills it with oil.",
-		"menu": "a flame behind a lens: a beam day or night, while its oil lasts.",
-		"details": "An oil flame in a copper lantern, a lens before it, sending a steady beam of about sixty watts, enough to light a crystal some twenty-four metres off, by day or night. It burns oil only while lit, and a full font lasts four hours of the day; the oil can be seen falling in the glass font under the head, and while you look at the lantern a bar under your sight shows how much is left. When the oil runs out the flame goes out. A click on the lantern lights it or puts it out; a click on its font fills it.",
-	},
 	"oil_bullseye": {
 		"note": "Bullseye lantern\nAn oil lantern. A click lights it or puts it out; a click on its glass font fills it with oil.",
 		"menu": "a police bullseye lantern: a tin drum, a domed lens, a hinged cap.",
-		"details": "A police bullseye lantern: a blackened tin drum round the flame, a chimney cap above, and a domed bullseye lens on a brass collar at the front that gathers the flame's light into the beam. Its shutter is a cap on a side hinge that closes over the lens, and swings round against the drum to open. It burns oil like any oil lantern: a beam of about sixty watts by day or night while lit, a full font lasting four hours of the day, the oil seen falling in the font under the head; a click lights it or puts it out, a click on its font fills it.",
-	},
-	"oil_signal": {
-		"note": "Signal lamp\nAn oil lantern. A click lights it or puts it out; a click on its glass font fills it with oil.",
-		"menu": "a ship's signal lamp: a brass tube and a venetian shutter.",
-		"details": "A ship's signal lamp: a brass tube with the flame and a mirror inside, the lens in its front bezel, a chimney on top. Before the lens a venetian shutter of five slats turns edge-on to let the beam through and flat to stop it, as signal lamps flash. It burns oil like any oil lantern: a beam of about sixty watts by day or night while lit, a full font lasting four hours of the day, the oil seen falling in the font under the head; a click lights it or puts it out, a click on its font fills it.",
-	},
-	"oil_lighthouse": {
-		"note": "Lighthouse lamp\nAn oil lantern. A click lights it or puts it out; a click on its glass font fills it with oil.",
-		"menu": "a lighthouse lamp: a stepped lens and two doors.",
-		"details": "A lighthouse lamp in little: a copper housing with a domed reflector behind the flame and a stepped lens in front, rings stepping forward to its middle, as lighthouse lenses are made to be thin and still strong. Two doors meet over the lens, and swing back to the sides to open. It burns oil like any oil lantern: a beam of about sixty watts by day or night while lit, a full font lasting four hours of the day, the oil seen falling in the font under the head; a click lights it or puts it out, a click on its font fills it.",
-	},
-	"oil_carriage": {
-		"note": "Carriage lamp\nAn oil lantern. A click lights it or puts it out; a click on its glass font fills it with oil.",
-		"menu": "a carriage lamp: glass sides, the flame seen within, a flap over its lens.",
-		"details": "A carriage lamp: a square lantern in a brass frame with glass sides, the flame seen burning within, a peaked roof. The lens sits in a short hood at the front; a flap hinged above the hood's mouth closes over it, and lifts up and back over the hood to open. It burns oil like any oil lantern: a beam of about sixty watts by day or night while lit, a full font lasting four hours of the day, the oil seen falling in the font under the head; a click lights it or puts it out, a click on its font fills it.",
+		"details": "A police bullseye lantern: a blackened tin drum round the flame, a chimney cap above, and a domed bullseye lens on a brass collar at the front that gathers the flame's light into the beam. Its shutter is a cap on a side hinge that closes over the lens, and swings outward to lie open beside it. It burns oil like any oil lantern: a beam of about sixty watts by day or night while lit, a full font lasting four hours of the day, the oil seen falling in the font under the head; a click lights it or puts it out, a click on its font fills it.",
 	},
 	"oil_globe": {
 		"note": "Globe lamp\nAn oil lantern. A click lights it or puts it out; a click on its glass font fills it with oil.",
@@ -521,7 +497,7 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 			delay if kind == LumenPart.Kind.TON or kind == LumenPart.Kind.TOF else 0.0, look)
 	if BEAMS.has(key):
 		part.set_meta("beam", BEAMS[key])
-	if key == "oil_lamp" or LANTERN_STYLES.has(key):
+	if LANTERN_STYLES.has(key):
 		_make_font(part)
 	if LANTERN_STYLES.has(key):
 		var design := LanternLook.build(LANTERN_STYLES[key], part.head_node(),
@@ -2310,6 +2286,7 @@ func _load() -> void:
 				continue
 			var d := entry as Dictionary
 			var key := str(d.get("kind", ""))
+			key = LANTERN_SINCE.get(key, key)
 			var at: Variant = d.get("at")
 			if not (KINDS.has(key) or GLASS.has(key) or GATES.has(key) or key == "track") or not at is Array \
 					or (at as Array).size() < 3:
