@@ -48,6 +48,11 @@ extends Node3D
 ## band of wooden blocks round the brake wheel, worked by a lever on the
 ## ground floor through a rope.
 ##
+## The sound of the sails: the rush of air past a sail (swoosh_loop.wav)
+## heard from where each sail sweeps down past the tower, swelling as a
+## sail passes there and falling away between, as loud and as high as
+## the tips are fast; silent when the sails are still.
+##
 ## Built in its own frame: the door faces +z, y up from the plinth's
 ## foot. Still parts are joined into a few meshes; the cap, the sails,
 ## the upright shaft and the spindle are their own (CozyMesh).
@@ -135,6 +140,7 @@ var _brake_arm: Node3D
 var _sail_angle := 0.0
 var _fantail_angle := 0.0
 var _lift := 0.0                        # the pinion lifted out of mesh, 0 to 1
+var _swoosh: AudioStreamPlayer3D
 
 
 ## `materials`: "out" and "out_plain" for the outside (with and without
@@ -280,6 +286,18 @@ func _physics_process(delta: float) -> void:
 	var to_wind := Vector3(sin(deg_to_rad(cap_facing)), 0.0, -cos(deg_to_rad(cap_facing)))
 	var local := global_basis.inverse() * to_wind
 	_cap.rotation.y = atan2(local.x, local.z)
+
+
+## The sails' swoosh, each frame: a swell as each sail passes the bottom.
+func _process(_delta: float) -> void:
+	var tip := absf(omega) * SAIL_R
+	var near := 0.0
+	for k in 4:
+		var off := wrapf(_sail_angle + PI * 0.5 * k - PI, -PI, PI)
+		near += exp(-(off * off) / (0.45 * 0.45))
+	var loud := clampf(tip / 25.0, 0.0, 1.2) * near
+	_swoosh.volume_db = linear_to_db(maxf(loud, 0.0001)) - 4.0
+	_swoosh.pitch_scale = clampf(0.5 + tip / 30.0, 0.5, 2.0)
 
 
 ## ---- helpers ----------------------------------------------------------------
@@ -814,6 +832,19 @@ func _build_cap() -> void:
 	_cogs(shaft, BRAKE_COGS, BRAKE_R - 0.06, Vector3(0.06, 0.18, 0.1), brake * CozyMesh.at(Vector3(0, -0.21, 0)), Color(0.72, 0.58, 0.4))
 	_view(_spin, "Shaft", shaft.commit(mats["in"]))
 	_sail_view = _view(_spin, "Sails", ArrayMesh.new())
+	# Where a sail sweeps down past the tower, in the cap's frame.
+	_swoosh = AudioStreamPlayer3D.new()
+	_swoosh.position = HUB + Vector3(0.0, -SAIL_R * 0.75 * cos(deg_to_rad(TILT)), SAIL_R * 0.75 * sin(deg_to_rad(TILT)) + 0.6)
+	_swoosh.unit_size = 10.0
+	_swoosh.volume_db = -80.0
+	if DisplayServer.get_name() != "headless":
+		var loop := load("res://audio/swoosh_loop.wav") as AudioStreamWAV
+		loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		loop.loop_begin = 0
+		loop.loop_end = int(loop.get_length() * loop.mix_rate)
+		_swoosh.stream = loop
+		_swoosh.autoplay = true
+	_cap.add_child(_swoosh)
 	set_cloth(cloth)
 
 

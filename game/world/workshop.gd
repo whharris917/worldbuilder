@@ -98,7 +98,7 @@ extends Node3D
 ## (DEMO_VERSION) has it built afresh.
 ##
 ## The light is one for every piece (BenchLight), travelling slowly. A
-## radiometer rings its bell when its vanes start, and whirs as they spin. Everything built is
+## radiometer whirs softly as its vanes spin. Everything built is
 ## kept in the world's own save (SAVE_PATH on the cozy island).
 ##
 ## It stands in any BuildWorld: the world gives it the player, the
@@ -159,7 +159,7 @@ const NOTES := {
 	"off_delay": "Afterglow crystal, %s s\nShines while a beam striking it is lit, and that long after. T: change the time.",
 	"rise": "Rising spark\nOne flash when a beam striking it lights.",
 	"fall": "Falling spark\nOne flash when a beam striking it goes dark.",
-	"radiometer": "Radiometer\nIts vanes spin in the light; a bell rings as they start.",
+	"radiometer": "Radiometer\nIts vanes spin in the light, whirring softly.",
 	"gate": "Opening gate\nLets a beam through its ring while a lit beam strikes the bulb above it.",
 	"closing_gate": "Closing gate\nStops a beam at its ring while a lit beam strikes the bulb above it.",
 	"push_lamp": "Push lamp\nIts red beam on a cart's copper ball pushes the cart along its track, away from the lamp.\nA click opens or closes it; a right click aims it.",
@@ -193,7 +193,7 @@ const MENU_NOTES := {
 	"mirror": "turns a beam off its silvered face.",
 	"splitter": "sends a beam on through and aside, each with half its reach.",
 	"lens": "a beam through it reaches twice as far again.",
-	"radiometer": "its vanes spin in the light; a bell rings as they start.",
+	"radiometer": "its vanes spin in the light, whirring softly.",
 	"track": "a cart on rails, driven by push and pull beams on its copper ball.",
 }
 ## Each piece's details, opened from its card. Drafts.
@@ -215,7 +215,7 @@ const DETAILS := {
 	"mirror": "A silvered glass that turns a beam off its face as a mirror turns light, losing a little of the beam's reach. A right click aims the beam it sends on.",
 	"splitter": "Half-silvered glass. A beam striking it goes on straight through and is turned aside as well, each with half the reach.",
 	"lens": "A beam passing through it reaches twice as far again, for carrying a signal across a distance.",
-	"radiometer": "Four vanes on a needle in a glass bulb, dark on one face and bright on the other. A lit beam striking the bulb spins them, faster the more light, and a bell rings as they start, so a signal can be heard.",
+	"radiometer": "Four vanes on a needle in a glass bulb, dark on one face and bright on the other. A lit beam striking the bulb spins them, faster the more light, with a soft whir.",
 	"track": "Sixteen metres of track with a cart on it, carrying a copper ball on a pole. Red beams on the ball push the cart away from their lamp and green ones pull it toward theirs, up to eight metres a second; gold beams do nothing to it.",
 }
 const MENU_HELP := ""
@@ -238,7 +238,7 @@ var building := false
 var item := 0
 var lift := 0.0
 
-var _bells := {}                        # radiometer -> [was spinning, speaker]
+var _whirs := {}                        # radiometer -> its whir's speaker
 var _aiming: Node3D = null
 var _aim_before := Vector2.ZERO
 var _rods_due := false
@@ -382,10 +382,6 @@ func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0)
 	light.add(piece)
 	relabel(piece)
 	if piece is LumenPart and (piece as LumenPart).kind == LumenPart.Kind.RADIOMETER:
-		var bell := AudioStreamPlayer3D.new()
-		bell.stream = load("res://audio/chime.wav") if DisplayServer.get_name() != "headless" else null
-		bell.unit_size = 6.0
-		piece.add_child(bell)
 		var whir := AudioStreamPlayer3D.new()
 		if DisplayServer.get_name() != "headless":
 			var loop := load("res://audio/radiometer_whir_loop.wav") as AudioStreamWAV
@@ -395,9 +391,9 @@ func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0)
 			whir.stream = loop
 			whir.autoplay = true
 		whir.volume_db = -80.0
-		whir.unit_size = 3.0
+		whir.unit_size = 1.5
 		piece.add_child(whir)
-		_bells[piece] = [false, bell, whir]
+		_whirs[piece] = whir
 	_rods_due = true
 	if piece is BeamCart:
 		_clear_ground()
@@ -443,7 +439,7 @@ func remove_piece(piece: Node3D) -> void:
 		scope.leave()
 	pieces.erase(piece)
 	light.remove(piece)
-	_bells.erase(piece)
+	_whirs.erase(piece)
 	links.erase(piece)
 	for target: Dictionary in links.values():
 		if target.get("piece") == piece:
@@ -1366,14 +1362,11 @@ func _physics_process(dt: float) -> void:
 		if int(r[2]) <= 0:
 			_reaim.remove_at(i)
 			changed()
-	for r: LumenPart in _bells:
-		var b: Array = _bells[r]
-		if r.powered and not bool(b[0]):
-			BeachSite._play(b[1] as AudioStreamPlayer3D, 1.0)
-		b[0] = r.powered
-		# The vanes' whir, as loud and high as they spin.
-		var whir := b[2] as AudioStreamPlayer3D
-		whir.volume_db = linear_to_db(clampf(r.spin, 0.0001, 1.0)) - 6.0
+	for r: LumenPart in _whirs:
+		# The vanes' whir, as loud and high as they spin: a soft sound,
+		# heard close by.
+		var whir := _whirs[r] as AudioStreamPlayer3D
+		whir.volume_db = linear_to_db(clampf(r.spin, 0.0001, 1.0)) - 22.0
 		whir.pitch_scale = 0.6 + 0.6 * r.spin
 
 

@@ -18,7 +18,8 @@ extends BuildWorld
 ##
 ## The wind is the world's: a speed and the bearing it blows from, set on
 ## the Wind panel, with gusts (two slow noises, one for the speed, one
-## for the direction) when they are on. The windmill turns to it and is
+## for the direction) when they are on. It is heard everywhere, softly
+## (wind_loop.wav), louder and a little higher as it blows harder. The windmill turns to it and is
 ## driven by it; its gasworks (GasWorks) is the machine on its spindle.
 ## The mill's and the gasworks' state is kept in MILL_PATH.
 ##
@@ -55,6 +56,7 @@ var _spawn := Vector3.ZERO
 var _spawn_facing := 0.0
 var _was_soft := 0
 var _gust := FastNoiseLite.new()
+var _wind_sound: AudioStreamPlayer
 var _readout: Label
 var _readout_left := 0.0
 var _save_left := 5.0
@@ -592,6 +594,17 @@ func _put_player() -> void:
 ## The wind given to the mill, gusting if asked; the readout four times a
 ## second.
 func _blow(delta: float) -> void:
+	if _wind_sound == null:
+		_wind_sound = AudioStreamPlayer.new()
+		_wind_sound.volume_db = -80.0
+		if DisplayServer.get_name() != "headless":
+			var loop := load("res://audio/wind_loop.wav") as AudioStreamWAV
+			loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			loop.loop_begin = 0
+			loop.loop_end = int(loop.get_length() * loop.mix_rate)
+			_wind_sound.stream = loop
+			_wind_sound.autoplay = true
+		add_child(_wind_sound)
 	var speed := _value("Wind speed (m/s)")
 	var from := _value("Wind from")
 	if _on("Gusts"):
@@ -599,6 +612,9 @@ func _blow(delta: float) -> void:
 		from += 8.0 * _gust.get_noise_1d(_clock * 0.02 + 300.0)
 	windmill.wind_speed = maxf(speed, 0.0)
 	windmill.wind_from = wrapf(from, 0.0, 360.0)
+	var strength := windmill.wind_speed / 10.0
+	_wind_sound.volume_db = linear_to_db(clampf(strength, 0.0001, 1.6)) - 14.0
+	_wind_sound.pitch_scale = 0.85 + 0.03 * windmill.wind_speed
 	_readout_left -= delta
 	if _readout_left > 0.0:
 		return
