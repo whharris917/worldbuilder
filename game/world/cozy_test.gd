@@ -140,7 +140,8 @@ func _build_panels() -> void:
 	_panel.switch(look, "Toon light", true, redraw)
 	_panel.note(look, "Surfaces lit fully or not at all, with a soft step between, as on the cozy island with its toon light on.")
 	_panel.switch(look, "Outlines", true, redraw)
-	_panel.note(look, "Each model drawn a second time, a little larger and from the inside, in a dark brown, so a line shows round its edges.")
+	_panel.slider(look, "Outline width (cm)", 0.1, 3.0, 0.1, 0.6, redraw)
+	_panel.note(look, "Each model drawn a second time, a little larger and from the inside, in a dark brown, so a line shows round its edges. The width is in centimetres of the world, so near things get thicker lines than far ones.")
 	_panel.switch(look, "Soft shadows", false, redraw)
 	_panel.note(look, "The sun given a larger size in the sky, so shadows blur farther from what casts them. It costs a good deal of drawing time.")
 	_panel.switch(look, "Storybook sky", false, redraw)
@@ -179,12 +180,14 @@ func _apply() -> void:
 	sky.moonlight.light_angular_distance = size
 	var toon := _on("Toon light")
 	var lines := _on("Outlines")
+	var width := _value("Outline width (cm)") * 0.01
 	for s: Dictionary in _mats:
 		var m: StandardMaterial3D = s["mat"]
 		m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON if toon else BaseMaterial3D.DIFFUSE_BURLEY
 		m.roughness = 0.2 if toon else 0.85
 		var line: StandardMaterial3D = s.get("line")
 		if line != null:
+			line.grow_amount = width
 			m.next_pass = line if lines else null
 	_sea_mat.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON if toon else BaseMaterial3D.DIFFUSE_BURLEY
 	_sea_mat.specular_mode = BaseMaterial3D.SPECULAR_TOON if toon else BaseMaterial3D.SPECULAR_SCHLICK_GGX
