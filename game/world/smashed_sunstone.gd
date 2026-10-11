@@ -20,7 +20,9 @@ extends Node3D
 ##
 ## A piece on the ground is ruled by friction, not by its swing: it turns
 ## at a rate in proportion to the twist on it (overdamped), measured
-## against its own weight's twist (RELAX). Gravity is the twist toward
+## against its own weight's twist (RELAX), and never faster than it can
+## creep over the rough slate (CREEP), so a piece takes a few seconds to
+## stand. Gravity is the twist toward
 ## its lowest resting: the height of its centre over the ground is the
 ## sum of its half-sizes along the up direction (a box's), rounded a
 ## little at the faces so a flat face is a smooth hollow. Static friction
@@ -29,7 +31,11 @@ extends Node3D
 ## one another, and the anvil and frame cast no shade on them.
 ##
 ## A lever drops the hammer (smash) or raises it, with a new stone set
-## under it (mend).
+## under it (mend); another swings a round sunshade on a jointed arm
+## into the line between the sun and the slate, keeping it there as the
+## sun moves, or folds it back, so the pieces can be watched lying down
+## in its shade and standing again in the sun. A piece is in its shade
+## where the line from it to the sun passes through the canvas.
 
 const PIECES := 400
 const SMALLEST := 0.001                 # m: the longest side of the smallest piece
@@ -43,6 +49,10 @@ const HAMMER_UP := 1.25                 # m: the hammer's face raised, over the 
 const ROUND := 0.08                     # the rounding of the faces in the height sum
 const RELAX := 0.15                     # s: how quickly a piece turns, against its own weight's twist
 const GRIP := 0.5                       # static friction's share of the weight
+const CREEP := 0.8                      # rad/s: the fastest a piece turns on the rough slate
+const SHADE_R := 1.3                    # m: the sunshade's canvas, half across
+const SHADE_OUT := 2.2                  # m: from the slate's middle toward the sun, when out
+const POST := Vector3(0.0, 1.3, -1.45)  # the arm's shoulder, on its post north of the slate
 
 ## Toward the sun and its direct light, W/m², set by the world.
 var to_sun := Vector3.UP
@@ -57,6 +67,10 @@ var _hammer_y := HAMMER_UP
 var _smashed := false
 var _falling := false
 var _lever: WorksHandle
+var _shade: Node3D
+var _arm: MeshInstance3D
+var _shaded := false
+var _cover := 0.0                       # the canvas drawn over, 0 to 1
 var _rng := RandomNumberGenerator.new()
 
 
@@ -88,7 +102,7 @@ func report() -> String:
 			standing += 1
 		elif off < 70.0 and (p["att"] as Basis) != (p["landed"] as Basis):
 			leaning += 1
-		if (p["rate"] as float) > 1.0:
+		if (p["rate"] as float) > CREEP * 0.5:
 			turning += 1
 	return "Smashed sunstone, %d pieces: %d pointing at the sun, %d leaning toward it, %d turning." % [
 			_pieces.size(), standing, leaning, turning]
@@ -103,6 +117,8 @@ func _process(delta: float) -> void:
 	elif not _smashed:
 		_hammer_y = move_toward(_hammer_y, HAMMER_UP, delta * 0.8)
 	_hammer.position.y = _hammer_y
+	_cover = move_toward(_cover, 1.0 if _shaded else 0.0, delta * 0.5)
+	_place_shade()
 
 
 func _physics_process(delta: float) -> void:
@@ -140,7 +156,7 @@ func _physics_process(delta: float) -> void:
 			continue
 		var weight := float(p["mass"]) * 9.8
 		var twist := Vector3.ZERO
-		if lit:
+		if lit and not _in_shade(p["at"]):
 			var watts := sunlight * float(p["area"])
 			var axis := att * (p["axis"] as Vector3)
 			twist = axis.cross(to_sun) * SpinstoneGimbals.PULL_PER_WATT * watts \
@@ -154,8 +170,8 @@ func _physics_process(delta: float) -> void:
 				e.z * u.z / sqrt(u.z * u.z + ROUND * ROUND))
 		twist += up.cross(att * lean) * weight
 		var rate := twist / (weight * maxf(e.x, maxf(e.y, e.z)) * RELAX)
-		if rate.length() > 40.0:
-			rate = rate.normalized() * 40.0
+		if rate.length() > CREEP:
+			rate = rate.normalized() * CREEP
 		p["rate"] = rate.length()
 		if rate.length() > 1e-4:
 			att = (Basis(rate.normalized(), rate.length() * delta) * att).orthonormalized()
@@ -165,8 +181,35 @@ func _physics_process(delta: float) -> void:
 			p["at"] = at
 			mm.set_instance_transform(k, Transform3D(att.scaled(e), at))
 		# Brighter as it turns, as a spinstone glows.
-		var glow := clampf(float(p["rate"]) / 6.0, 0.0, 1.0)
-		mm.set_instance_color(k, Color(1.0, 0.7, 0.28).lerp(Color(1.0, 0.92, 0.6), glow) * (1.3 + 2.5 * glow))
+		var glow := clampf(float(p["rate"]) / (CREEP * 0.8), 0.0, 1.0)
+		mm.set_instance_color(k, Color(1.0, 0.7, 0.28).lerp(Color(1.0, 0.92, 0.6), glow) * (1.3 + 6.0 * glow))
+
+
+## Whether the sunshade's canvas stands between a piece at `at` and the
+## sun.
+func _in_shade(at: Vector3) -> bool:
+	var face := _shade.basis.z
+	var across := to_sun.dot(face)
+	if absf(across) < 1e-4:
+		return false
+	var t := (_shade.position - at).dot(face) / across
+	return t > 0.0 and (at + to_sun * t).distance_to(_shade.position) < SHADE_R
+
+
+## The sunshade between folded by its post (`_cover` 0) and out in the
+## line from the slate's middle to the sun, square to it (1).
+func _place_shade() -> void:
+	var folded := Transform3D(Basis.IDENTITY.rotated(Vector3.RIGHT, -PI * 0.5), POST + Vector3(0, 0.5, 0))
+	var toward := to_sun if to_sun.y > 0.05 else Vector3.UP
+	var out_at := Vector3(0, SLATE, 0) + toward * SHADE_OUT
+	var out := Transform3D(Basis.looking_at(-toward, Vector3.UP if absf(toward.y) < 0.99 else Vector3.FORWARD), out_at)
+	var k := smoothstep(0.0, 1.0, _cover)
+	var head := Transform3D(Basis(folded.basis.get_rotation_quaternion().slerp(out.basis.get_rotation_quaternion(), k)),
+			folded.origin.lerp(out.origin, k))
+	_shade.transform = head
+	# The arm from the shoulder to the canvas's middle.
+	var span := head.origin - POST
+	_arm.transform = Transform3D(CozyMesh.aligned(span.normalized()).scaled(Vector3(1.0, span.length(), 1.0)), POST + span * 0.5)
 
 
 ## The height of a piece's centre resting on the slate as it lies.
@@ -286,9 +329,11 @@ func _build() -> void:
 	var dark := StandardMaterial3D.new()
 	dark.albedo_color = Color(0.22, 0.22, 0.22)
 	var stand := CozyMesh.new()
-	var at := Vector3(-PATCH_R - 0.7, 0.0, 0.6)
+	var at := Vector3(-0.35, 0.0, -2.4)
 	stand.box(Vector3(0.5, 0.08, 0.4), CozyMesh.at(at + Vector3(0, 0.04, 0)), Color(0.5, 0.36, 0.24))
 	stand.box(Vector3(0.4, 0.5, 0.12), CozyMesh.at(at + Vector3(0, 0.33, 0)), Color(0.5, 0.36, 0.24))
+	stand.box(Vector3(0.5, 0.08, 0.4), CozyMesh.at(at + Vector3(0.7, 0.04, 0)), Color(0.5, 0.36, 0.24))
+	stand.box(Vector3(0.4, 0.5, 0.12), CozyMesh.at(at + Vector3(0.7, 0.33, 0)), Color(0.5, 0.36, 0.24))
 	_add(stand, _mats["wood"])
 	_lever = WorksHandle.new(WorksHandle.Kind.LEVER, at + Vector3(0, 0.95, 0), wood, dark,
 			"Hammer\nA click drops the hammer on the sunstone; another raises it and sets a new stone.")
@@ -300,14 +345,49 @@ func _build() -> void:
 		elif not _smashed and not _falling:
 			_falling = true)
 	add_child(_lever)
+	var shade := WorksHandle.new(WorksHandle.Kind.LEVER, at + Vector3(0.7, 0.95, 0), wood, dark,
+			"Shade\nA click swings the sunshade between the sun and the slate, or folds it back.")
+	shade.on = false
+	shade.call("_show")
+	shade.thrown.connect(func(on: bool) -> void: _shaded = on)
+	add_child(shade)
+	# The sunshade: a post north of the slate, a jointed arm, a round
+	# canvas on a brass hoop.
+	var post := CozyMesh.new()
+	post.rod(Vector3(POST.x, 0.0, POST.z), POST, 0.035, 8, Color(0.5, 0.36, 0.24))
+	post.ball(0.06, 8, CozyMesh.at(POST), gold)
+	_add(post, _mats["wood"])
+	var rod := CozyMesh.new()
+	rod.cyl(0.018, 0.018, 1.0, 6, Transform3D.IDENTITY, gold)
+	_arm = MeshInstance3D.new()
+	_arm.mesh = rod.commit(_mats["brass"])
+	add_child(_arm)
+	_shade = Node3D.new()
+	add_child(_shade)
+	var canvas := CozyMesh.new()
+	canvas.cyl(SHADE_R, SHADE_R, 0.015, 32, CozyMesh.at(Vector3.ZERO, Basis(Vector3.RIGHT, PI * 0.5)), Color(0.86, 0.8, 0.66))
+	var cloth := StandardMaterial3D.new()
+	cloth.vertex_color_use_as_albedo = true
+	cloth.roughness = 0.95
+	var canvas_view := MeshInstance3D.new()
+	canvas_view.mesh = canvas.commit(cloth)
+	_shade.add_child(canvas_view)
+	var hoop := CozyMesh.new()
+	hoop.torus(SHADE_R - 0.02, SHADE_R + 0.02, 40, 6, Transform3D.IDENTITY.rotated(Vector3.RIGHT, PI * 0.5), gold)
+	_add_to(_shade, hoop, _mats["brass"])
+	_place_shade()
 	add_child(HoverNote.new(Vector3(0, 0.15, 0), Vector3(PATCH_R * 1.6, 0.3, PATCH_R * 1.6),
 			"A smashed sunstone\nEach piece is a whole sunstone, its axis running as the stone's did. In the sun the smallest stand on end and point at it, the finest tumbling; larger ones lean; the largest lie as they fell."))
 
 
 func _add(m: CozyMesh, mat: Material) -> void:
+	_add_to(self, m, mat)
+
+
+func _add_to(parent: Node3D, m: CozyMesh, mat: Material) -> void:
 	var view := MeshInstance3D.new()
 	view.mesh = m.commit(mat)
-	add_child(view)
+	parent.add_child(view)
 
 
 ## A shard a unit box across (each side 2), its corners chipped unevenly
