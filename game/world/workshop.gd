@@ -846,6 +846,7 @@ func _place_rods() -> void:
 		if piece is BeamCart:
 			continue
 		var glass_piece := piece is OpticElement
+		var gate := piece is LightGate
 		var from := piece.global_position - Vector3(0, 0.24 if glass_piece else 0.16, 0)
 		var q := PhysicsRayQueryParameters3D.create(from, from - Vector3(0, 12.0, 0), 1 | 4)
 		q.exclude = [(piece as CollisionObject3D).get_rid(), island.player.get_rid()]
@@ -853,13 +854,15 @@ func _place_rods() -> void:
 			q.exclude.append((piece.get_meta("rod_body") as CollisionObject3D).get_rid())
 		var hit := space.intersect_ray(q)
 		var bottom: float = (hit["position"] as Vector3).y if not hit.is_empty() else from.y - 12.0
-		var top := piece.global_position.y - (0.2 if glass_piece else 0.13)
+		# A gate's rod runs up into the bottom of its ring; the others end
+		# in a cradle under the piece.
+		var top := piece.global_position.y - (0.2 if glass_piece else 0.125 if gate else 0.13)
 		var rod: MeshInstance3D = piece.get_meta("rod") if piece.has_meta("rod") else null
 		if rod == null:
 			rod = MeshInstance3D.new()
 			piece.add_child(rod)
 			piece.set_meta("rod", rod)
-			if not glass_piece:
+			if not glass_piece and not gate:
 				var cradle := CylinderMesh.new()
 				cradle.top_radius = 0.075
 				cradle.bottom_radius = 0.04
