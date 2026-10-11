@@ -149,9 +149,8 @@ func _ready() -> void:
 	add_child(stone)
 	if loose:
 		# The turf rubbed under it as it spins on the spot: the recorded
-		# scrape on wood (crystal_scrape_loop.wav) played slow and low, a
-		# dull grinding, soft, by how fast it turns about the upright. (A
-		# smooth hiss of grass read as air.)
+		# scrape muffled as by grass (crystal_turf_loop.wav, cut by
+		# tools/cut_turf.py), soft, by how fast it turns about the upright.
 		contact_monitor = true
 		max_contacts_reported = 4
 		_brush = AudioStreamPlayer3D.new()
@@ -159,7 +158,7 @@ func _ready() -> void:
 		_brush.volume_db = -80.0
 		_brush.position = Vector3(0, -RADIUS, 0)
 		if DisplayServer.get_name() != "headless":
-			var hiss := (load("res://audio/crystal_scrape_loop.wav") as AudioStreamWAV).duplicate() as AudioStreamWAV
+			var hiss := load("res://audio/crystal_turf_loop.wav") as AudioStreamWAV
 			hiss.loop_mode = AudioStreamWAV.LOOP_FORWARD
 			hiss.loop_begin = 0
 			hiss.loop_end = int(hiss.get_length() * hiss.mix_rate)
@@ -317,4 +316,4 @@ func _physics_process(_delta: float) -> void:
 		_brush.global_position = global_position - Vector3(0, RADIUS, 0)
 		var rub := absf(w.y) if get_contact_count() > 0 else 0.0
 		_brush.volume_db = linear_to_db(maxf(clampf(rub / 12.0, 0.0, 1.0) * 0.6, 0.0001)) - 12.0
-		_brush.pitch_scale = clampf(0.45 + rub / 60.0, 0.45, 0.75)
+		_brush.pitch_scale = clampf(0.85 + rub / 80.0, 0.85, 1.1)

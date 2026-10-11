@@ -8,3 +8,6 @@ https://freesound.org/s/612763/
 Licence: Creative Commons Attribution 4.0 (CC BY 4.0). CREDIT REQUIRED:
 "Scraping Fingernails Against Wood 2" by F.M.Audio, freesound.org, CC BY 4.0.
 Recorded with a contact microphone; corrective EQ by the author.
+
+crystal_turf_loop.wav: made by tools/cut_turf.py from the same recording and
+stretch, low-passed at 420 Hz (as muffled by grass), for the loose glass globe.
