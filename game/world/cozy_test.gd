@@ -62,6 +62,7 @@ var orb: GlassOrb
 var pure_orb: GlassOrb
 var tied_orb: GlassOrb
 var loose_orb: GlassOrb
+var jack: SunstoneJack
 var _panel: BenchPanel
 var _env: Environment
 var _mats: Array[Dictionary] = []       # the model materials and their outlines
@@ -194,6 +195,13 @@ func _ready() -> void:
 	var loose_z := sin(loose_bearing) * orb_r
 	loose_orb.position = Vector3(loose_x, height(loose_x, loose_z) + GlassOrb.RADIUS + 0.02, loose_z)
 	add_child(loose_orb)
+	# A pure sunstone on ten legs, loose on the lawn east of that.
+	jack = SunstoneJack.new()
+	var jack_bearing := deg_to_rad(103.0)
+	var jack_x := cos(jack_bearing) * orb_r
+	var jack_z := sin(jack_bearing) * orb_r
+	jack.position = Vector3(jack_x, height(jack_x, jack_z) + SunstoneJack.LEG + 0.05, jack_z)
+	add_child(jack)
 	# Their lanterns' levers and the panel's switch kept as one.
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.lamps_thrown.connect(func(on: bool) -> void:
@@ -273,7 +281,8 @@ func _build_panels() -> void:
 	_panel.note(stones, "Two rows of spinstones west of the mill, each free in a gyroscope's gimbal and lit by its own lantern. Nearer the mill the combination stones: an earthstone, a sunstone, a moonstone, each drawn to point at its body and spun by light. North of them the pure stones: the gyres, only spun by light; the tropes, only drawn round by it. Set still, each lies a new way.")
 	_panel.slider(stones, "Pool thickness (x water)", 1.0, 500.0, 1.0, 1.0, redraw)
 	_panel.slider(stones, "Loose globe force (x)", 0.0, 100.0, 0.5, 1.0, redraw)
-	_panel.note(stones, "Multiplies the light's pull and spin on the stone in the globe loose on the lawn.")
+	_panel.slider(stones, "Legged sunstone force (x)", 0.0, 100.0, 0.5, 1.0, redraw)
+	_panel.note(stones, "Each multiplies the light's pull and spin on its stone: the globe loose on the lawn, and the sunstone on ten legs beside it.")
 	_panel.note(stones, "How thick the liquid in the glass globes' pools is, as many times water's: its film holds back the globe's turning, its rocking and its spin alike.")
 	var shed_panel := _panel.panel("Shed")
 	_panel.switch(shed_panel, "Spotlight", true, redraw)
@@ -340,6 +349,7 @@ func _apply() -> void:
 	for o: GlassOrb in [orb, pure_orb, tied_orb]:
 		o.viscosity = _value("Pool thickness (x water)")
 	loose_orb.force_scale = _value("Loose globe force (x)")
+	jack.force_scale = _value("Legged sunstone force (x)")
 	shed.lamp_on = _on("Spotlight")
 	shed.suns = _value("Spotlight (suns)")
 	shed.knocks_heard = _on("Knock sound")
@@ -398,6 +408,8 @@ func _update_sky() -> void:
 	for o: GlassOrb in [orb, pure_orb, tied_orb, loose_orb]:
 		o.to_sun = workshop.light.sun
 		o.sunlight = workshop.light.sunlight
+	jack.to_sun = workshop.light.sun
+	jack.sunlight = workshop.light.sunlight
 	_shed_note.text = shed.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
 	_moon_note.text = _moon_words(t, moon, left)
