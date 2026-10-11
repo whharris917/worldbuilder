@@ -50,6 +50,8 @@ var kind := "sun"
 var size := CrystalShed.SMALLEST
 ## Where on the table it is set down (in the shed's frame).
 var home := Vector3.ZERO
+## Its purity (Photogyrite): impure, as the stones found so far.
+var purity := 0.0
 
 var _shed: CrystalShed
 var _crystal: RigidBody3D
@@ -226,8 +228,8 @@ func _physics_process(delta: float) -> void:
 	var toward := _toward()
 	var w := _crystal.angular_velocity
 	var grown := pow(_scale / WHOLE, 5.0)
-	var twist := axis.cross(toward) * SpinstoneGimbals.PULL_PER_WATT * _watts \
-			+ axis * SpinstoneGimbals.TURN * _watts * maxf(axis.dot(toward), 0.0) \
+	var twist := axis.cross(toward) * Photogyrite.pull(_watts, purity) \
+			+ axis * Photogyrite.spin(_watts, maxf(axis.dot(toward), 0.0), w.dot(axis), purity) \
 			- w * w.length() * DRAG * grown
 	_crystal.apply_torque(twist)
 	_glow.emission_energy_multiplier = 0.1 + 0.8 * clampf(absf(w.dot(axis)) / 15.0, 0.0, 1.0)

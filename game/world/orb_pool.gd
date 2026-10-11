@@ -14,8 +14,9 @@ const DEPTH := 0.0                      # m: the basin's floor under the ground 
 var orb: GlassOrb
 
 
-## `world` gives the pool its material (`material`).
-func _init(world: Node) -> void:
+## `world` gives the pool its material (`material`); `purity` the
+## stone's (Photogyrite).
+func _init(world: Node, purity := 0.0) -> void:
 	name = "OrbPool"
 	var stone_mat: StandardMaterial3D = world.call("material", true, false)
 	var rim := CozyMesh.new()
@@ -115,5 +116,6 @@ func _init(world: Node) -> void:
 	add_child(wood_view)
 	# The ball, sitting in the ring.
 	orb = GlassOrb.new()
+	orb.purity = purity
 	orb.position = Vector3(0, ring_y + RING_DROP, 0)
 	add_child(orb)

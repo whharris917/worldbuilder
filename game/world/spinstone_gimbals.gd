@@ -304,8 +304,8 @@ func _rates(s: Dictionary, att: Basis, momentum: Vector3, gyre: float, toward: V
 	var w_housing := _turning_of(att, momentum - length * gyre, s["inertia"])
 	var swing := w_housing - length * w_housing.dot(length)
 	var spin := gyre / GYRE_INERTIA
-	var drive := TURN * watts * length.dot(toward) - spin * absf(spin) * DRAG
-	var outside := length.cross(toward) * PULL_PER_WATT * watts - w_housing * w_housing.length() * DRAG \
+	var drive := Photogyrite.spin(watts, length.dot(toward), spin, 0.0) - spin * absf(spin) * DRAG
+	var outside := length.cross(toward) * Photogyrite.pull(watts, 0.0) - w_housing * w_housing.length() * DRAG \
 			- swing * PIVOT_DAMP + length * drive
 	return [outside, drive, w_housing]
 
@@ -328,8 +328,10 @@ static func _twist(s: Dictionary, att: Basis, w: Vector3, toward: Vector3, watts
 		"always":
 			pull = PULL
 		"lit":
-			pull = PULL_PER_WATT * watts
-	return length.cross(toward) * pull + length * TURN * watts * spin - w * w.length() * DRAG - swing * PIVOT_DAMP
+			pull = Photogyrite.pull(watts, 0.0)
+	# Impure stones, all of them (Photogyrite: purity 0).
+	return length.cross(toward) * pull + length * Photogyrite.spin(watts, spin, w.dot(length), 0.0) \
+			- w * w.length() * DRAG - swing * PIVOT_DAMP
 
 
 ## The rings read from where the crystal's length points: the outer ring

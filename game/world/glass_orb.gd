@@ -13,10 +13,11 @@ extends RigidBody3D
 ## at random to begin. On the ball, each physics step, the spinstone laws
 ## as a combination stone, by the sunlight through the glass (GLASS of it
 ## passes) on a quarter of the stone's surface: its axis drawn toward
-## straight up, PULL_PER_WATT for each watt, and spun about its axis TURN
-## for each watt while its seeking end is up; the air's drag on the
-## ball's turning, and the water film's (WATER_HOLD, an angular
-## damping). Held in its ring the ball turns without lifting its weight,
+## straight up and spun about its axis while its seeking end is up, by
+## its purity (`purity`, Photogyrite: an impure stone as found, or a pure
+## one a hundred times as strong, its spin's power up to 80% of its
+## light); the air's slight drag on the smooth globe's turning (AIR), and
+## the water film's (WATER_HOLD, an angular damping). Held in its ring the ball turns without lifting its weight,
 ## so the pull sways the stone upright and then spins the globe about
 ## the upright, gathering speed over minutes against the water's hold.
 ## Inert at night and in an eclipse's shadow; the shade of things on the
@@ -28,6 +29,10 @@ const GLASS_DENSITY := 2500.0           # kg/m³
 const SHELL := 0.01                     # m: the glass's thickness
 const GLASS := 0.9                      # the share of sunlight the glass lets through
 const WATER_HOLD := 0.005               # the water film's hold on its turning
+const AIR := 1.0e-3                     # N m s²: the air's drag on the smooth globe's turning
+
+## The stone's purity (Photogyrite), set before it enters the world.
+var purity := 0.0
 
 ## Toward the sun and its direct light, W/m², set by the world.
 var to_sun := Vector3.UP
@@ -37,6 +42,7 @@ var _axis := Vector3.UP                 # the stone's axis, in the ball's frame
 var _area := 0.0
 var _scale := 1.0
 var _watts := 0.0
+var _drive := 0.0                       # N m: the light's spin on it now
 var _glow: StandardMaterial3D
 
 
@@ -48,7 +54,7 @@ func _init() -> void:
 func _ready() -> void:
 	_scale = ShedCrystal.WHOLE * SIZE
 	_glow = StandardMaterial3D.new()
-	_glow.albedo_color = Color(0.74, 0.62, 0.95, 0.95)
+	_glow.albedo_color = Color(0.82, 0.74, 1.0, 0.55) if purity > 0.5 else Color(0.74, 0.62, 0.95, 0.95)
 	_glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_glow.roughness = 0.08
 	_glow.metallic_specular = 0.9
@@ -142,16 +148,17 @@ func _ready() -> void:
 
 func inspect_text() -> String:
 	var axis := (global_basis * _axis).normalized()
-	return "An earthstone in glass\nA large earthstone fixed inside a hollow globe of clear glass, turning freely in a wooden ring on a film of water. In the sun the stone draws its seeking end up and spins, and the ball turns with it. Its end now %d degrees off straight up; turning %.2f times a second." % [
-			roundi(rad_to_deg(axis.angle_to(Vector3.UP))), absf(angular_velocity.dot(axis)) / TAU]
+	var turning := angular_velocity.dot(axis)
+	return "%s in glass\nA large %s earthstone fixed inside a hollow globe of clear glass, turning freely in a wooden ring on a film of water. In the sun the stone draws its seeking end up and spins, and the ball turns with it. Its end now %d degrees off straight up; turning %.2f times a second; %d W of light on it, %d W in its spin." % [
+			"A pure earthstone" if purity > 0.5 else "An earthstone", "pure" if purity > 0.5 else "cloudy",
+			roundi(rad_to_deg(axis.angle_to(Vector3.UP))), absf(turning) / TAU, roundi(_watts), roundi(maxf(_drive * turning, 0.0))]
 
 
 func _physics_process(_delta: float) -> void:
 	_watts = sunlight * GLASS * _area if to_sun.y > 0.0 else 0.0
 	var axis := (global_basis * _axis).normalized()
 	var w := angular_velocity
-	var grown := pow(_scale / ShedCrystal.WHOLE, 5.0)
-	apply_torque(axis.cross(Vector3.UP) * SpinstoneGimbals.PULL_PER_WATT * _watts \
-			+ axis * SpinstoneGimbals.TURN * _watts * maxf(axis.y, 0.0) \
-			- w * w.length() * ShedCrystal.DRAG * grown)
-	_glow.emission_energy_multiplier = 0.1 + 0.8 * clampf(absf(w.dot(axis)) / 3.0, 0.0, 1.0)
+	var turning := w.dot(axis)
+	_drive = Photogyrite.spin(_watts, maxf(axis.y, 0.0), turning, purity)
+	apply_torque(axis.cross(Vector3.UP) * Photogyrite.pull(_watts, purity) + axis * _drive - w * w.length() * AIR)
+	_glow.emission_energy_multiplier = 0.1 + 0.8 * clampf(absf(turning) / 3.0, 0.0, 1.0) + (0.6 if purity > 0.5 else 0.0)

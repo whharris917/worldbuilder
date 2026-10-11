@@ -59,6 +59,7 @@ var pure_stones: SpinstoneGimbals
 var built_stones: SpinstoneGimbals
 var shed: CrystalShed
 var orb: GlassOrb
+var pure_orb: GlassOrb
 var _panel: BenchPanel
 var _env: Environment
 var _mats: Array[Dictionary] = []       # the model materials and their outlines
@@ -165,6 +166,14 @@ func _ready() -> void:
 	pool.position = Vector3(orb_x, height(orb_x, orb_z), orb_z)
 	add_child(pool)
 	orb = pool.orb
+	# A second pool beside it, its stone pure.
+	var pure_pool := OrbPool.new(self, 1.0)
+	var pure_bearing := deg_to_rad(150.0)
+	var pure_x := cos(pure_bearing) * orb_r
+	var pure_z := sin(pure_bearing) * orb_r
+	pure_pool.position = Vector3(pure_x, height(pure_x, pure_z), pure_z)
+	add_child(pure_pool)
+	pure_orb = pure_pool.orb
 	# Their lanterns' levers and the panel's switch kept as one.
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.lamps_thrown.connect(func(on: bool) -> void:
@@ -360,8 +369,9 @@ func _update_sky() -> void:
 		row.to_sun = workshop.light.sun
 		row.to_moon = sky.moon_direction()
 	shed.to_sun = workshop.light.sun
-	orb.to_sun = workshop.light.sun
-	orb.sunlight = workshop.light.sunlight
+	for o: GlassOrb in [orb, pure_orb]:
+		o.to_sun = workshop.light.sun
+		o.sunlight = workshop.light.sunlight
 	_shed_note.text = shed.report()
 	_stones_note.text = gimbals.report() + "\n" + pure_stones.report() + "\n" + built_stones.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
