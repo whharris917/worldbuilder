@@ -31,7 +31,8 @@ extends Node3D
 ## a little quicker the faster the fastest touching point slides (its
 ## speed from the engine's touch points: the crystal's motion at each,
 ## along the table), or while it spins fast on its point, the faster it
-## travels over the table.
+## travels over the table, and at the least as a slow drag (SPIN_GRIND)
+## for its point grinding round.
 ##
 ## Its size runs from a twentieth of a whole stone's volume (a whole
 ## stone is the gimbal stones' crystal) to five times a whole stone's
@@ -52,6 +53,7 @@ const LAMP_UP := 2.75                   # the spotlight's height over the floor
 const DRAG := 1.4e-3                    # N m s²: the air's drag on a whole stone's turning
 const SPIN_FAST := 10.0                 # rad/s: spinning on its point, its hops unheard
 const SPIN_BLOW := 0.8                  # m/s: the blow that is heard then
+const SPIN_GRIND := 0.08                # m/s: the least drag heard while it spins on its point
 const CONE := 40.0                      # degrees: its beam, half across
 
 ## Toward the sun, set by the world.
@@ -267,14 +269,16 @@ func _sound(delta: float, axis: Vector3) -> void:
 	_was_w = w
 	# The scrape: how fast the touching points slide along the table;
 	# while it spins fast on its point, how fast it travels over the
-	# table (its point's dragging round in place is not heard).
+	# table, its point's grinding round in place heard as a slow drag.
 	var slide := 0.0
 	var state := PhysicsServer3D.body_get_direct_state(_crystal.get_rid())
 	# (Its travel averaged over about a third of a second: its wobbling
 	# about cancels out, its wandering stays.)
 	_travel = _travel.lerp(Vector2(v.x, v.z), clampf(delta * 3.0, 0.0, 1.0))
 	if spin >= SPIN_FAST:
-		slide = _travel.length() if touching > 0 else 0.0
+		# Its point grinding round in place is heard as a slow drag at the
+		# least, a little more the faster it spins.
+		slide = maxf(_travel.length(), SPIN_GRIND + spin * 0.001) if touching > 0 else 0.0
 	elif state != null:
 		for k in state.get_contact_count():
 			var at := state.get_contact_local_position(k) - state.transform.origin
