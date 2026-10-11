@@ -203,10 +203,10 @@ func _ready() -> void:
 	var jack_z := sin(jack_bearing) * orb_r
 	jack.position = Vector3(jack_x, height(jack_x, jack_z) + SunstoneJack.LEG + 0.05, jack_z)
 	add_child(jack)
-	# A short track on the open lawn north of the mill, east and west,
-	# with a sunstone's wheelset on it.
+	# A ring of track on the open lawn north of the mill with a
+	# sunstone's wheelset on it.
 	trolley = SunTrolley.new(self)
-	trolley.position = Vector3(0.0, height(0.0, -23.0), -23.0)
+	trolley.position = Vector3(0.0, height(0.0, -21.0), -21.0)
 	add_child(trolley)
 	# Their lanterns' levers and the panel's switch kept as one.
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:

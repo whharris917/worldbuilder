@@ -13,7 +13,9 @@ strokes evened out (divided by its loudness smoothed over 0.2 s, by
 LEVEL of the way, so one stroke does not stand out each time the loop
 comes round); its ends folded together over 0.15 s so it loops without a
 seam; resampled to 48 kHz, its peak set to -7 dB, and written to
-game/audio/crystal_scrape_loop.wav (16-bit).
+game/audio/crystal_scrape_loop.wav (16-bit). Beside it a metallic one,
+game/audio/metal_scrape_loop.wav: the same with a steel rail's faint
+ring added (narrow resonances at METAL_HZ).
 """
 from __future__ import annotations
 
@@ -21,10 +23,14 @@ import wave
 from pathlib import Path
 
 import numpy as np
+from scipy.signal import iirpeak, lfilter
 
 AUDIO = Path(__file__).resolve().parents[1] / "game" / "audio"
 SOURCE = AUDIO / "612763__fmaudio__scraping-fingernails-against-wood-2.wav"
 OUT = AUDIO / "crystal_scrape_loop.wav"
+METAL_OUT = AUDIO / "metal_scrape_loop.wav"
+# A steel rail's ring under a wheel: a few inharmonic partials, faint.
+METAL_HZ = [(1270.0, 1.2), (2140.0, 1.0), (3380.0, 0.8), (4890.0, 0.5)]
 START = 0.55
 END = 3.25
 LEVEL = 0.7
@@ -66,12 +72,27 @@ def main() -> None:
     n_out = int(len(body) * RATE / sr)
     out = np.interp(np.arange(n_out) * sr / RATE, np.arange(len(body)), body)
     out *= 10 ** (-7 / 20) / np.max(np.abs(out))
-    with wave.open(str(OUT), "wb") as f:
+    _write(OUT, out)
+    # The metallic one: the same scrape with a faint ring of a steel rail
+    # in it (resonances at METAL_HZ, filtered round the loop so it stays
+    # seamless).
+    ring = np.zeros_like(out)
+    looped = np.tile(out, 3)
+    for hz, gain in METAL_HZ:
+        b, a = iirpeak(hz, 25.0, fs=RATE)
+        ring += lfilter(b, a, looped)[len(out):2 * len(out)] * gain
+    metal = out * 0.7 + ring
+    metal *= 10 ** (-7 / 20) / np.max(np.abs(metal))
+    _write(METAL_OUT, metal)
+
+
+def _write(path: Path, out: np.ndarray) -> None:
+    with wave.open(str(path), "wb") as f:
         f.setnchannels(1)
         f.setsampwidth(2)
         f.setframerate(RATE)
         f.writeframes((out * 32767).astype(np.int16).tobytes())
-    print(f"wrote {OUT.name}: {len(out) / RATE:.2f} s")
+    print(f"wrote {path.name}: {len(out) / RATE:.2f} s")
 
 
 if __name__ == "__main__":

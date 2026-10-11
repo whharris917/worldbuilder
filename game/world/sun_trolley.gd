@@ -1,48 +1,49 @@
 class_name SunTrolley
 extends Node3D
-## A short track on the lawn and on it a wheelset: two spoked brass
+## A ring of track on the lawn and on it a wheelset: two spoked brass
 ## wheels on an axle that runs through a pure sunstone along its length
-## (the stone drilled from end to end), its seeking end to the south.
-## The track runs east and west; the axle lies square across it, north
-## and south.
+## (the stone drilled from end to end), the axle pointing out from the
+## ring's middle, the stone's seeking end outward.
 ##
-## The rails hold the axle level and square, so the stone's pull toward
-## the sun only presses on them; its spin about its length (Photogyrite,
-## by its purity, as much as its seeking end faces the sun) turns the
-## axle, the wheels roll, and the wheelset runs along the track. Worked
-## as one turning: the axle's spin against the whole wheelset's mass at
-## the wheels' rim and its own inertia, less the wheels' rolling
-## resistance (ROLLING) and the bearings' slight drag; the stone turns
-## with the wheels. A buffer at each end stops it with a knock
-## (cart_buffer.wav, the cozy island's cart's); it rolls with the cart's
-## rumble (cart_roll_loop.wav), louder as it runs faster. A lever by the
-## track sets it back at the east end, still. Inert at night and in an
-## eclipse's shadow.
+## The rails hold the axle level and pointing out, so the stone's pull
+## toward the sun only presses on them; its spin about its length
+## (Photogyrite, by its purity, as much as its seeking end faces the
+## sun) turns the axle, the wheels roll, and the wheelset runs round.
+## Since its seeking end turns with it round the ring, the stone drives
+## while it faces the sun's side and none on the far side, where it
+## coasts: it surges and slows once round. Worked as one turning: the
+## axle's spin against the whole wheelset's mass at the wheels' rim and
+## its own inertia, less the wheels' rolling resistance (ROLLING) and the
+## bearings' slight drag; the stone turns with the wheels; the wheels
+## run at the ring's middle radius (a real wheelset's coned treads take
+## up the inner and outer rails' difference). It rolls with a scrape of
+## metal (metal_scrape_loop.wav: the shed's scrape recording with a
+## steel rail's faint ring, made by tools/cut_scrape.py), louder and
+## quicker as it runs faster. A lever by the ring sets it still. Inert
+## at night and in an eclipse's shadow.
 
-const LENGTH := 8.0                     # m: the track, buffer to buffer
+const RADIUS := 3.0                     # m: the ring, to the middle between the rails
 const GAUGE := 0.6                      # m: between the rails
 const WHEEL_R := 0.18                   # m
 const STONE_SIZE := 0.6                 # the stone's length, as a share of a whole stone's
 const WHEEL_MASS := 1.6                 # kg each
 const ROLLING := 0.003                  # the wheels' rolling resistance, a share of the weight
 const BEARING := 0.002                  # N m s: the axle's bearings
-const BUFFER_GIVE := 0.3                # the share of its speed it keeps, rebounding
 
 ## Toward the sun and its direct light, W/m², set by the world.
 var to_sun := Vector3.UP
 var sunlight := 0.0
 var purity := 1.0
 
-var _set: Node3D                        # the wheelset, moving along the track
+var _set: Node3D                        # the wheelset, going round the ring
 var _turning: Node3D                    # its wheels, axle and stone, turning
-var _at := 0.0                          # m: the wheelset along the track, +x east
-var _spin := 0.0                        # rad/s: the axle, about +z (south)
+var _round := PI * 0.5                  # rad: where it is round the ring (from east toward south); it begins on the south side, facing the noon sun
+var _spin := 0.0                        # rad/s: the axle, about its outward length
 var _angle := 0.0
 var _area := 0.0
 var _mass := 0.0
 var _axle_inertia := 0.0
-var _roll: AudioStreamPlayer3D
-var _knock: AudioStreamPlayer3D
+var _scrape: AudioStreamPlayer3D
 
 
 func _init(world: Node) -> void:
@@ -51,41 +52,39 @@ func _init(world: Node) -> void:
 
 
 func _ready() -> void:
-	_back_to_start()
+	_place()
 
 
-func _back_to_start() -> void:
-	_at = LENGTH * 0.5 - 0.5
+## Still where it is.
+func set_still() -> void:
 	_spin = 0.0
 
 
 func _physics_process(delta: float) -> void:
 	var watts := sunlight * _area if to_sun.y > 0.0 else 0.0
-	var axis := Vector3.BACK                # the stone's seeking end, south
-	var drive := Photogyrite.spin(watts, maxf(axis.dot(to_sun), 0.0), _spin, purity)
-	# Rolling on its wheels: positive spin about the south axis rolls it
-	# west (-x).
+	var outward := Vector3(cos(_round), 0.0, sin(_round))
+	var drive := Photogyrite.spin(watts, maxf(outward.dot(to_sun), 0.0), _spin, purity)
 	var held := ROLLING * _mass * 9.8 * WHEEL_R + BEARING * absf(_spin)
 	var twist := drive - signf(_spin) * held
 	if absf(_spin) < 0.02 and absf(drive) <= ROLLING * _mass * 9.8 * WHEEL_R:
 		twist = 0.0
 		_spin = 0.0
 	_spin += twist / (_axle_inertia + _mass * WHEEL_R * WHEEL_R) * delta
-	_at -= _spin * WHEEL_R * delta
-	var end := LENGTH * 0.5 - 0.45
-	if absf(_at) > end:
-		var speed := absf(_spin) * WHEEL_R
-		_at = signf(_at) * end
-		_spin = -_spin * BUFFER_GIVE
-		if speed > 0.05 and _knock.stream != null:
-			_knock.global_position = _set.global_position
-			_knock.volume_db = linear_to_db(clampf(speed / 1.5, 0.05, 1.0)) - 4.0
-			_knock.play()
+	# Spin about its outward length rolls it round toward greater angle.
+	_round = fposmod(_round + _spin * WHEEL_R / RADIUS * delta, TAU)
 	_angle = fposmod(_angle + _spin * delta, TAU)
-	_set.position.x = _at
+	_place()
+	var speed := absf(_spin) * WHEEL_R
+	_scrape.volume_db = linear_to_db(maxf(clampf(speed / 1.2, 0.0, 1.0) * 0.8, 0.0001)) - 12.0
+	_scrape.pitch_scale = clampf(0.8 + speed * 0.35, 0.8, 1.4)
+
+
+## The wheelset where it is round the ring: its axle (+z of its frame)
+## pointing out from the middle.
+func _place() -> void:
+	_set.position = Vector3(cos(_round) * RADIUS, _set.position.y, sin(_round) * RADIUS)
+	_set.rotation.y = PI * 0.5 - _round
 	_turning.rotation.z = _angle
-	_roll.volume_db = linear_to_db(maxf(clampf(absf(_spin) * WHEEL_R / 1.5, 0.0, 1.0) * 0.7, 0.0001)) - 8.0
-	_roll.pitch_scale = clampf(0.7 + absf(_spin) * WHEEL_R * 0.4, 0.7, 1.5)
 
 
 ## ---- building ----------------------------------------------------------------
@@ -94,22 +93,22 @@ func _build(world: Node) -> void:
 	var wood_mat: StandardMaterial3D = world.call("material", true, false)
 	var ground := CozyMesh.new()
 	var rail_y := 0.12
-	# Sleepers and rails, buffers at the ends.
-	var n := int(LENGTH / 0.5)
-	for k in n + 1:
-		var x := -LENGTH * 0.5 + LENGTH * k / n
-		ground.box(Vector3(0.14, 0.06, GAUGE + 0.4), CozyMesh.at(Vector3(x, 0.03, 0)), Color(0.42, 0.3, 0.2))
+	# Sleepers across the ring, two rails round it, a hub at the middle.
+	var n := 40
+	for k in n:
+		var a := TAU * k / n
+		var out_dir := Vector3(cos(a), 0, sin(a))
+		ground.box(Vector3(0.14, 0.06, GAUGE + 0.4), CozyMesh.at(out_dir * RADIUS + Vector3(0, 0.03, 0), Basis(Vector3.UP, PI * 0.5 - a)), Color(0.42, 0.3, 0.2))
 	for side: float in [-1.0, 1.0]:
-		ground.box(Vector3(LENGTH, 0.06, 0.04), CozyMesh.at(Vector3(0, 0.09, side * GAUGE * 0.5)), Color(0.32, 0.32, 0.34))
-	for end: float in [-1.0, 1.0]:
-		ground.box(Vector3(0.12, 0.3, GAUGE + 0.3), CozyMesh.at(Vector3(end * (LENGTH * 0.5 - 0.1), 0.15, 0)), Color(0.5, 0.36, 0.24))
-		ground.box(Vector3(0.06, 0.12, GAUGE * 0.6), CozyMesh.at(Vector3(end * (LENGTH * 0.5 - 0.19), rail_y + WHEEL_R, 0)), Color(0.25, 0.25, 0.27))
+		var r := RADIUS + side * GAUGE * 0.5
+		ground.torus(r - 0.02, r + 0.02, 96, 6, CozyMesh.at(Vector3(0, 0.1, 0)), Color(0.32, 0.32, 0.34))
+	ground.cyl(0.25, 0.3, 0.3, 16, CozyMesh.at(Vector3(0, 0.15, 0)), Color(0.5, 0.36, 0.24))
 	var ground_view := MeshInstance3D.new()
 	ground_view.mesh = ground.commit(wood_mat)
 	add_child(ground_view)
 	# The wheelset: its middle at the axle, over the rails.
 	_set = Node3D.new()
-	_set.position = Vector3(0, rail_y + WHEEL_R, 0)
+	_set.position = Vector3(RADIUS, rail_y + WHEEL_R, 0)
 	add_child(_set)
 	_turning = Node3D.new()
 	_set.add_child(_turning)
@@ -183,35 +182,32 @@ func _build(world: Node) -> void:
 	stone.mesh = stone_mesh
 	stone.basis = Basis(Vector3.RIGHT, PI * 0.5)
 	_turning.add_child(stone)
-	# Its sounds.
-	_roll = AudioStreamPlayer3D.new()
-	_roll.unit_size = 4.0
-	_roll.volume_db = -80.0
-	_set.add_child(_roll)
-	_knock = AudioStreamPlayer3D.new()
-	_knock.unit_size = 5.0
-	add_child(_knock)
+	# Its sound: the metallic scrape, by its speed.
+	_scrape = AudioStreamPlayer3D.new()
+	_scrape.unit_size = 4.0
+	_scrape.volume_db = -80.0
+	_set.add_child(_scrape)
 	if DisplayServer.get_name() != "headless":
-		var loop := (load("res://audio/cart_roll_loop.wav") as AudioStreamWAV).duplicate() as AudioStreamWAV
+		var loop := load("res://audio/metal_scrape_loop.wav") as AudioStreamWAV
 		loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		loop.loop_begin = 0
 		loop.loop_end = int(loop.get_length() * loop.mix_rate)
-		_roll.stream = loop
-		_roll.autoplay = true
-		_knock.stream = load("res://audio/cart_buffer.wav")
-	# A lever by the east end; what a player inspecting reads (drafts).
+		_scrape.stream = loop
+		_scrape.autoplay = true
+	# A lever beside the ring; what a player inspecting reads (drafts).
 	var wood := StandardMaterial3D.new()
 	wood.albedo_color = Color(0.55, 0.4, 0.27)
 	var dark := StandardMaterial3D.new()
 	dark.albedo_color = Color(0.22, 0.22, 0.22)
-	var lever := WorksHandle.new(WorksHandle.Kind.LEVER, Vector3(LENGTH * 0.5 + 0.6, 0.55, 0.9), wood, dark,
-			"Back to the start\nA click sets the wheelset at the east end of the track, still.")
-	lever.thrown.connect(func(_on: bool) -> void: _back_to_start())
+	var lever_at := Vector3(RADIUS + GAUGE + 0.7, 0.55, -1.0)
+	var lever := WorksHandle.new(WorksHandle.Kind.LEVER, lever_at, wood, dark,
+			"Set it still\nA click stops the wheelset where it is.")
+	lever.thrown.connect(func(_on: bool) -> void: set_still())
 	add_child(lever)
 	var stand := CozyMesh.new()
-	stand.box(Vector3(0.4, 0.08, 0.4), CozyMesh.at(Vector3(LENGTH * 0.5 + 0.6, 0.04, 0.9)), Color(0.5, 0.36, 0.24))
+	stand.box(Vector3(0.4, 0.08, 0.4), CozyMesh.at(Vector3(lever_at.x, 0.04, lever_at.z)), Color(0.5, 0.36, 0.24))
 	var stand_view := MeshInstance3D.new()
 	stand_view.mesh = stand.commit(wood_mat)
 	add_child(stand_view)
-	add_child(HoverNote.new(Vector3(0, 0.15, 0), Vector3(LENGTH, 0.3, GAUGE + 0.4),
-			"A sunstone on wheels\nA pure sunstone drilled from end to end on the axle of two wheels, set on a short track, its seeking end to the south. The sun spins the stone, the stone turns the wheels."))
+	add_child(HoverNote.new(Vector3(0, 0.15, 0), Vector3(0.6, 0.3, 0.6),
+			"A sunstone on wheels\nA pure sunstone drilled from end to end on the axle of two wheels, on a ring of track, its seeking end outward. Where it faces the sun the stone spins and drives the wheels; round the far side it coasts."))
