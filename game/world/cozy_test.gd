@@ -57,6 +57,7 @@ var workshop: Workshop
 var gimbals: SpinstoneGimbals
 var pure_stones: SpinstoneGimbals
 var built_stones: SpinstoneGimbals
+var smashed: SmashedSunstone
 var _panel: BenchPanel
 var _env: Environment
 var _mats: Array[Dictionary] = []       # the model materials and their outlines
@@ -147,6 +148,11 @@ func _ready() -> void:
 			"glass": workshop.glass, "wood": workshop.wood}, "built")
 	built_stones.position = Vector3(-10.0, TOP, -19.0)
 	add_child(built_stones)
+	# A sunstone to smash, north-east of the mill.
+	smashed = SmashedSunstone.new({"brass": workshop.brass, "iron": workshop.get("_iron"), "wood": workshop.wood})
+	# On the ground as it lies there, which bulges a little over TOP.
+	smashed.position = Vector3(9.0, height(9.0, -12.0), -12.0)
+	add_child(smashed)
 	# Their lanterns' levers and the panel's switch kept as one.
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.lamps_thrown.connect(func(on: bool) -> void:
@@ -311,7 +317,9 @@ func _update_sky() -> void:
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.to_sun = workshop.light.sun
 		row.to_moon = sky.moon_direction()
-	_stones_note.text = gimbals.report() + "\n" + pure_stones.report() + "\n" + built_stones.report()
+	smashed.to_sun = workshop.light.sun
+	smashed.sunlight = workshop.light.sunlight
+	_stones_note.text = gimbals.report() + "\n" + pure_stones.report() + "\n" + built_stones.report() + "\n" + smashed.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
 	_moon_note.text = _moon_words(t, moon, left)
 	_time_note.text = "Day %d, %02d:%02d. %s" % [day + 1, floori(hour), floori(fmod(hour, 1.0) * 60.0),
