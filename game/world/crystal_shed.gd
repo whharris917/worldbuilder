@@ -25,14 +25,13 @@ extends Node3D
 ## engine reporting a new touch, or its speed jumping), louder the harder,
 ## a little higher the smaller the stone (crystal_tap_1..4.wav); while it
 ## spins fast on its point its small hops are not heard, only a blow
-## harder than they are (SPIN_FAST, SPIN_BLOW); and while it spins, the
-## soft swoosh of the air it stirs (the windmill's swoosh_loop.wav),
-## louder and a little higher the faster it spins; and while a point of
-## it slides on the table, a scrape on wood (crystal_scrape_loop.wav, cut
-## by tools/cut_scrape.py from F.M.Audio's recording, CC BY 4.0), louder
-## and a little quicker the faster the fastest touching point
-## slides, or while it spins fast on its point, as fast as it travels (its speed from the
-## engine's touch points: the crystal's motion at each, along the table).
+## harder than they are (SPIN_FAST, SPIN_BLOW); and while a point of it
+## slides on the table, a scrape on wood (crystal_scrape_loop.wav, cut by
+## tools/cut_scrape.py from F.M.Audio's recording, CC BY 4.0), louder and
+## a little quicker the faster the fastest touching point slides (its
+## speed from the engine's touch points: the crystal's motion at each,
+## along the table), or while it spins fast on its point, the faster it
+## travels over the table.
 ##
 ## Its size runs from a twentieth of a whole stone's volume (a whole
 ## stone is the gimbal stones' crystal) to five times a whole stone's
@@ -64,9 +63,8 @@ var suns := 50.0
 var kind := "sun"
 ## The crystal's length as a share of a whole stone's.
 var size := SMALLEST
-## Its knocks, its swoosh and its scrape heard, each.
+## Its knocks and its scrape heard, each.
 var knocks_heard := true
-var swoosh_heard := true
 var scrape_heard := true
 
 var _world: Node
@@ -81,7 +79,6 @@ var _scale := 1.0
 var _watts := 0.0
 var _taps: Array[AudioStream] = []
 var _tap: AudioStreamPlayer3D
-var _buzz: AudioStreamPlayer3D
 var _drag: AudioStreamPlayer3D
 var _slide := 0.0                       # m/s: the fastest touching point's sliding, eased
 var _travel := Vector2.ZERO             # m/s: its middle's motion over the table, averaged
@@ -109,10 +106,6 @@ func _build_sound() -> void:
 	_tap.unit_size = 3.0
 	_tap.max_polyphony = 4
 	add_child(_tap)
-	_buzz = AudioStreamPlayer3D.new()
-	_buzz.unit_size = 3.0
-	_buzz.volume_db = -80.0
-	add_child(_buzz)
 	_drag = AudioStreamPlayer3D.new()
 	_drag.unit_size = 3.0
 	_drag.volume_db = -80.0
@@ -121,13 +114,6 @@ func _build_sound() -> void:
 		return
 	for k in range(1, 5):
 		_taps.append(load("res://audio/crystal_tap_%d.wav" % k))
-	var loop := (load("res://audio/swoosh_loop.wav") as AudioStreamWAV).duplicate() as AudioStreamWAV
-	loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	loop.loop_begin = 0
-	loop.loop_end = int(loop.get_length() * loop.mix_rate)
-	_buzz.stream = loop
-	_buzz.autoplay = true
-	_buzz.play()
 	var drag_loop := load("res://audio/crystal_scrape_loop.wav") as AudioStreamWAV
 	drag_loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	drag_loop.loop_begin = 0
@@ -258,7 +244,6 @@ func _physics_process(delta: float) -> void:
 ## The knocks and the buzz, from the crystal's touches and turning.
 func _sound(delta: float, axis: Vector3) -> void:
 	_tap.global_position = _crystal.global_position
-	_buzz.global_position = _crystal.global_position
 	var v := _crystal.linear_velocity
 	var w := _crystal.angular_velocity
 	var touching := _crystal.get_contact_count()
@@ -278,13 +263,9 @@ func _sound(delta: float, axis: Vector3) -> void:
 	_touching = touching
 	_was_v = v
 	_was_w = w
-	var swoosh := clampf(spin / 60.0, 0.0, 1.0) if swoosh_heard else 0.0
-	_buzz.volume_db = linear_to_db(maxf(swoosh * 0.4, 0.0001)) - 18.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
-	_buzz.pitch_scale = clampf(0.8 + spin / 150.0, 0.6, 1.4)
 	# The scrape: how fast the touching points slide along the table;
 	# while it spins fast on its point, how fast it travels over the
-	# table (its point's dragging round being the spin's, heard as the
-	# swoosh).
+	# table (its point's dragging round in place is not heard).
 	var slide := 0.0
 	var state := PhysicsServer3D.body_get_direct_state(_crystal.get_rid())
 	# (Its travel averaged over about a third of a second: its wobbling
