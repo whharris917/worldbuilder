@@ -20,12 +20,13 @@ extends Node3D
 ## crystal's mean shadow, a quarter of its surface. Unlit it is an inert
 ## stone.
 ##
-## Its sounds come from what it does: a knock of stone on wood each time
-## it strikes the table or rolls on to a new facet (the engine reporting
-## a new touch, or its speed jumping), louder the harder, higher the
-## smaller the stone (crystal_tap_1..4.wav); and while it touches the
-## table and spins, the buzz of a top on its point (crystal_spin_loop.wav),
-## louder and higher the faster it spins, silent once it leaves the table.
+## Its sounds come from what it does, quiet: a dull knock of stone on
+## wood each time it strikes the table or rolls on to a new facet (the
+## engine reporting a new touch, or its speed jumping), louder the harder,
+## a little higher the smaller the stone (crystal_tap_1..4.wav); and while
+## it touches the table and spins, a dull scrape (crystal_spin_loop.wav),
+## louder and a little higher the faster it spins, silent once it leaves
+## the table.
 ##
 ## Its size runs from a twentieth of a whole stone's volume (a whole
 ## stone is the gimbal stones' crystal) to five times a whole stone's
@@ -247,8 +248,8 @@ func _sound(delta: float, axis: Vector3) -> void:
 	_was_w = w
 	var spin := absf(w.dot(axis))
 	var buzz := clampf(spin / 40.0, 0.0, 1.0) if touching > 0 else 0.0
-	_buzz.volume_db = linear_to_db(maxf(buzz * 0.5, 0.0001)) + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
-	_buzz.pitch_scale = clampf((0.6 + spin / 50.0) * _pitch(), 0.3, 3.0)
+	_buzz.volume_db = linear_to_db(maxf(buzz * 0.5, 0.0001)) - 14.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
+	_buzz.pitch_scale = clampf((0.7 + spin / 120.0) * _pitch(), 0.4, 1.6)
 
 
 func _knock(speed: float) -> void:
@@ -257,7 +258,7 @@ func _knock(speed: float) -> void:
 	_since_tap = 0.0
 	_tap.stream = _taps[_rng.randi() % _taps.size()]
 	_tap.pitch_scale = _pitch() * _rng.randf_range(0.92, 1.08)
-	_tap.volume_db = linear_to_db(clampf(speed / 1.2, 0.03, 1.0)) - 4.0 + 3.0 * log(_crystal.mass + 1.0) / log(10.0)
+	_tap.volume_db = linear_to_db(clampf(speed / 1.2, 0.03, 1.0)) - 16.0 + 3.0 * log(_crystal.mass + 1.0) / log(10.0)
 	_tap.play()
 
 

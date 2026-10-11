@@ -59,10 +59,9 @@ Writes to game/audio/:
   cart_clack_1..3.wav  a cart wheel crossing a rail joint
   cart_buffer.wav a cart striking the wooden buffer at a track's end
   radiometer_whir_loop.wav  2 s seamless whir of a radiometer's vanes
-  crystal_tap_1..4.wav  a hard crystal striking a wooden table: a dry
-                  knock of the wood and a short glassy ring of the stone
-  crystal_spin_loop.wav  2 s seamless buzz of a crystal spinning on its
-                  point on wood: a fine scrape and the facets' chatter
+  crystal_tap_1..4.wav  a stone knocking on a wooden table: a dull knock
+  crystal_spin_loop.wav  2 s seamless dull scrape of a stone turning on
+                  its point on wood
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -1550,43 +1549,38 @@ def make_radiometer_whir() -> None:
 
 
 def make_crystal_tap(path: Path, r: random.Random, ring_hz: float) -> None:
-    """A hard crystal striking a wooden table: the wood's dry knock, noise
-    between 250 Hz and 1.8 kHz dying in about 12 ms, a little thud under
-    it; and the stone's own short ring, three inharmonic partials of a
-    small hard solid (ratios about 1, 2.3 and 3.9 of `ring_hz`) dying in
-    40 to 90 ms, the higher faster. Played louder for a harder blow and
-    higher for a smaller stone."""
-    dur = 0.25
+    """A stone knocking on a wooden table: a dull knock, noise between 150
+    and 900 Hz dying in about 15 ms over a soft thud below it, and no ring
+    (a ringing partial made it sound like a struck glass, too musical).
+    `ring_hz` only shifts the knock's band a little from one to the next."""
+    dur = 0.18
     n = int(dur * SR)
-    knock = _band(_noise_r(r, n), 250.0, 1800.0)
-    thud = _band(_noise_r(r, n), 60.0, 300.0)
+    shift = ring_hz / 3000.0
+    knock = _band(_noise_r(r, n), 150.0 * shift, 900.0 * shift)
+    thud = _band(_noise_r(r, n), 50.0, 220.0)
     out = [0.0] * n
-    partials = [(1.0, 0.35, 28.0), (2.31 + r.uniform(-0.05, 0.05), 0.22, 45.0), (3.93 + r.uniform(-0.08, 0.08), 0.12, 70.0)]
     for i in range(n):
         t = i / SR
-        rise = min(1.0, t / 0.0008)
-        v = knock[i] * 2.2 * math.exp(-t * 85.0) + thud[i] * 1.4 * math.exp(-t * 45.0)
-        for ratio, amp, decay in partials:
-            v += amp * math.sin(2.0 * math.pi * ring_hz * ratio * t) * math.exp(-t * decay)
-        out[i] = v * rise
+        rise = min(1.0, t / 0.0015)
+        out[i] = (knock[i] * 2.0 * math.exp(-t * 65.0) + thud[i] * 1.6 * math.exp(-t * 40.0)) * rise
     write_wav(path, [out], normalize_to=0.5)
 
 
 def make_crystal_spin() -> None:
-    """A crystal spinning on its point on a wooden table: a fine scrape,
-    noise between 400 Hz and 4 kHz, and the chatter of its facets on the
-    wood, the scrape pulsing 24 times a second as the facets pass; a faint
-    ring of the stone through it. Played louder and higher as it spins
+    """A stone turning on its point on a wooden table: a dull scrape, noise
+    between 200 Hz and 1.5 kHz, roughened by a slow irregular swell (two
+    unrelated wobbles) and no tone. Played louder and higher as it turns
     faster."""
     r = random.Random(20261011)
     dur = 2.0
     n = int(SR * dur)
     fade = int(0.2 * SR)
-    scrape = _band(_noise_r(r, n + fade + SR), 400.0, 4000.0)[SR:]
+    scrape = _band(_noise_r(r, n + fade + SR), 200.0, 1500.0)[SR:]
     scrape = loop_crossfade(scrape, fade / SR)
-    beat = quantize(24.0, dur)
-    out = [scrape[i] * (0.45 + 0.55 * max(0.0, math.sin(2.0 * math.pi * beat * i / SR)) ** 2) for i in range(n)]
-    add_partial(out, 2600.0, 0.012, dur)
+    a = quantize(7.0, dur)
+    b = quantize(11.5, dur)
+    out = [scrape[i] * (0.7 + 0.18 * math.sin(2.0 * math.pi * a * i / SR) + 0.12 * math.sin(2.0 * math.pi * b * i / SR + 1.3))
+           for i in range(n)]
     write_wav(OUT_DIR / "crystal_spin_loop.wav", [out], normalize_to=0.35)
 
 
