@@ -56,6 +56,9 @@ var suns := 50.0
 var kind := "sun"
 ## The crystal's length as a share of a whole stone's.
 var size := SMALLEST
+## Its knocks and its scrape heard, each.
+var knocks_heard := true
+var scrape_heard := true
 
 var _world: Node
 var _crystal: RigidBody3D
@@ -247,13 +250,13 @@ func _sound(delta: float, axis: Vector3) -> void:
 	_was_v = v
 	_was_w = w
 	var spin := absf(w.dot(axis))
-	var buzz := clampf(spin / 40.0, 0.0, 1.0) if touching > 0 else 0.0
+	var buzz := clampf(spin / 40.0, 0.0, 1.0) if touching > 0 and scrape_heard else 0.0
 	_buzz.volume_db = linear_to_db(maxf(buzz * 0.5, 0.0001)) - 14.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
 	_buzz.pitch_scale = clampf((0.7 + spin / 120.0) * _pitch(), 0.4, 1.6)
 
 
 func _knock(speed: float) -> void:
-	if _taps.is_empty():
+	if _taps.is_empty() or not knocks_heard:
 		return
 	_since_tap = 0.0
 	_tap.stream = _taps[_rng.randi() % _taps.size()]

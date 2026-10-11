@@ -244,6 +244,8 @@ func _build_panels() -> void:
 		shed.set_kind("sun" if o == "Sunstone" else "earth"))
 	_panel.button(shed_panel, "A new crystal", func() -> void: shed.new_shape())
 	_panel.button(shed_panel, "Set it down again", func() -> void: shed.reset())
+	_panel.switch(shed_panel, "Knock sound", true, redraw)
+	_panel.switch(shed_panel, "Spin sound", true, redraw)
 	_shed_note = _panel.note(shed_panel, "")
 	var sound := _panel.panel("Sound")
 	_panel.slider(sound, "Master volume (dB)", -24.0, 12.0, 0.5, AudioOutput.master_db, func(v: float) -> void: AudioOutput.set_master_db(v))
@@ -284,6 +286,8 @@ func _apply() -> void:
 	windmill.swoosh_level = _value("Sails (%)") * 0.01
 	shed.lamp_on = _on("Spotlight")
 	shed.suns = _value("Spotlight (suns)")
+	shed.knocks_heard = _on("Knock sound")
+	shed.scrape_heard = _on("Spin sound")
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.set_lit(_on("Light the stones"))
 		row.light_watts = _value("Light on each stone (W)")
