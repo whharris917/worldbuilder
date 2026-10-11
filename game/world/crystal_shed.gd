@@ -31,7 +31,7 @@ extends Node3D
 ## it slides on the table, the rasp of a sharp stone dragged on wood
 ## (crystal_scrape_loop.wav: the point bumping over the grain, the top
 ## ringing), louder and quicker the faster the fastest touching point
-## slides (its speed from the
+## slides, but not while it spins fast on its point (its speed from the
 ## engine's touch points: the crystal's motion at each, along the table).
 ##
 ## Its size runs from a twentieth of a whole stone's volume (a whole
@@ -291,8 +291,10 @@ func _sound(delta: float, axis: Vector3) -> void:
 			slide = maxf(slide, (moving - normal * moving.dot(normal)).length())
 	_slide = lerpf(_slide, slide, clampf(delta * 20.0, 0.0, 1.0))
 	_drag.global_position = _crystal.global_position
-	var drag := clampf(_slide / 0.8, 0.0, 1.0) if scrape_heard else 0.0
-	_drag.volume_db = linear_to_db(maxf(drag, 0.0001)) - 8.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
+	# Not while it spins on its point: its point's dragging round is
+	# the spin's, heard as the swoosh.
+	var drag := clampf(_slide / 0.8, 0.0, 1.0) if scrape_heard and spin < SPIN_FAST else 0.0
+	_drag.volume_db = linear_to_db(maxf(drag, 0.0001)) - 26.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
 	# Quicker as it slides faster: the bumps over the grain come closer.
 	_drag.pitch_scale = clampf(0.7 + _slide * 0.6, 0.7, 1.5)
 
