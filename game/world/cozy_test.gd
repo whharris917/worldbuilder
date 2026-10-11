@@ -63,6 +63,7 @@ var pure_orb: GlassOrb
 var tied_orb: GlassOrb
 var loose_orb: GlassOrb
 var jack: SunstoneJack
+var trolley: SunTrolley
 var _panel: BenchPanel
 var _env: Environment
 var _mats: Array[Dictionary] = []       # the model materials and their outlines
@@ -202,6 +203,11 @@ func _ready() -> void:
 	var jack_z := sin(jack_bearing) * orb_r
 	jack.position = Vector3(jack_x, height(jack_x, jack_z) + SunstoneJack.LEG + 0.05, jack_z)
 	add_child(jack)
+	# A short track on the open lawn north of the mill, east and west,
+	# with a sunstone's wheelset on it.
+	trolley = SunTrolley.new(self)
+	trolley.position = Vector3(0.0, height(0.0, -23.0), -23.0)
+	add_child(trolley)
 	# Their lanterns' levers and the panel's switch kept as one.
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.lamps_thrown.connect(func(on: bool) -> void:
@@ -410,6 +416,8 @@ func _update_sky() -> void:
 		o.sunlight = workshop.light.sunlight
 	jack.to_sun = workshop.light.sun
 	jack.sunlight = workshop.light.sunlight
+	trolley.to_sun = workshop.light.sun
+	trolley.sunlight = workshop.light.sunlight
 	_shed_note.text = shed.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
 	_moon_note.text = _moon_words(t, moon, left)
