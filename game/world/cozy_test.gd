@@ -237,13 +237,21 @@ func _build_panels() -> void:
 	_panel.slider(shed_panel, "Spotlight (suns)", 0.0, 200.0, 1.0, 50.0, redraw)
 	_panel.note(shed_panel, "How bright the spotlight is on the table, in suns: one is the noon sun's direct light, a thousand watts a square metre.")
 	_panel.slider(shed_panel, "Crystal size", CrystalShed.SMALLEST, CrystalShed.LARGEST, 0.01, CrystalShed.SMALLEST, func(v: float) -> void:
-		shed.size = v
-		shed.reset())
-	_panel.note(shed_panel, "The crystal's length against a whole stone's (the gimbal stones'): from a twentieth of its volume to five times its length.")
+		shed.crystals[0].size = v
+		shed.crystals[0].reset())
+	_panel.note(shed_panel, "A crystal's length against a whole stone's (the gimbal stones'): from a twentieth of its volume to five times its length.")
 	_panel.choice(shed_panel, "Stone", ["Sunstone", "Earthstone"], "Sunstone", func(o: String) -> void:
-		shed.set_kind("sun" if o == "Sunstone" else "earth"))
-	_panel.button(shed_panel, "A new crystal", func() -> void: shed.new_shape())
-	_panel.button(shed_panel, "Set it down again", func() -> void: shed.reset())
+		shed.crystals[0].set_kind("sun" if o == "Sunstone" else "earth"))
+	_panel.button(shed_panel, "A new crystal", func() -> void: shed.crystals[0].new_shape())
+	_panel.button(shed_panel, "Set it down again", func() -> void: shed.crystals[0].reset())
+	_panel.switch(shed_panel, "Second crystal", false, func(on: bool) -> void: shed.crystals[1].set_present(on))
+	_panel.slider(shed_panel, "Second crystal size", CrystalShed.SMALLEST, CrystalShed.LARGEST, 0.01, CrystalShed.SMALLEST, func(v: float) -> void:
+		shed.crystals[1].size = v
+		shed.crystals[1].reset())
+	_panel.choice(shed_panel, "Second stone", ["Sunstone", "Earthstone"], "Earthstone", func(o: String) -> void:
+		shed.crystals[1].set_kind("sun" if o == "Sunstone" else "earth"))
+	_panel.button(shed_panel, "A new second crystal", func() -> void: shed.crystals[1].new_shape())
+	_panel.button(shed_panel, "Set the second down again", func() -> void: shed.crystals[1].reset())
 	_panel.switch(shed_panel, "Knock sound", true, redraw)
 	_panel.switch(shed_panel, "Scrape sound", true, redraw)
 	_panel.slider(shed_panel, "Pitch drop with size", 0.0, 1.0, 0.05, 0.7, redraw)
