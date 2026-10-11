@@ -64,7 +64,6 @@ var _area := 0.0
 var _scale := 1.0
 var _watts := 0.0
 var _drive := 0.0                       # N m: the light's spin on it now
-var _brush: AudioStreamPlayer3D         # a loose globe's spinning on the grass
 var _glow: StandardMaterial3D
 
 
@@ -147,24 +146,6 @@ func _ready() -> void:
 	stone.mesh = stone_mesh
 	stone.basis = tip
 	add_child(stone)
-	if loose:
-		# The turf rubbed under it as it spins on the spot: the island's
-		# wind muffled hard (crystal_turf_loop.wav, by tools/cut_turf.py),
-		# soft, by how fast it turns about the upright.
-		contact_monitor = true
-		max_contacts_reported = 4
-		_brush = AudioStreamPlayer3D.new()
-		_brush.unit_size = 3.0
-		_brush.volume_db = -80.0
-		_brush.position = Vector3(0, -RADIUS, 0)
-		if DisplayServer.get_name() != "headless":
-			var hiss := load("res://audio/crystal_turf_loop.wav") as AudioStreamWAV
-			hiss.loop_mode = AudioStreamWAV.LOOP_FORWARD
-			hiss.loop_begin = 0
-			hiss.loop_end = int(hiss.get_length() * hiss.mix_rate)
-			_brush.stream = hiss
-			_brush.autoplay = true
-		add_child(_brush)
 	if mounting == "struts":
 		_set_struts(verts, index, tip)
 	elif mounting == "axle":
@@ -310,10 +291,3 @@ func _physics_process(_delta: float) -> void:
 	_drive = Photogyrite.spin(_watts, maxf(axis.y, 0.0), turning, purity) * force_scale
 	apply_torque(axis.cross(Vector3.UP) * Photogyrite.pull(_watts, purity) * force_scale + axis * _drive - w * w.length() * AIR)
 	_glow.emission_energy_multiplier = 0.1 + 0.8 * clampf(absf(turning) / 3.0, 0.0, 1.0) + (0.6 if purity > 0.5 else 0.0)
-	if _brush != null:
-		# Kept under the globe (not turning with it), heard only while it
-		# touches the ground.
-		_brush.global_position = global_position - Vector3(0, RADIUS, 0)
-		var rub := absf(w.y) if get_contact_count() > 0 else 0.0
-		_brush.volume_db = linear_to_db(maxf(clampf(rub / 12.0, 0.0, 1.0) * 0.6, 0.0001)) - 18.0
-		_brush.pitch_scale = clampf(0.85 + rub / 80.0, 0.85, 1.1)
