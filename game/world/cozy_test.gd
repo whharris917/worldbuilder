@@ -246,7 +246,7 @@ func _build_panels() -> void:
 	_panel.button(shed_panel, "Set it down again", func() -> void: shed.reset())
 	_panel.switch(shed_panel, "Knock sound", true, redraw)
 	_panel.switch(shed_panel, "Scrape sound", true, redraw)
-	_panel.slider(shed_panel, "Pitch drop with size", 0.0, 1.0, 0.05, 0.5, redraw)
+	_panel.slider(shed_panel, "Pitch drop with size", 0.0, 1.0, 0.05, 0.7, redraw)
 	_panel.note(shed_panel, "How much lower a larger crystal's knocks and scrape sound. At 0 all sizes sound alike; at 1 the pitch falls in step with its length, as a real stone's ring would.")
 	_shed_note = _panel.note(shed_panel, "")
 	var sound := _panel.panel("Sound")

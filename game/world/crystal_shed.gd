@@ -68,7 +68,7 @@ var size := SMALLEST
 ## Its knocks and its scrape heard, each.
 var knocks_heard := true
 ## How much lower a larger stone sounds (`_pitch`).
-var pitch_drop := 0.5
+var pitch_drop := 0.7
 var scrape_heard := true
 
 var _world: Node
