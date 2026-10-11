@@ -21,7 +21,7 @@ from scipy.signal import butter, sosfiltfilt
 from cut_scrape import FOLD, LEVEL, RATE, SOURCE, START, END, AUDIO, read_wav
 
 OUT = AUDIO / "crystal_turf_loop.wav"
-CUTOFF = 420.0
+CUTOFF = 300.0
 
 
 def main() -> None:

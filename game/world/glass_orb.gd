@@ -315,5 +315,5 @@ func _physics_process(_delta: float) -> void:
 		# touches the ground.
 		_brush.global_position = global_position - Vector3(0, RADIUS, 0)
 		var rub := absf(w.y) if get_contact_count() > 0 else 0.0
-		_brush.volume_db = linear_to_db(maxf(clampf(rub / 12.0, 0.0, 1.0) * 0.6, 0.0001)) - 12.0
+		_brush.volume_db = linear_to_db(maxf(clampf(rub / 12.0, 0.0, 1.0) * 0.6, 0.0001)) - 18.0
 		_brush.pitch_scale = clampf(0.85 + rub / 80.0, 0.85, 1.1)

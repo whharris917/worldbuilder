@@ -10,4 +10,4 @@ Licence: Creative Commons Attribution 4.0 (CC BY 4.0). CREDIT REQUIRED:
 Recorded with a contact microphone; corrective EQ by the author.
 
 crystal_turf_loop.wav: made by tools/cut_turf.py from the same recording and
-stretch, low-passed at 420 Hz (as muffled by grass), for the loose glass globe.
+stretch, low-passed at 300 Hz (as muffled by grass), for the loose glass globe.
