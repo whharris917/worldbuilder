@@ -57,7 +57,7 @@ extends Node3D
 ## what moved turn to follow it.
 ##
 ## A piece's target is what it was last aimed at (`links`): the piece,
-## gate's bulb or point the crosshair settled on when it was aimed by a
+## gate's stone or point the crosshair settled on when it was aimed by a
 ## right click, or the piece its beam settled on in the lens view. So a
 ## lantern aimed across at a crystal with gates set in its path later
 ## keeps to the crystal when either moves. A piece never aimed that way
@@ -74,7 +74,7 @@ extends Node3D
 ## right click or Esc leaves it as it was.
 ##
 ## Light gates (LightGate): an opening gate lets a beam through its ring
-## while a lit beam strikes the bulb above it, a closing gate stops one
+## while a lit beam strikes the earthstone above it, a closing gate stops one
 ## while lit; a right click on one turns its ring to face what the
 ## crosshair is on. From these an AND is gates in a row along one beam,
 ## a NOT a closing gate.
@@ -184,8 +184,8 @@ const NOTES := {
 	"rise": "Rising spark\nOne flash when a beam striking it lights.",
 	"fall": "Falling spark\nOne flash when a beam striking it goes dark.",
 	"radiometer": "Luminous rotor\nA spinstone, a crystal of photogyrite, turning on its spindle in the light: the more light, the faster.",
-	"gate": "Opening gate\nLets a beam through its ring while a lit beam strikes the bulb above it.",
-	"closing_gate": "Closing gate\nStops a beam at its ring while a lit beam strikes the bulb above it.",
+	"gate": "Opening gate\nLets a beam through its ring while a lit beam strikes the earthstone above it.",
+	"closing_gate": "Closing gate\nStops a beam at its ring while a lit beam strikes the earthstone above it.",
 	"push_lamp": "Push lamp\nIts red beam on a cart's copper ball pushes the cart along its track, away from the lamp.\nA click opens or closes it; a right click aims it.",
 	"pull_lamp": "Pull lamp\nIts green beam on a cart's copper ball pulls the cart along its track, toward the lamp.\nA click opens or closes it; a right click aims it.",
 	"track": "Track and cart\nPush and pull beams on the copper ball drive the cart along the track.",
@@ -212,8 +212,8 @@ const MENU_NOTES := {
 	"off_delay": "shines while a beam striking it is lit, and a while after.",
 	"rise": "one flash when a beam striking it lights.",
 	"fall": "one flash when a beam striking it goes dark.",
-	"gate": "lets a beam through its ring while its bulb is lit.",
-	"closing_gate": "stops a beam at its ring while its bulb is lit.",
+	"gate": "lets a beam through its ring while its earthstone is lit.",
+	"closing_gate": "stops a beam at its ring while its earthstone is lit.",
 	"mirror": "turns a beam off its silvered face.",
 	"splitter": "sends a beam on through and aside, each with half its reach.",
 	"lens": "a beam through it reaches twice as far again.",
@@ -234,8 +234,8 @@ const DETAILS := {
 	"off_delay": "A crystal that lights the moment a beam striking it lights, and stays lit for its time after the beam goes dark. T changes the time, from 1 to 13 seconds. It keeps a short gap from stopping anything.",
 	"rise": "One short flash the moment a beam striking it lights, then dark however long the beam stays lit: for counting, or for starting something once.",
 	"fall": "One short flash the moment a beam striking it goes dark.",
-	"gate": "A brass ring with a glass bulb above it. A beam through the ring passes only while a lit beam strikes the bulb. Gates in a row along one beam make an AND. A right click turns its ring toward what you look at.",
-	"closing_gate": "A ring like the opening gate's, but it stops the beam through it while its bulb is lit and lets it pass while the bulb is dark. A right click turns its ring toward what you look at.",
+	"gate": "A brass ring with a small earthstone on a spring above it. Light on the stone swings it up against the spring and turns the leaf in the ring edge-on, so a beam through the ring passes only while a lit beam strikes the stone. Gates in a row along one beam make an AND. A right click turns its ring toward what you look at.",
+	"closing_gate": "A ring like the opening gate's, its leaf set a quarter turn round, so it stops the beam through it while its stone is lit and lets it pass while the stone is dark. A right click turns its ring toward what you look at.",
 	"mirror": "A silvered glass that turns a beam off its face as a mirror turns light, losing a little of the beam's reach. A right click aims the beam it sends on.",
 	"splitter": "Half-silvered glass. A beam striking it goes on straight through and is turned aside as well, each with half the reach.",
 	"lens": "A beam passing through it reaches twice as far again, for carrying a signal across a distance.",
@@ -279,8 +279,8 @@ const SUN_TEXTS := {
 		"details": "A crystal that glows the moment a beam striking it lights and stays lit for its time after it goes dark (T changes it). It sends no light."},
 	"rise": {"menu": "one flash when a beam striking it lights; sends no light."},
 	"fall": {"menu": "one flash when a beam striking it goes dark; sends no light."},
-	"gate": {"details": "The piece that lets one beam govern another. A brass ring with a glass bulb above it: a beam through the ring passes only while a lit beam strikes the bulb (three watts or more). Gates in a row along one beam make an AND; two beams brought to the same place make an OR. A right click turns its ring toward what you look at."},
-	"closing_gate": {"details": "Like the opening gate, but it stops the beam through its ring while its bulb is lit, and lets it pass while the bulb is dark: the NOT. A right click turns its ring toward what you look at."},
+	"gate": {"details": "The piece that lets one beam govern another. A brass ring with a small earthstone on a spring above it, linked to the leaf in the ring: light on the stone swings it up against the spring and the leaf turns edge-on, so a beam through the ring passes only while a lit beam strikes the stone (three watts or more); when the light leaves, the spring swings it back and the leaf shuts. Gates in a row along one beam make an AND; two beams brought to the same place make an OR. A right click turns its ring toward what you look at."},
+	"closing_gate": {"details": "Like the opening gate, its leaf set a quarter turn round: it stops the beam through its ring while its stone is lit, and lets it pass while the stone is dark: the NOT. A right click turns its ring toward what you look at."},
 	"mirror": {"details": "A silvered glass that turns a beam off its face without losing any of it. A right click aims the beam it sends on."},
 	"splitter": {"details": "Half-silvered glass: a beam striking it goes on straight through and is turned aside as well, half its light each way."},
 	"lens": {"menu": "a beam passing through it fades half as fast from there.",
@@ -333,7 +333,7 @@ var _carry_building := false            # whether something was in hand when the
 var _carry_item := 0                    # and what
 var _targets := {}                      # piece -> its target, for the pieces aimed again after a move
 ## What each piece was aimed at: piece -> {piece, sensor} for a piece or a
-## gate's bulb, {tile, local} for a point on a floor tile, and always
+## gate's stone, {tile, local} for a point on a floor tile, and always
 ## {point}, where it was.
 var links := {}
 var _aim_target := {}                   # what the piece being aimed points at now
