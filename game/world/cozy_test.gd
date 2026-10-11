@@ -272,6 +272,8 @@ func _build_panels() -> void:
 		built_stones.settle())
 	_panel.note(stones, "Two rows of spinstones west of the mill, each free in a gyroscope's gimbal and lit by its own lantern. Nearer the mill the combination stones: an earthstone, a sunstone, a moonstone, each drawn to point at its body and spun by light. North of them the pure stones: the gyres, only spun by light; the tropes, only drawn round by it. Set still, each lies a new way.")
 	_panel.slider(stones, "Pool thickness (x water)", 1.0, 500.0, 1.0, 1.0, redraw)
+	_panel.slider(stones, "Loose globe force (x)", 0.0, 100.0, 0.5, 1.0, redraw)
+	_panel.note(stones, "Multiplies the light's pull and spin on the stone in the globe loose on the lawn.")
 	_panel.note(stones, "How thick the liquid in the glass globes' pools is, as many times water's: its film holds back the globe's turning, its rocking and its spin alike.")
 	var shed_panel := _panel.panel("Shed")
 	_panel.switch(shed_panel, "Spotlight", true, redraw)
@@ -337,6 +339,7 @@ func _apply() -> void:
 	windmill.swoosh_level = _value("Sails (%)") * 0.01
 	for o: GlassOrb in [orb, pure_orb, tied_orb]:
 		o.viscosity = _value("Pool thickness (x water)")
+	loose_orb.force_scale = _value("Loose globe force (x)")
 	shed.lamp_on = _on("Spotlight")
 	shed.suns = _value("Spotlight (suns)")
 	shed.knocks_heard = _on("Knock sound")

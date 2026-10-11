@@ -47,6 +47,9 @@ var mounting := "rod"
 ## the ground's slight hold on its rolling and spinning (GROUND_HOLD) in
 ## place of the water's.
 var loose := false
+## A multiplier on the light's pull and spin on the stone (a trial knob,
+## the panel's), 1 as the laws give.
+var force_scale := 1.0
 ## How thick the pool's liquid is, as many times water's: its film's hold
 ## on the ball's turning (any way: rocking and spinning alike) grows in
 ## proportion.
@@ -285,6 +288,6 @@ func _physics_process(_delta: float) -> void:
 	var axis := (global_basis * _axis).normalized()
 	var w := angular_velocity
 	var turning := w.dot(axis)
-	_drive = Photogyrite.spin(_watts, maxf(axis.y, 0.0), turning, purity)
-	apply_torque(axis.cross(Vector3.UP) * Photogyrite.pull(_watts, purity) + axis * _drive - w * w.length() * AIR)
+	_drive = Photogyrite.spin(_watts, maxf(axis.y, 0.0), turning, purity) * force_scale
+	apply_torque(axis.cross(Vector3.UP) * Photogyrite.pull(_watts, purity) * force_scale + axis * _drive - w * w.length() * AIR)
 	_glow.emission_energy_multiplier = 0.1 + 0.8 * clampf(absf(turning) / 3.0, 0.0, 1.0) + (0.6 if purity > 0.5 else 0.0)
