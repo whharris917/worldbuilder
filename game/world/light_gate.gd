@@ -4,16 +4,29 @@ extends StaticBody3D
 ## a brass ring with a round leaf in it on a spindle across it, square
 ## across the ring to stop a beam or turned edge-on to let it through;
 ## and above the ring's middle, on its own axle parallel to the spindle
-## (carried on a post beside the ring), a small earthstone held lying
-## level by a coiled spring, its seeking end
-## toward the ring's front. A crank on each axle and a rod between them
-## make the two turn together. Light on the stone draws its seeking end
-## up toward the sky against the spring, a quarter turn, and the leaf
-## turns with it: an opening gate's leaf, square at rest, goes edge-on and
-## lets the beam through; a closing gate's, set a quarter turn round,
-## goes square and stops it. When the light leaves, the spring swings the
-## stone back level. The gate is open or shut at once with the light; the
-## stone's swing (SWING) is how it shows.
+## (carried on a post beside the ring), a small earthstone pivoted at its
+## middle, its seeking end toward the ring's front.
+##
+## The linkage: a crank arm on each axle at the side, the same length and
+## pointing the same way, a pin at each arm's end and a rod hung between
+## the pins, so the two axles always stand at the same turn. The spring: a
+## coil round the stone's axle, one end hooked into a round plate fixed on
+## the post, the other into a collar on the axle, wound so it presses the
+## stone's seeking end down. Two pegs in the plate stop an arm on the
+## collar: at rest the spring holds the stone against the lower peg, its
+## seeking end REST below level; at the upper peg the stone stands OPEN
+## above level, a quarter turn from rest.
+##
+## Light on the stone (watts, from BenchLight each step) pulls its seeking
+## end toward the upright by the earthstone's law (Photogyrite, purity 0,
+## by the axle's own direction in the world), against the spring's push
+## (PRELOAD at rest, rising by SPRING with the turn) and the pivots' drag;
+## the stone, the cranks and the leaf turn as one (INERTIA), stepped each
+## physics frame. Too little light leaves it on its lower peg; a little
+## more swings it part way, to where pull and spring balance; enough holds
+## it on the upper peg. The leaf lets a beam by while within CLEAR of
+## edge-on: an opening gate's leaf is square at rest and edge-on at the
+## upper peg; a closing gate's is set a quarter turn round.
 ##
 ## Beams are told apart by what they strike: the ring's plate (this
 ## body) is the way through; the stone is a body of its own (`sensor`,
@@ -23,7 +36,16 @@ extends StaticBody3D
 const STONE_UP := 0.27                  # m: the stone's axle over the ring's middle
 const CRANK := 0.05                     # m: each crank's reach
 const SIDE := 0.17                      # m: the cranks, out to the side of the ring
-const SWING := 10.0                     # a quarter turn's share a second: the stone's swing, either way
+const POST_X := -0.11                   # m: the post carrying the stone's axle
+const REST := -0.2618                   # rad: the seeking end's turn at rest, 15 degrees below level
+const OPEN := 1.309                     # rad: and on the upper peg, 75 degrees above
+const INERTIA := 2.4e-4                 # kg m²: the stone, cranks, rod and leaf about their axles
+const PRELOAD := 0.0145                 # N m: the spring's push at rest, which 3 W on the stone overcomes
+const SPRING := 0.003                   # N m per radian of turn from rest
+const PIVOT := 2.5e-3                   # N m s: the pivots' drag
+const BOUNCE := 0.2                     # how much of its speed the arm keeps off a peg
+const CLEAR := 0.5236                   # rad: a leaf this near edge-on lets a beam by
+const STEPS := 4                        # steps a physics frame
 
 var closing := false
 var open := false
@@ -34,12 +56,15 @@ var sensor := StaticBody3D.new()
 
 var _head := Node3D.new()
 var _leaf := Node3D.new()
+var _low_crank := Node3D.new()
 var _stone := Node3D.new()
 var _rod: MeshInstance3D
 var _shape := CollisionShape3D.new()
 var _stone_glow: StandardMaterial3D
 var _label: Label3D
-var _swing := 0.0                       # 0 the stone level, 1 a quarter turn up
+var _turn := REST                       # rad: the seeking end above level
+var _rate := 0.0                        # rad/s
+var _watts := 0.0
 
 
 func _init(at: Vector3, brass: Material, leaf_metal: Material, glass: Material, is_closing: bool) -> void:
@@ -56,13 +81,9 @@ func _init(at: Vector3, brass: Material, leaf_metal: Material, glass: Material, 
 	ring.ring_segments = 8
 	ring.material = brass
 	_add(ring, Vector3.ZERO).rotation.x = PI * 0.5
-	# The leaf's spindle across the ring, side to side, out to its crank.
-	var spindle := CylinderMesh.new()
-	spindle.top_radius = 0.007
-	spindle.bottom_radius = 0.007
-	spindle.height = SIDE * 2.0
-	spindle.material = brass
-	_add(spindle, Vector3(SIDE * 0.5 - 0.0, 0, 0)).rotation.z = PI * 0.5
+	# The leaf's spindle across the ring, in bearings at either side of it,
+	# and out to its crank.
+	_bar(_head, Vector3(-0.14, 0, 0), Vector3(SIDE + 0.006, 0, 0), 0.007, brass)
 	_head.add_child(_leaf)
 	var leaf := CylinderMesh.new()
 	leaf.top_radius = 0.11
@@ -75,45 +96,60 @@ func _init(at: Vector3, brass: Material, leaf_metal: Material, glass: Material, 
 	leaf_view.mesh = leaf
 	leaf_view.rotation.x = PI * 0.5
 	_leaf.add_child(leaf_view)
-	# The post up from the ring to the stone's axle, and the axle.
-	var post := CylinderMesh.new()
-	post.top_radius = 0.009
-	post.bottom_radius = 0.011
-	post.height = STONE_UP - 0.1
-	post.material = brass
-	_add(post, Vector3(-0.11, 0.1 + (STONE_UP - 0.1) * 0.5, 0))
-	var axle := CylinderMesh.new()
-	axle.top_radius = 0.006
-	axle.bottom_radius = 0.006
-	axle.height = SIDE + 0.11
-	axle.material = brass
-	_add(axle, Vector3((SIDE - 0.11) * 0.5, STONE_UP, 0)).rotation.z = PI * 0.5
-	# The spring: a coil round the stone's axle beside the post.
-	for k in 5:
+	# The post up from the ring's side to the stone's axle, and the axle
+	# out from its top past the stone to the crank.
+	_bar(_head, Vector3(POST_X, 0.08, 0), Vector3(POST_X, STONE_UP + 0.012, 0), 0.01, brass)
+	_bar(_head, Vector3(POST_X, STONE_UP, 0), Vector3(SIDE + 0.006, STONE_UP, 0), 0.006, brass)
+	# The spring's plate on the post, and its two stop pegs.
+	var plate := CylinderMesh.new()
+	plate.top_radius = 0.05
+	plate.bottom_radius = 0.05
+	plate.height = 0.004
+	plate.radial_segments = 20
+	plate.material = brass
+	_add(plate, Vector3(POST_X + 0.012, STONE_UP, 0)).rotation.z = PI * 0.5
+	for a: float in [REST - 0.17, OPEN + 0.17]:
+		var peg_at := Vector3(0, sin(a), -cos(a)) * 0.04 + Vector3(0, STONE_UP, 0)
+		_bar(_head, peg_at + Vector3(POST_X + 0.012, 0, 0), peg_at + Vector3(-0.055, 0, 0), 0.003, brass)
+	# The coil, its fixed end hooked into the plate.
+	for k in 4:
 		var turn := TorusMesh.new()
-		turn.inner_radius = 0.012
-		turn.outer_radius = 0.018
+		turn.inner_radius = 0.011
+		turn.outer_radius = 0.016
 		turn.rings = 10
 		turn.ring_segments = 6
 		turn.material = brass
-		_add(turn, Vector3(-0.1 + k * 0.009, STONE_UP, 0)).rotation.z = PI * 0.5
-	# The cranks, one on each axle at the side, and the rod between them.
-	for y: float in [0.0, STONE_UP]:
-		var hub := CylinderMesh.new()
-		hub.top_radius = 0.014
-		hub.bottom_radius = 0.014
-		hub.height = 0.012
-		hub.material = brass
-		_add(hub, Vector3(SIDE, y, 0)).rotation.z = PI * 0.5
+		_add(turn, Vector3(-0.09 + k * 0.007, STONE_UP, 0)).rotation.z = PI * 0.5
+	var hook := Vector3(0, -0.0135, 0) + Vector3(0, STONE_UP, 0)
+	_bar(_head, hook + Vector3(POST_X + 0.012, 0, 0), hook + Vector3(-0.09, 0, 0), 0.0025, brass)
+	# What turns with the stone's axle: the stone, the collar with the
+	# coil's other end hooked into it and the arm the pegs stop, the crank.
+	_stone.position = Vector3(0, STONE_UP, 0)
+	_head.add_child(_stone)
+	var collar := CylinderMesh.new()
+	collar.top_radius = 0.012
+	collar.bottom_radius = 0.012
+	collar.height = 0.012
+	collar.material = brass
+	var collar_view := MeshInstance3D.new()
+	collar_view.mesh = collar
+	collar_view.position = Vector3(-0.058, 0, 0)
+	collar_view.rotation.z = PI * 0.5
+	_stone.add_child(collar_view)
+	_bar(_stone, Vector3(-0.069, 0.0135, 0), Vector3(-0.058, 0.0135, 0), 0.0025, brass)
+	_bar(_stone, Vector3(-0.058, 0, 0), Vector3(-0.058, 0, -0.046), 0.0035, brass)
+	_crank(_stone, brass)
+	_low_crank.position = Vector3.ZERO
+	_head.add_child(_low_crank)
+	_crank(_low_crank, brass)
+	# The rod between the two crank pins.
 	var rod := CylinderMesh.new()
 	rod.top_radius = 0.005
 	rod.bottom_radius = 0.005
 	rod.height = STONE_UP
 	rod.material = brass
-	_rod = _add(rod, Vector3(SIDE + 0.008, STONE_UP * 0.5, 0))
-	# The stone on its axle, its seeking end toward the ring's front at rest.
-	_stone.position = Vector3(0, STONE_UP, 0)
-	_head.add_child(_stone)
+	_rod = _add(rod, Vector3(SIDE + 0.02, STONE_UP * 0.5, 0))
+	# The stone, its seeking end toward the ring's front at a turn of 0.
 	_stone_glow = StandardMaterial3D.new()
 	_stone_glow.albedo_color = Color(0.74, 0.62, 0.95, 0.9)
 	_stone_glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -132,14 +168,14 @@ func _init(at: Vector3, brass: Material, leaf_metal: Material, glass: Material, 
 	stone_view.transform = Transform3D(Basis(Vector3.RIGHT, -PI * 0.5).scaled(Vector3.ONE * 0.55), Vector3(0, 0, -0.01))
 	_stone.add_child(stone_view)
 	if closing:
-		# A closing gate wears a red bead on its arm.
+		# A closing gate wears a red bead on its post.
 		var bead := SphereMesh.new()
 		bead.radius = 0.02
 		bead.height = 0.04
 		var red := StandardMaterial3D.new()
 		red.albedo_color = Color(0.8, 0.12, 0.1)
 		bead.material = red
-		_add(bead, Vector3(0, 0.15, 0))
+		_add(bead, Vector3(POST_X, 0.08, 0))
 	# The way through the ring.
 	var plate_shape := BoxShape3D.new()
 	plate_shape.size = Vector3(0.26, 0.26, 0.03)
@@ -167,7 +203,7 @@ func _init(at: Vector3, brass: Material, leaf_metal: Material, glass: Material, 
 	_label.visible = false
 	add_child(_label)
 	set_layer(4)
-	_show()
+	_place()
 
 
 func _add(mesh: Mesh, at: Vector3) -> MeshInstance3D:
@@ -178,6 +214,43 @@ func _add(mesh: Mesh, at: Vector3) -> MeshInstance3D:
 	return m
 
 
+## A round brass bar from `a` to `b` in `parent`'s frame.
+func _bar(parent: Node3D, a: Vector3, b: Vector3, r: float, mat: Material) -> void:
+	var c := CylinderMesh.new()
+	c.top_radius = r
+	c.bottom_radius = r
+	c.height = a.distance_to(b)
+	c.radial_segments = 8
+	c.rings = 1
+	c.material = mat
+	var m := MeshInstance3D.new()
+	m.mesh = c
+	m.transform = Transform3D(CozyMesh.aligned((b - a).normalized()), (a + b) * 0.5)
+	parent.add_child(m)
+
+
+## A crank on an axle at the side: hub, arm toward -z at a turn of 0, pin.
+func _crank(parent: Node3D, mat: Material) -> void:
+	var hub := CylinderMesh.new()
+	hub.top_radius = 0.014
+	hub.bottom_radius = 0.014
+	hub.height = 0.012
+	hub.material = mat
+	var hub_view := MeshInstance3D.new()
+	hub_view.mesh = hub
+	hub_view.position = Vector3(SIDE, 0, 0)
+	hub_view.rotation.z = PI * 0.5
+	parent.add_child(hub_view)
+	var arm := BoxMesh.new()
+	arm.size = Vector3(0.008, 0.016, CRANK + 0.016)
+	arm.material = mat
+	var arm_view := MeshInstance3D.new()
+	arm_view.mesh = arm
+	arm_view.position = Vector3(SIDE + 0.01, 0, -CRANK * 0.5)
+	parent.add_child(arm_view)
+	_bar(parent, Vector3(SIDE + 0.006, 0, -CRANK), Vector3(SIDE + 0.03, 0, -CRANK), 0.004, mat)
+
+
 ## Its ring and its sensor on collision layer `layer` (0: struck by
 ## nothing).
 func set_layer(layer: int) -> void:
@@ -185,31 +258,44 @@ func set_layer(layer: int) -> void:
 	sensor.collision_layer = layer
 
 
-## Light on the stone this step, and the gate set at once.
-func sense(on: bool) -> void:
-	lit = on
-	var now := on != closing
-	if now != open:
-		open = now
-		_show()
+## The watts of light on its stone this step.
+func sense(watts: float) -> void:
+	_watts = watts
+	lit = watts > 0.0
 
 
-func _show() -> void:
-	_stone_glow.emission_energy_multiplier = 0.1 + 0.9 * _swing
+## The stone swung by the light against the spring, between its pegs; the
+## leaf, cranks and rod with it; open by where the leaf stands.
+func _physics_process(delta: float) -> void:
+	var axle := _head.global_basis.x.normalized()
+	var pull := Photogyrite.pull(_watts, 0.0)
+	var h := delta / STEPS
+	for k in STEPS:
+		var seeking := _head.global_basis * (Basis(Vector3.RIGHT, _turn) * Vector3.FORWARD)
+		var twist := pull * seeking.cross(Vector3.UP).dot(axle) - (PRELOAD + SPRING * (_turn - REST)) - PIVOT * _rate
+		_rate += twist / INERTIA * h
+		_turn += _rate * h
+		if _turn < REST:
+			_turn = REST
+			_rate = -_rate * BOUNCE if _rate < 0.0 else _rate
+		elif _turn > OPEN:
+			_turn = OPEN
+			_rate = -_rate * BOUNCE if _rate > 0.0 else _rate
+	var swung := _turn - REST
+	open = swung < CLEAR if closing else swung > PI * 0.5 - CLEAR
+	_place()
 
 
-## The stone swung up while lit, the spring bringing it back; the leaf
-## and the crank rod with it.
-func _process(delta: float) -> void:
-	_swing = move_toward(_swing, 1.0 if lit else 0.0, delta * SWING)
-	var turn := _swing * PI * 0.5
-	_stone.rotation.x = turn
-	_leaf.rotation.x = turn + (PI * 0.5 if closing else 0.0)
+func _place() -> void:
+	var swung := _turn - REST
+	_stone.rotation.x = _turn
+	_low_crank.rotation.x = _turn
+	_leaf.rotation.x = swung + (PI * 0.5 if closing else 0.0)
 	# The rod between the two crank pins, both a crank's reach from their
 	# axles at the same turn.
-	var pin := Vector3(0, sin(turn), -cos(turn)) * CRANK
-	_rod.position = Vector3(SIDE + 0.008, STONE_UP * 0.5, 0) + pin
-	_show()
+	var pin := Vector3(0, sin(_turn), -cos(_turn)) * CRANK
+	_rod.position = Vector3(SIDE + 0.02, STONE_UP * 0.5, 0) + pin
+	_stone_glow.emission_energy_multiplier = 0.1 + 0.9 * clampf(swung / (PI * 0.5), 0.0, 1.0)
 
 
 ## What a right click on it reads: its name, then what it does.

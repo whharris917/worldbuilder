@@ -17,12 +17,14 @@ extends Node3D
 ## kept as a list of its changes for HISTORY seconds.
 ##
 ## A light gate (LightGate) passes a beam through its ring while open and
-## stops it while shut; a beam striking its sensor is read by it, and
-## each step it opens or shuts at once on whether any lit beam struck it.
+## stops it while shut; a beam striking its earthstone is read by it:
+## each step it is given the watts of light on the stone (a lit beam that
+## carries no measure of power counts as LAMP_POWER), and the stone swings
+## against its spring by them, opening or shutting the gate.
 ##
 ## Beams are of three kinds, by the meta "beam" of the part sending them:
 ## light (gold, the signal), push (red) and pull (green). Glass and gates
-## treat all three alike; only light is read by parts and gates' bulbs.
+## treat all three alike; only light is read by parts and gates' stones.
 ## A push or pull beam striking a cart's handle (BeamCart) drives the
 ## cart along its track, away from the beam's source or toward it, by as
 ## much of the beam as runs along the track, while lit.
@@ -184,10 +186,13 @@ func step(dt: float) -> void:
 						any = any or h.delivered
 					p.inputs.append(OpticArrival.new(any, false))
 	for g in gates:
-		var on := false
+		var watts := 0.0
 		for h: OpticArrival in _landed.get(g, []):
-			on = on or h.delivered
-		g.sense(on)
+			if h.power >= 0.0:
+				watts += h.power
+			elif h.delivered:
+				watts += LAMP_POWER
+		g.sense(watts)
 	_landed.clear()
 	for cart in carts:
 		cart.drive(float(_forces.get(cart, 0.0)), dt)
@@ -357,7 +362,7 @@ func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, f
 			if gates.has(gate):
 				if not _landed.has(gate):
 					_landed[gate] = []
-				(_landed[gate] as Array).append(OpticArrival.new(power >= THRESHOLD, false))
+				(_landed[gate] as Array).append(OpticArrival.new(power >= THRESHOLD, false, power))
 			return
 		if not (c is OpticElement and elements.has(c)):
 			return
