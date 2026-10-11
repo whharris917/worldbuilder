@@ -60,7 +60,6 @@ Writes to game/audio/:
   cart_buffer.wav a cart striking the wooden buffer at a track's end
   radiometer_whir_loop.wav  2 s seamless whir of a radiometer's vanes
   crystal_tap_1..4.wav  a stone knocking on a wooden table: a dull knock
-  crystal_scrape_loop.wav  2 s seamless rasp of a sharp stone dragged on wood
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -1565,61 +1564,10 @@ def make_crystal_tap(path: Path, r: random.Random, ring_hz: float) -> None:
     write_wav(path, [out], normalize_to=0.5)
 
 
-def _resonate(buf: list[float], hz: float, q: float) -> list[float]:
-    """A two-pole resonator: what rings at `hz`, sharp as `q`."""
-    w = 2.0 * math.pi * hz / SR
-    alpha = math.sin(w) / (2.0 * q)
-    b0, a0, a1, a2 = alpha, 1.0 + alpha, -2.0 * math.cos(w), 1.0 - alpha
-    out = [0.0] * len(buf)
-    x1 = x2 = y1 = y2 = 0.0
-    for i, x in enumerate(buf):
-        y = (b0 * x - b0 * x2 - a1 * y1 - a2 * y2) / a0
-        out[i] = y
-        x2, x1 = x1, x
-        y2, y1 = y1, y
-    return out
-
-
-def make_crystal_scrape() -> None:
-    """A sharp stone dragged across a wooden table: a rasp. The point
-    bumps over the wood's grain some 250 times a second (a little uneven,
-    each bump a little stronger or weaker), and each bump sets the top
-    ringing at its own low tones (resonators at 170, 310, 560 and 980 Hz,
-    a wooden board's), with a little scratch of the point itself between
-    1.5 and 4 kHz. The game plays it quicker as the point drags faster:
-    the bumps come closer and the rasp rises."""
-    r = random.Random(20261013)
-    dur = 2.0
-    n = int(SR * dur)
-    pad = SR // 2
-    total = n + pad
-    bumps = [0.0] * total
-    at = 0.0
-    while at < total / SR:
-        k = int(at * SR)
-        amp = r.uniform(0.5, 1.0)
-        for m, v in enumerate((1.0, -0.6, 0.25)):
-            if k + m < total:
-                bumps[k + m] += v * amp
-        at += (1.0 / 250.0) * r.uniform(0.75, 1.25)
-    body = [0.0] * total
-    for hz, q, gain in [(170.0, 8.0, 1.0), (310.0, 10.0, 0.8), (560.0, 12.0, 0.6), (980.0, 14.0, 0.35)]:
-        ring = _resonate(bumps, hz, q)
-        for i in range(total):
-            body[i] += ring[i] * gain
-    scratch = _band(_noise_r(r, total), 1500.0, 4000.0)
-    peak_b = max(abs(v) for v in body) or 1.0
-    peak_s = max(abs(v) for v in scratch) or 1.0
-    mixed = [body[i] / peak_b + 0.12 * scratch[i] / peak_s * (0.5 + 0.5 * abs(bumps[i - 1] if i else 0.0)) for i in range(total)]
-    out = loop_crossfade(mixed[pad - int(0.1 * SR):], 0.1)[:n]
-    write_wav(OUT_DIR / "crystal_scrape_loop.wav", [out], normalize_to=0.45)
-
-
 def make_crystal_sounds() -> None:
     r = random.Random(20261012)
     for idx, ring in enumerate([2900.0, 3300.0, 2600.0, 3700.0], start=1):
         make_crystal_tap(OUT_DIR / f"crystal_tap_{idx}.wav", r, ring)
-    make_crystal_scrape()
 
 
 def main() -> None:
