@@ -60,6 +60,7 @@ Writes to game/audio/:
   cart_buffer.wav a cart striking the wooden buffer at a track's end
   radiometer_whir_loop.wav  2 s seamless whir of a radiometer's vanes
   crystal_tap_1..4.wav  a stone knocking on a wooden table: a dull knock
+  crystal_scrape_loop.wav  2 s seamless dry scrape of a stone dragged on wood
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -1564,10 +1565,30 @@ def make_crystal_tap(path: Path, r: random.Random, ring_hz: float) -> None:
     write_wav(path, [out], normalize_to=0.5)
 
 
+def make_crystal_scrape() -> None:
+    """A stone dragged across a wooden table: a dry, dull scrape, noise
+    between 250 Hz and 2 kHz, roughened by the grain (a quick irregular
+    grit of short swells) and no tone. Played louder as the point of
+    contact slides faster."""
+    r = random.Random(20261013)
+    dur = 2.0
+    n = int(SR * dur)
+    fade = int(0.2 * SR)
+    scrape = _band(_noise_r(r, n + fade + SR), 250.0, 2000.0)[SR:]
+    scrape = loop_crossfade(scrape, fade / SR)
+    grit = _lowpass(_noise_r(r, n), 1.0 - math.exp(-2.0 * math.pi * 30.0 / SR))
+    peak = max(abs(v) for v in grit) or 1.0
+    a = quantize(5.0, dur)
+    out = [scrape[i] * (0.65 + 0.25 * grit[i] / peak + 0.1 * math.sin(2.0 * math.pi * a * i / SR)) for i in range(n)]
+    out = loop_crossfade(out, 0.05)
+    write_wav(OUT_DIR / "crystal_scrape_loop.wav", [out], normalize_to=0.35)
+
+
 def make_crystal_sounds() -> None:
     r = random.Random(20261012)
     for idx, ring in enumerate([2900.0, 3300.0, 2600.0, 3700.0], start=1):
         make_crystal_tap(OUT_DIR / f"crystal_tap_{idx}.wav", r, ring)
+    make_crystal_scrape()
 
 
 def main() -> None:

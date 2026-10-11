@@ -27,7 +27,10 @@ extends Node3D
 ## spins fast on its point its small hops are not heard, only a blow
 ## harder than they are (SPIN_FAST, SPIN_BLOW); and while it spins, the
 ## soft swoosh of the air it stirs (the windmill's swoosh_loop.wav),
-## louder and a little higher the faster it spins.
+## louder and a little higher the faster it spins; and while a point of
+## it slides on the table, a dry scrape (crystal_scrape_loop.wav), louder
+## the faster the fastest touching point slides (its speed from the
+## engine's touch points: the crystal's motion at each, along the table).
 ##
 ## Its size runs from a twentieth of a whole stone's volume (a whole
 ## stone is the gimbal stones' crystal) to five times a whole stone's
@@ -59,8 +62,9 @@ var suns := 50.0
 var kind := "sun"
 ## The crystal's length as a share of a whole stone's.
 var size := SMALLEST
-## Its knocks and its scrape heard, each.
+## Its knocks, its swoosh and its scrape heard, each.
 var knocks_heard := true
+var swoosh_heard := true
 var scrape_heard := true
 
 var _world: Node
@@ -76,6 +80,8 @@ var _watts := 0.0
 var _taps: Array[AudioStream] = []
 var _tap: AudioStreamPlayer3D
 var _buzz: AudioStreamPlayer3D
+var _drag: AudioStreamPlayer3D
+var _slide := 0.0                       # m/s: the fastest touching point's sliding, eased
 var _touching := 0                      # the table's touches on it last step
 var _was_v := Vector3.ZERO
 var _was_w := Vector3.ZERO
@@ -104,6 +110,10 @@ func _build_sound() -> void:
 	_buzz.unit_size = 3.0
 	_buzz.volume_db = -80.0
 	add_child(_buzz)
+	_drag = AudioStreamPlayer3D.new()
+	_drag.unit_size = 3.0
+	_drag.volume_db = -80.0
+	add_child(_drag)
 	if DisplayServer.get_name() == "headless":
 		return
 	for k in range(1, 5):
@@ -115,6 +125,13 @@ func _build_sound() -> void:
 	_buzz.stream = loop
 	_buzz.autoplay = true
 	_buzz.play()
+	var drag_loop := load("res://audio/crystal_scrape_loop.wav") as AudioStreamWAV
+	drag_loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	drag_loop.loop_begin = 0
+	drag_loop.loop_end = int(drag_loop.get_length() * drag_loop.mix_rate)
+	_drag.stream = drag_loop
+	_drag.autoplay = true
+	_drag.play()
 
 
 ## A new crystal, its own shape, set lying on the table.
@@ -258,9 +275,23 @@ func _sound(delta: float, axis: Vector3) -> void:
 	_touching = touching
 	_was_v = v
 	_was_w = w
-	var swoosh := clampf(spin / 60.0, 0.0, 1.0) if scrape_heard else 0.0
+	var swoosh := clampf(spin / 60.0, 0.0, 1.0) if swoosh_heard else 0.0
 	_buzz.volume_db = linear_to_db(maxf(swoosh * 0.4, 0.0001)) - 18.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
 	_buzz.pitch_scale = clampf(0.8 + spin / 150.0, 0.6, 1.4)
+	# The scrape: how fast the touching points slide along the table.
+	var slide := 0.0
+	var state := PhysicsServer3D.body_get_direct_state(_crystal.get_rid())
+	if state != null:
+		for k in state.get_contact_count():
+			var at := state.get_contact_local_position(k) - state.transform.origin
+			var moving := v + w.cross(at)
+			var normal := state.get_contact_local_normal(k)
+			slide = maxf(slide, (moving - normal * moving.dot(normal)).length())
+	_slide = lerpf(_slide, slide, clampf(delta * 20.0, 0.0, 1.0))
+	_drag.global_position = _crystal.global_position
+	var drag := clampf(_slide / 0.8, 0.0, 1.0) if scrape_heard else 0.0
+	_drag.volume_db = linear_to_db(maxf(drag * 0.5, 0.0001)) - 16.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
+	_drag.pitch_scale = clampf(0.85 + _slide * 0.2, 0.85, 1.25) * _pitch()
 
 
 func _knock(speed: float) -> void:
