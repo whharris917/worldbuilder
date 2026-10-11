@@ -57,7 +57,7 @@ var workshop: Workshop
 var gimbals: SpinstoneGimbals
 var pure_stones: SpinstoneGimbals
 var built_stones: SpinstoneGimbals
-var smashed: SmashedSunstone
+var shed: CrystalShed
 var _panel: BenchPanel
 var _env: Environment
 var _mats: Array[Dictionary] = []       # the model materials and their outlines
@@ -76,6 +76,7 @@ var day := 0
 var _hour_saved := -1.0
 var _moon_note: Label
 var _eclipse_note: Label
+var _shed_note: Label
 var _sky_left := 0.0
 var _slider_left := 0.0
 var _time_note: Label
@@ -148,11 +149,11 @@ func _ready() -> void:
 			"glass": workshop.glass, "wood": workshop.wood}, "built")
 	built_stones.position = Vector3(-10.0, TOP, -19.0)
 	add_child(built_stones)
-	# A sunstone to smash, north-east of the mill.
-	smashed = SmashedSunstone.new({"brass": workshop.brass, "iron": workshop.get("_iron"), "wood": workshop.wood})
-	# On the ground as it lies there, which bulges a little over TOP.
-	smashed.position = Vector3(9.0, height(9.0, -12.0), -12.0)
-	add_child(smashed)
+	# The shed with a crystal under a spotlight, north-east of the mill,
+	# on the ground as it lies there (a little over TOP).
+	shed = CrystalShed.new(self)
+	shed.position = Vector3(9.0, height(9.0, -12.0), -12.0)
+	add_child(shed)
 	# Their lanterns' levers and the panel's switch kept as one.
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.lamps_thrown.connect(func(on: bool) -> void:
@@ -231,6 +232,19 @@ func _build_panels() -> void:
 		built_stones.settle())
 	_panel.note(stones, "Two rows of spinstones west of the mill, each free in a gyroscope's gimbal and lit by its own lantern. Nearer the mill the combination stones: an earthstone, a sunstone, a moonstone, each drawn to point at its body and spun by light. North of them the pure stones: the gyres, only spun by light; the tropes, only drawn round by it. Set still, each lies a new way.")
 	_stones_note = _panel.note(stones, "")
+	var shed_panel := _panel.panel("Shed")
+	_panel.switch(shed_panel, "Spotlight", true, redraw)
+	_panel.slider(shed_panel, "Spotlight (suns)", 0.0, 200.0, 1.0, 50.0, redraw)
+	_panel.note(shed_panel, "How bright the spotlight is on the table, in suns: one is the noon sun's direct light, a thousand watts a square metre.")
+	_panel.slider(shed_panel, "Crystal size", CrystalShed.SMALLEST, CrystalShed.LARGEST, 0.01, CrystalShed.SMALLEST, func(v: float) -> void:
+		shed.size = v
+		shed.reset())
+	_panel.note(shed_panel, "The crystal's length against a whole stone's (the gimbal stones'): from a twentieth of its volume to five times its length.")
+	_panel.choice(shed_panel, "Stone", ["Sunstone", "Earthstone"], "Sunstone", func(o: String) -> void:
+		shed.set_kind("sun" if o == "Sunstone" else "earth"))
+	_panel.button(shed_panel, "A new crystal", func() -> void: shed.new_shape())
+	_panel.button(shed_panel, "Set it down again", func() -> void: shed.reset())
+	_shed_note = _panel.note(shed_panel, "")
 	var sound := _panel.panel("Sound")
 	_panel.slider(sound, "Master volume (dB)", -24.0, 12.0, 0.5, AudioOutput.master_db, func(v: float) -> void: AudioOutput.set_master_db(v))
 	_panel.note(sound, "Everything the game plays, in every world.")
@@ -268,6 +282,8 @@ func _apply() -> void:
 	_sea_mat.roughness = 0.12 if toon else 0.05
 	windmill.set_cloth(_value("Sail cloth (%)") * 0.01)
 	windmill.swoosh_level = _value("Sails (%)") * 0.01
+	shed.lamp_on = _on("Spotlight")
+	shed.suns = _value("Spotlight (suns)")
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.set_lit(_on("Light the stones"))
 		row.light_watts = _value("Light on each stone (W)")
@@ -317,9 +333,9 @@ func _update_sky() -> void:
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.to_sun = workshop.light.sun
 		row.to_moon = sky.moon_direction()
-	smashed.to_sun = workshop.light.sun
-	smashed.sunlight = workshop.light.sunlight
-	_stones_note.text = gimbals.report() + "\n" + pure_stones.report() + "\n" + built_stones.report() + "\n" + smashed.report()
+	shed.to_sun = workshop.light.sun
+	_shed_note.text = shed.report()
+	_stones_note.text = gimbals.report() + "\n" + pure_stones.report() + "\n" + built_stones.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
 	_moon_note.text = _moon_words(t, moon, left)
 	_time_note.text = "Day %d, %02d:%02d. %s" % [day + 1, floori(hour), floori(fmod(hour, 1.0) * 60.0),
