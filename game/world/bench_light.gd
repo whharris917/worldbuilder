@@ -17,7 +17,7 @@ extends Node3D
 ## kept as a list of its changes for HISTORY seconds.
 ##
 ## A light gate (LightGate) passes a beam through its ring while open and
-## stops it while shut; a beam striking its earthstone is read by it:
+## stops it while shut; a beam striking its geotrope is read by it:
 ## each step it is given the watts of light on the stone (a lit beam that
 ## carries no measure of power counts as LAMP_POWER), and the stone swings
 ## against its spring by them, opening or shutting the gate.

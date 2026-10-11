@@ -4,7 +4,7 @@ extends StaticBody3D
 ## a brass ring with a round leaf in it on a spindle across it, square
 ## across the ring to stop a beam or turned edge-on to let it through;
 ## and above the ring's middle, on its own axle parallel to the spindle
-## (carried on a post beside the ring), a small earthstone pivoted at its
+## (carried on a post beside the ring), a small geotrope pivoted at its
 ## middle, its seeking end toward the ring's front.
 ##
 ## The linkage: a crank arm on each axle at the side, the same length and
@@ -18,7 +18,7 @@ extends StaticBody3D
 ## above level, a quarter turn from rest.
 ##
 ## Light on the stone (watts, from BenchLight each step) pulls its seeking
-## end toward the upright by the earthstone's law (Photogyrite, purity 0,
+## end toward the upright by the geotrope's law (Photogyrite, purity 0,
 ## by the axle's own direction in the world), against the spring's push
 ## (PRELOAD at rest, rising by SPRING with the turn) and the pivots' drag;
 ## the stone, the cranks and the leaf turn as one (INERTIA), stepped each
@@ -151,12 +151,12 @@ func _init(at: Vector3, brass: Material, leaf_metal: Material, glass: Material, 
 	_rod = _add(rod, Vector3(SIDE + 0.02, STONE_UP * 0.5, 0))
 	# The stone, its seeking end toward the ring's front at a turn of 0.
 	_stone_glow = StandardMaterial3D.new()
-	_stone_glow.albedo_color = Color(0.74, 0.62, 0.95, 0.9)
+	_stone_glow.albedo_color = Color(0.5, 0.8, 0.48, 0.9)
 	_stone_glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_stone_glow.roughness = 0.08
 	_stone_glow.metallic_specular = 0.9
 	_stone_glow.emission_enabled = true
-	_stone_glow.emission = Color(0.5, 0.36, 0.85)
+	_stone_glow.emission = Color(0.24, 0.62, 0.26)
 	_stone_glow.emission_energy_multiplier = 0.1
 	var grown := CozyMesh.new()
 	var rng := RandomNumberGenerator.new()

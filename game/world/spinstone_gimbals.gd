@@ -70,7 +70,7 @@ const PURE := [
 	["earth", "Geogyre", Color(0.74, 0.62, 0.95), "signed", "none"],
 	["sun", "Heliogyre", Color(1.0, 0.72, 0.32), "signed", "none"],
 	["moon", "Lunagyre", Color(0.74, 0.84, 1.0), "signed", "none"],
-	["earth", "Geotrope", Color(0.62, 0.5, 0.85), "none", "lit"],
+	["earth", "Geotrope", Color(0.5, 0.8, 0.48), "none", "lit"],
 	["sun", "Heliotrope", Color(0.9, 0.6, 0.22), "none", "lit"],
 	["moon", "Lunatrope", Color(0.6, 0.72, 0.95), "none", "lit"],
 ]
