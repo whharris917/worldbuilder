@@ -148,9 +148,9 @@ func _ready() -> void:
 	stone.basis = tip
 	add_child(stone)
 	if loose:
-		# The turf rubbed under it as it spins on the spot: the recorded
-		# scrape muffled as by grass (crystal_turf_loop.wav, cut by
-		# tools/cut_turf.py), soft, by how fast it turns about the upright.
+		# The turf rubbed under it as it spins on the spot: the island's
+		# wind muffled hard (crystal_turf_loop.wav, by tools/cut_turf.py),
+		# soft, by how fast it turns about the upright.
 		contact_monitor = true
 		max_contacts_reported = 4
 		_brush = AudioStreamPlayer3D.new()

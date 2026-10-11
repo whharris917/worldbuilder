@@ -16,7 +16,7 @@ Work by others in this project, with where it comes from and its licence. Everyt
 | Work | Author | Licence | Used for |
 | --- | --- | --- | --- |
 | [WaterDrop](https://freesound.org/people/noisyredfox/sounds/868240/) | noisyredfox, via Freesound | CC0 | Light pool: drips (`drip_one_c*.wav`); cozy island: the colour works' condenser |
-| [Scraping Fingernails Against Wood 2](https://freesound.org/s/612763/) | F.M.Audio, via Freesound | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Cozy island (test): the shed crystal's scrape (`game/audio/crystal_scrape_loop.wav`, cut by `tools/cut_scrape.py`) and the loose glass globe's rub on turf (`crystal_turf_loop.wav`, low-passed by `tools/cut_turf.py`) |
+| [Scraping Fingernails Against Wood 2](https://freesound.org/s/612763/) | F.M.Audio, via Freesound | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Cozy island (test): the shed crystal's scrape (`game/audio/crystal_scrape_loop.wav`, cut by `tools/cut_scrape.py`) |
 | Drops of water [#1](https://bigsoundbank.com/drops-of-water-1-s1384.html), [#2](https://bigsoundbank.com/drops-of-water-2-s1385.html), [#4](https://bigsoundbank.com/drops-of-water-4-s1387.html) | Joseph Sardin, BigSoundBank | CC0 | Light pool: the Cut drip sounds (`drip_rec_*.wav`) |
 
 ### Textures
