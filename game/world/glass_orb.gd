@@ -3,7 +3,7 @@ extends RigidBody3D
 ## A large earthstone fixed inside a hollow globe of clear glass (a shell
 ## SHELL thick, blown by hand: faintly green, a little out of round, with
 ## small bubbles in it), mounted on a brass rod through its middle whose
-## ends are set into the glass, or tied in cords (`mounting`), held at the
+## ends are set into the glass, or braced by struts (`mounting`), held at the
 ## middle of a pool (OrbPool) by a smooth wooden ring at the water's
 ## surface, which keeps it in place and lets it turn freely any way on a
 ## film of water, as a fountain's floating ball turns: the stone and the
@@ -31,13 +31,14 @@ const GLASS_DENSITY := 2500.0           # kg/m³
 const SHELL := 0.01                     # m: the glass's thickness
 const GLASS := 0.9                      # the share of sunlight the glass lets through
 const WATER_HOLD := 0.005               # the water film's hold on its turning
+const STRUTS := 5                       # the struts bracing an undrilled stone
 const AIR := 1.0e-3                     # N m s²: the air's drag on the smooth globe's turning
 
 ## The stone's purity (Photogyrite), set before it enters the world.
 var purity := 0.0
 ## How the stone is held in the globe, set before it enters the world:
-## "rod" (a brass rod through it, the stone drilled) or "ropes" (cords
-## wrapped round it and tied to the glass, the stone whole).
+## "rod" (a brass rod through it, the stone drilled) or "struts" (brass
+## rods pressing on its faces from the glass, the stone whole).
 var mounting := "rod"
 ## How thick the pool's liquid is, as many times water's: its film's hold
 ## on the ball's turning (any way: rocking and spinning alike) grows in
@@ -135,8 +136,8 @@ func _ready() -> void:
 	stone.mesh = stone_mesh
 	stone.basis = tip
 	add_child(stone)
-	if mounting == "ropes":
-		_tie_ropes(verts, tip)
+	if mounting == "struts":
+		_set_struts(verts, index, tip)
 	else:
 		_set_rod(tip)
 	# The glass, blown by hand: a faint green of old glass, its thickness
@@ -202,46 +203,61 @@ func _set_rod(tip: Basis) -> void:
 	add_child(mount_view)
 
 
-## Its mounting without a hole in it: two hemp cords each wrapped twice
-## round the stone, a little in from either end of its length, drawn to
-## fit it where they lie, and from each wrapping three cords out to the
-## glass, tied off at small pads stuck to the inside of the shell; the
-## stone hangs in the middle of their pull.
-func _tie_ropes(verts: PackedVector3Array, tip: Basis) -> void:
-	var hemp := Color(0.72, 0.6, 0.4)
-	var cords := CozyMesh.new()
-	var top := -INF
-	var bottom := INF
-	for v in verts:
-		top = maxf(top, v.y)
-		bottom = minf(bottom, v.y)
-	for share: float in [0.3, 0.7]:
-		var y := lerpf(bottom, top, share)
-		# How far the stone reaches from its axis at that height.
-		var reach := 0.0
-		for v in verts:
-			if absf(v.y - y) < (top - bottom) * 0.08:
-				reach = maxf(reach, Vector2(v.x, v.z).length())
-		reach += 0.008
-		for turn in 2:
-			cords.torus(reach - 0.007, reach + 0.007, 36, 6, CozyMesh.at(Vector3(0, y + (turn - 0.5) * 0.02, 0)), hemp)
-		var lean := 0.6 if share > 0.5 else -0.6
-		for k in 3:
-			var a := TAU * k / 3.0 + (0.5 if share > 0.5 else 0.0)
-			var from := Vector3(cos(a) * reach, y, sin(a) * reach)
-			# Out and a little toward its end, to where it meets the glass.
-			var d := Vector3(cos(a), lean, sin(a)).normalized()
-			var inner := RADIUS - SHELL
-			var b := from.dot(d)
-			var t := -b + sqrt(b * b - (from.length_squared() - inner * inner))
-			var tied := from + d * t
-			cords.rod(from, tied, 0.006, 6, hemp)
-			cords.ball(0.022, 8, CozyMesh.at(tied), Color(0.6, 0.48, 0.3))
-	var rope_mat := StandardMaterial3D.new()
-	rope_mat.vertex_color_use_as_albedo = true
-	rope_mat.roughness = 0.95
+## Its mounting without a hole in it: STRUTS brass rods held in
+## compression between the stone and the glass, each pressing square on
+## one of the stone's faces through a flat foot and on the inside of the
+## shell through a collar; the faces chosen to point as far apart as can
+## be (each next one the face whose outward direction lies farthest from
+## those already chosen), so the rods brace it from every side.
+func _set_struts(verts: PackedVector3Array, index: PackedInt32Array, tip: Basis) -> void:
+	var faces: Array[Array] = []        # [middle, outward]
+	for k in range(0, index.size(), 3):
+		var a := verts[index[k]]
+		var b := verts[index[k + 1]]
+		var c := verts[index[k + 2]]
+		var n := (b - a).cross(c - a)
+		if n.length() < 1e-6:
+			continue
+		var middle := (a + b + c) / 3.0
+		n = n.normalized()
+		if n.dot(middle) < 0.0:
+			n = -n
+		faces.append([middle, n])
+	var chosen: Array[Array] = []
+	var first := 0
+	for k in faces.size():
+		if (faces[k][1] as Vector3).y > (faces[first][1] as Vector3).y:
+			first = k
+	chosen.append(faces[first])
+	while chosen.size() < STRUTS:
+		var best := 0
+		var best_gap := -INF
+		for k in faces.size():
+			var gap := INF
+			for c: Array in chosen:
+				gap = minf(gap, -(faces[k][1] as Vector3).dot(c[1]))
+			if gap > best_gap:
+				best_gap = gap
+				best = k
+		chosen.append(faces[best])
+	var brass := Color(0.82, 0.62, 0.3)
+	var rods := CozyMesh.new()
+	var inner := RADIUS - SHELL
+	for face: Array in chosen:
+		var from: Vector3 = face[0]
+		var d: Vector3 = face[1]
+		var b := from.dot(d)
+		var t := -b + sqrt(maxf(b * b - (from.length_squared() - inner * inner), 0.0))
+		var to := from + d * t
+		rods.rod(from + d * 0.01, to, 0.011, 10, brass)
+		rods.cyl(0.03, 0.03, 0.012, 14, CozyMesh.at(from + d * 0.006, CozyMesh.aligned(d)), brass)
+		rods.cyl(0.028, 0.034, 0.025, 14, CozyMesh.at(to - d * 0.012, CozyMesh.aligned(d)), brass)
+	var metal := StandardMaterial3D.new()
+	metal.vertex_color_use_as_albedo = true
+	metal.metallic = 0.8
+	metal.roughness = 0.3
 	var view := MeshInstance3D.new()
-	view.mesh = cords.commit(rope_mat)
+	view.mesh = rods.commit(metal)
 	view.basis = tip
 	add_child(view)
 

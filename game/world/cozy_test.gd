@@ -174,8 +174,8 @@ func _ready() -> void:
 	pure_pool.position = Vector3(pure_x, height(pure_x, pure_z), pure_z)
 	add_child(pure_pool)
 	pure_orb = pure_pool.orb
-	# A third, its pure stone tied in with cords, not drilled.
-	var tied_pool := OrbPool.new(self, 1.0, "ropes")
+	# A third, its pure stone braced by struts, not drilled.
+	var tied_pool := OrbPool.new(self, 1.0, "struts")
 	var tied_bearing := deg_to_rad(165.0)
 	var tied_x := cos(tied_bearing) * orb_r
 	var tied_z := sin(tied_bearing) * orb_r
