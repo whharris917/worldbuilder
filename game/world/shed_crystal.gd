@@ -23,7 +23,10 @@ extends Node3D
 ## Its sounds come from what it does, quiet: a dull knock of stone on
 ## wood each time it strikes the table, the other crystal, or rolls on to
 ## a new facet (the engine reporting a new touch, or its speed jumping),
-## louder the harder (crystal_tap_1..4.wav); while it spins fast on its
+## louder the harder (crystal_tap_1..4.wav), or where it strikes the
+## other crystal a glassy clink of stone on stone (crystal_clink_1..4.wav,
+## chosen when one of its touches is the other crystal); while it spins
+## fast on its
 ## point its small hops are not heard, only a blow harder than they are
 ## (SPIN_FAST, SPIN_BLOW); and while a point of it slides, a scrape on
 ## wood (crystal_scrape_loop.wav, cut by tools/cut_scrape.py from
@@ -57,6 +60,8 @@ var _area := 0.0                        # m²: its mean shadow
 var _scale := 1.0
 var _watts := 0.0
 var _taps: Array[AudioStream] = []
+var _clinks: Array[AudioStream] = []
+var _stone_touches := 0                 # touches on it by the other crystal last step
 var _tap: AudioStreamPlayer3D
 var _drag: AudioStreamPlayer3D
 var _slide := 0.0                       # m/s: the fastest touching point's sliding, eased
@@ -93,6 +98,7 @@ func _ready() -> void:
 	if DisplayServer.get_name() != "headless":
 		for k in range(1, 5):
 			_taps.append(load("res://audio/crystal_tap_%d.wav" % k))
+			_clinks.append(load("res://audio/crystal_clink_%d.wav" % k))
 		var drag_loop := load("res://audio/crystal_scrape_loop.wav") as AudioStreamWAV
 		drag_loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		drag_loop.loop_begin = 0
@@ -240,21 +246,30 @@ func _sound(delta: float, axis: Vector3) -> void:
 	var jolt := maxf((v - _was_v).length() - 9.8 * delta * 1.5, 0.0) + (w - _was_w).length() * reach * 0.5
 	_since_tap += delta
 	var spin := absf(w.dot(axis))
+	# Which of its touches are the other crystal's.
+	var state := PhysicsServer3D.body_get_direct_state(_crystal.get_rid())
+	var stone_touches := 0
+	if state != null:
+		for k in state.get_contact_count():
+			if state.get_contact_collider_object(k) is RigidBody3D:
+				stone_touches += 1
 	var heard := false
 	if spin > SPIN_FAST:
 		heard = jolt > SPIN_BLOW
 	else:
 		heard = jolt > 0.25 or (touching > _touching and v.length() + w.length() * reach > 0.15)
-	if touching > 0 and _since_tap > 0.03 and heard:
-		_knock(maxf(jolt, (v.length() + w.length() * reach) * 0.5))
+	# A new touch of the other crystal is heard as a clink however it spins.
+	var new_stone := stone_touches > _stone_touches and v.length() + w.length() * reach > 0.1
+	if touching > 0 and _since_tap > 0.03 and (heard or new_stone):
+		_knock(maxf(jolt, (v.length() + w.length() * reach) * 0.5), stone_touches > 0)
 	_touching = touching
+	_stone_touches = stone_touches
 	_was_v = v
 	_was_w = w
 	# The scrape: how fast the touching points slide along the surface;
 	# while it spins fast on its point, how fast it travels over the
 	# table, its point's grinding round in place heard as a slow drag.
 	var slide := 0.0
-	var state := PhysicsServer3D.body_get_direct_state(_crystal.get_rid())
 	# (Its travel averaged over about a third of a second: its wobbling
 	# about cancels out, its wandering stays.)
 	_travel = _travel.lerp(Vector2(v.x, v.z), clampf(delta * 3.0, 0.0, 1.0))
@@ -275,11 +290,14 @@ func _sound(delta: float, axis: Vector3) -> void:
 	_drag.pitch_scale = clampf(0.85 + _slide * 0.3, 0.85, 1.2) * _pitch()
 
 
-func _knock(speed: float) -> void:
+## A knock on wood, or a clink where it struck the other crystal
+## (`on_stone`).
+func _knock(speed: float, on_stone: bool) -> void:
 	if _taps.is_empty() or not _shed.knocks_heard:
 		return
 	_since_tap = 0.0
-	_tap.stream = _taps[_rng.randi() % _taps.size()]
+	var set: Array[AudioStream] = _clinks if on_stone else _taps
+	_tap.stream = set[_rng.randi() % set.size()]
 	_tap.pitch_scale = _pitch() * _rng.randf_range(0.92, 1.08)
 	_tap.volume_db = linear_to_db(clampf(speed / 1.2, 0.03, 1.0)) - 16.0 + 3.0 * log(_crystal.mass + 1.0) / log(10.0)
 	_tap.play()
