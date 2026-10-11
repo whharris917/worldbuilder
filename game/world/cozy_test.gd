@@ -246,6 +246,8 @@ func _build_panels() -> void:
 	_panel.button(shed_panel, "Set it down again", func() -> void: shed.reset())
 	_panel.switch(shed_panel, "Knock sound", true, redraw)
 	_panel.switch(shed_panel, "Scrape sound", true, redraw)
+	_panel.slider(shed_panel, "Pitch drop with size", 0.0, 1.0, 0.05, 0.5, redraw)
+	_panel.note(shed_panel, "How much lower a larger crystal's knocks and scrape sound. At 0 all sizes sound alike; at 1 the pitch falls in step with its length, as a real stone's ring would.")
 	_shed_note = _panel.note(shed_panel, "")
 	var sound := _panel.panel("Sound")
 	_panel.slider(sound, "Master volume (dB)", -24.0, 12.0, 0.5, AudioOutput.master_db, func(v: float) -> void: AudioOutput.set_master_db(v))
@@ -288,6 +290,7 @@ func _apply() -> void:
 	shed.suns = _value("Spotlight (suns)")
 	shed.knocks_heard = _on("Knock sound")
 	shed.scrape_heard = _on("Scrape sound")
+	shed.pitch_drop = _value("Pitch drop with size")
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.set_lit(_on("Light the stones"))
 		row.light_watts = _value("Light on each stone (W)")

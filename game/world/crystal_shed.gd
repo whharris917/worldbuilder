@@ -65,6 +65,8 @@ var kind := "sun"
 var size := SMALLEST
 ## Its knocks and its scrape heard, each.
 var knocks_heard := true
+## How much lower a larger stone sounds (`_pitch`).
+var pitch_drop := 0.5
 var scrape_heard := true
 
 var _world: Node
@@ -283,7 +285,7 @@ func _sound(delta: float, axis: Vector3) -> void:
 	_drag.global_position = _crystal.global_position
 	var drag := clampf(_slide / 0.8, 0.0, 1.0) if scrape_heard else 0.0
 	_drag.volume_db = linear_to_db(maxf(drag, 0.0001)) - 16.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
-	_drag.pitch_scale = clampf(0.85 + _slide * 0.3, 0.85, 1.2)
+	_drag.pitch_scale = clampf(0.85 + _slide * 0.3, 0.85, 1.2) * _pitch()
 
 
 func _knock(speed: float) -> void:
@@ -296,10 +298,12 @@ func _knock(speed: float) -> void:
 	_tap.play()
 
 
-## Smaller stones ring higher: the pitch as the crystal's size's inverse
-## square root, a small stone's at one.
+## Larger stones sound lower: the pitch as the smallest stone's size over
+## this one's, to the power `pitch_drop` (0 the same for all, 1 in
+## inverse proportion to its length, as a solid's ringing goes), the
+## smallest's at one.
 func _pitch() -> float:
-	return clampf(sqrt(SMALLEST / size), 0.35, 1.2)
+	return clampf(pow(SMALLEST / size, pitch_drop), 0.1, 1.0)
 
 
 ## ---- building ----------------------------------------------------------------
