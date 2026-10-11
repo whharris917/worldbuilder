@@ -39,6 +39,9 @@ const BEARING := 0.002                  # N m s: the bearings
 var to_sun := Vector3.UP
 var sunlight := 0.0
 var purity := 1.0
+## A multiplier on the light's spin on the stone (a trial knob, the
+## panel's).
+var force_scale := 1.0
 
 var _arm: Node3D                        # sweeping round the post
 var _turning: Node3D                    # the axle, stone and wheel, turning about the axle
@@ -68,7 +71,7 @@ func set_still() -> void:
 func _physics_process(delta: float) -> void:
 	var watts := sunlight * _area if to_sun.y > 0.0 else 0.0
 	var outward := Vector3(cos(_round), 0.0, sin(_round))
-	var drive := Photogyrite.spin(watts, maxf(outward.dot(to_sun), 0.0), _spin, purity)
+	var drive := Photogyrite.spin(watts, maxf(outward.dot(to_sun), 0.0), _spin, purity) * force_scale
 	var rolling := ROLLING * _load * WHEEL_R
 	var twist := drive - signf(_spin) * (rolling + BEARING * absf(_spin))
 	if absf(_spin) < 0.02 and absf(drive) <= rolling:
