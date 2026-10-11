@@ -297,6 +297,7 @@ func _update_sky() -> void:
 	var t := day + hour / 24.0
 	var moon := MoonOrbit.moon_at(t)
 	var left := 1.0 - MoonOrbit.covered(t)
+	sky.moon_across = MoonOrbit.MOON_R * 2.0
 	sky.set_state(at.x, at.y, _value("Sun brightness"), moon.x, moon.y, _on("Storybook sky"), left)
 	campsite.set_night(1.0 - sky.daylight)
 	_env.fog_light_color = sky.haze_colour
@@ -349,10 +350,9 @@ func _to_next_eclipse() -> void:
 	day = floori(t)
 	hour = (t - day) * 24.0
 	(_panel.sliders["Time of day"] as HSlider).set_value_no_signal(hour)
-	var share := float(next["share"])
-	_eclipse_note.text = "The eclipse: day %d, %s to %s, deepest at %s with %s." % [floori(float(next["start"])) + 1,
-			_clock_words(float(next["start"])), _clock_words(float(next["end"])), _clock_words(float(next["deepest"])),
-			"the whole sun covered" if share >= 0.999 else "%d%% of the sun covered" % roundi(share * 100.0)]
+	_eclipse_note.text = "The eclipse: day %d, the moon on the sun from %s to %s, the whole sun hidden from %s to %s." % [
+			floori(float(next["start"])) + 1, _clock_words(float(next["start"])), _clock_words(float(next["end"])),
+			_clock_words(float(next["total_from"])), _clock_words(float(next["total_to"]))]
 	_update_sky()
 
 

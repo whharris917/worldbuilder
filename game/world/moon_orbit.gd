@@ -11,8 +11,13 @@ extends RefCounted
 ## moon goes round in a circle tilted TILT to the sun's path, coming back
 ## to the sun every MONTH days; the line where its circle crosses the
 ## sun's path (the nodes) turns backward once in NODES days. The moon
-## passes in front of the sun when it comes round to the sun near a node:
-## its disc (MOON_R) then covers some or all of the sun's (SUN_R). A
+## passes in front of the sun when it comes round to the sun near a node.
+## Every eclipse is total and central, the island under the middle of the
+## shadow (the director's choice, against the real sky): about each new
+## moon the path is drawn on to the sun's centre, or off clear of its
+## disc, as `moon_vector` says; the moon's disc (MOON_R) is a quarter
+## larger than the sun's (SUN_R), so the whole sun is hidden for some
+## minutes of the island's time. A
 ## month of a few days and a small tilt make eclipses come every few days
 ## to a few weeks of the island's time; a month that is not a whole
 ## number of days moves each new moon to another hour, so an eclipse may
@@ -26,7 +31,9 @@ const MONTH := 4.587                      # days from new moon to new moon
 const NODES := 41.7                     # days for the nodes to turn once, backward
 const TILT := 0.8                       # degrees between the moon's path and the sun's
 const SUN_R := 0.266                    # degrees: the sun's disc, half across
-const MOON_R := 0.272                   # degrees: the moon's
+const MOON_R := 0.333                   # degrees: the moon's, a quarter larger than the sun's
+const ECLIPSE_REACH := 0.538            # degrees: a new moon this near the sun's path is drawn on to it
+const CLEAR := 0.75                     # degrees: one farther, but nearer than this, is drawn off to it
 const OBLIQUITY := 23.44                # degrees between the sun's path and the equator
 const START_LONGITUDE := 200.0          # degrees: the moon along the sun's path on the first morning
 const START_NODE := 100.0               # degrees: its rising node then
@@ -43,12 +50,37 @@ static func sun_vector() -> Vector3:
 	return _equatorial(Vector3(cos(lon), sin(lon), 0.0))
 
 
-## The moon's place among the stars at time `t` (equatorial).
+## The moon's place among the stars at time `t` (equatorial): on its
+## circle, then drawn north or south about each new moon (`_new_moon`)
+## so that a new moon either passes through the sun's centre or clears
+## its disc. The pull grows and fades over the month (cos², nothing at
+## half a month either side), so the path stays smooth.
 static func moon_vector(t: float) -> Vector3:
+	var p := _on_circle(t)
+	var lon := atan2(p.y, p.x)
+	var lat := asin(clampf(p.z, -1.0, 1.0))
+	var k := roundi((t - _new_moon(0)) / MONTH)
+	var t_k := _new_moon(k)
+	var at_new := rad_to_deg(asin(clampf(_on_circle(t_k).z, -1.0, 1.0)))
+	var w := pow(cos(PI * (t - t_k) / MONTH), 2.0)
+	if absf(at_new) < ECLIPSE_REACH:
+		lat -= deg_to_rad(at_new) * w
+	elif absf(at_new) < CLEAR:
+		lat += deg_to_rad(signf(at_new) * (CLEAR - absf(at_new))) * w
+	return _equatorial(Vector3(cos(lat) * cos(lon), cos(lat) * sin(lon), sin(lat)))
+
+
+## The moon on its plain tilted circle (ecliptic).
+static func _on_circle(t: float) -> Vector3:
 	var node := deg_to_rad(START_NODE - 360.0 * t / NODES)
 	var along := deg_to_rad(START_LONGITUDE + 360.0 * t / MONTH) - node
-	var on_path := Basis(Vector3(0, 0, 1), node) * Basis(Vector3(1, 0, 0), deg_to_rad(TILT)) * Vector3(cos(along), sin(along), 0.0)
-	return _equatorial(on_path)
+	return Basis(Vector3(0, 0, 1), node) * Basis(Vector3(1, 0, 0), deg_to_rad(TILT)) * Vector3(cos(along), sin(along), 0.0)
+
+
+## The time of the `k`th new moon: the moon's mean place along the sun's
+## path at the sun's.
+static func _new_moon(k: int) -> float:
+	return (fposmod(sun_longitude() - START_LONGITUDE, 360.0) + 360.0 * k) / (360.0 / MONTH)
 
 
 static func _equatorial(ecliptic: Vector3) -> Vector3:
@@ -108,9 +140,9 @@ static func age(t: float) -> float:
 	return fposmod(rad_to_deg(atan2(m.y, m.x) - atan2(s.y, s.x)), 360.0) / 360.0 * MONTH
 
 
-## The first eclipse beginning after time `t` with the sun up for some of
-## it: {"start", "end", "deepest" (time), "share" (most of the sun
-## covered)}; empty if none in `months` months.
+## The first eclipse beginning after time `t` with the sun up at its
+## deepest: {"start", "end", "deepest", "total_from", "total_to" (times),
+## "share" (most of the sun covered)}; empty if none in `months` months.
 static func next_eclipse(t: float, months := 400) -> Dictionary:
 	# New moons fall where the moon's mean place along the sun's path
 	# reaches the sun's; each is searched a little either side.
@@ -125,7 +157,8 @@ static func next_eclipse(t: float, months := 400) -> Dictionary:
 		var end := -1.0
 		var deepest := 0.0
 		var share := 0.0
-		var seen := false
+		var total_from := -1.0
+		var total_to := -1.0
 		var at := new_moon - 0.15
 		while at < new_moon + 0.15:
 			var c := covered(at)
@@ -136,9 +169,12 @@ static func next_eclipse(t: float, months := 400) -> Dictionary:
 				if c > share:
 					share = c
 					deepest = at
-				if CozyTest.sun_at(fposmod(at, 1.0) * 24.0).x > 0.0:
-					seen = true
-			at += 0.0004
-		if start > t and seen:
-			return {"start": start, "end": end, "deepest": deepest, "share": share}
+				if c >= 0.9999:
+					if total_from < 0.0:
+						total_from = at
+					total_to = at
+			at += 0.0002
+		if start > t and CozyTest.sun_at(fposmod(deepest, 1.0) * 24.0).x > 0.0:
+			return {"start": start, "end": end, "deepest": deepest, "share": share,
+					"total_from": total_from, "total_to": total_to}
 	return {}

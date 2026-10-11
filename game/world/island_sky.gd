@@ -45,7 +45,6 @@ const MOONLIGHT := 0.18                # its energy when full and high
 const MOON_COLOUR := Color(0.62, 0.72, 1.0)
 const STAR_HOURS := 21.0
 const SUN_ACROSS := 0.533               # degrees: the sun's disc
-const MOON_ACROSS := 0.544              # degrees: the moon's
 # Sun height (degrees); sky top; horizon; haze.
 const KEYS := [
 	[-18.0, Color(0.02, 0.035, 0.1), Color(0.05, 0.08, 0.18), Color(0.04, 0.06, 0.12)],
@@ -62,6 +61,7 @@ var daylight := 1.0                    # 1 by day, 0 at night, through twilight
 var sun_height := 38.0                  # degrees
 var moon_height := 25.0                 # degrees
 var moon_lit := 1.0                     # the lit share of the moon's disc
+var moon_across := 0.544                # degrees: the moon's disc, as a world sets it
 var haze_colour := Color.WHITE
 
 var _physical := PhysicalSkyMaterial.new()
@@ -325,11 +325,11 @@ func set_state(sun_height: float, sun_bearing: float, sun_energy: float, moon_he
 	haze_colour.a = 1.0
 
 	# The storybook moon is about three times the real one's half degree.
-	_moon_radius = MOON_D * tan(deg_to_rad(0.8 if story else MOON_ACROSS * 0.5))
+	_moon_radius = MOON_D * tan(deg_to_rad(0.8 if story else moon_across * 0.5))
 	var shown: StandardMaterial3D = _moon_story if story else _moon_real
 	_moon.material_override = shown
 	_moon.visible = moon_height > -2.0
-	var over_sun := 1.0 - smoothstep(SUN_ACROSS * 0.5 + MOON_ACROSS * 0.5, SUN_ACROSS * 0.5 + MOON_ACROSS * 0.5 + 0.3,
+	var over_sun := 1.0 - smoothstep(SUN_ACROSS * 0.5 + moon_across * 0.5, SUN_ACROSS * 0.5 + moon_across * 0.5 + 0.3,
 			rad_to_deg(acos(clampf(to_sun.dot(_moon_dir), -1.0, 1.0))))
 	var day := smoothstep(-4.0, 4.0, sun_height)
 	shown.albedo_color.a = maxf(lerpf(1.0, clampf(lit * 6.0, 0.0, 1.0), day), over_sun)
