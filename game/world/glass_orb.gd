@@ -1,6 +1,7 @@
 class_name GlassOrb
 extends RigidBody3D
-## A large earthstone set in a solid ball of clear glass, held at the
+## A large earthstone fixed inside a hollow globe of clear glass (a shell
+## SHELL thick), held at the
 ## middle of a pool (OrbPool) by a smooth wooden ring at the water's
 ## surface, which keeps it in place and lets it turn freely any way on a
 ## film of water, as a fountain's floating ball turns: the stone and the
@@ -16,16 +17,17 @@ extends RigidBody3D
 ## for each watt while its seeking end is up; the air's drag on the
 ## ball's turning, and the water film's (WATER_HOLD, an angular
 ## damping). Held in its ring the ball turns without lifting its weight,
-## so the pull, weak against a ball of 1.75 tonnes, sways the stone
-## upright over a minute or two and then begins, slowly, to turn it.
+## so the pull sways the stone upright and then spins the globe about
+## the upright, gathering speed over minutes against the water's hold.
 ## Inert at night and in an eclipse's shadow; the shade of things on the
 ## island is not counted.
 
 const SIZE := 2.0                       # the stone's length, as a share of a whole stone's
 const RADIUS := 0.55                    # m: the ball
 const GLASS_DENSITY := 2500.0           # kg/m³
+const SHELL := 0.01                     # m: the glass's thickness
 const GLASS := 0.9                      # the share of sunlight the glass lets through
-const WATER_HOLD := 0.02                # the water film's hold on its turning
+const WATER_HOLD := 0.005               # the water film's hold on its turning
 
 ## Toward the sun and its direct light, W/m², set by the world.
 var to_sun := Vector3.UP
@@ -77,11 +79,19 @@ func _ready() -> void:
 	for k in verts.size():
 		verts[k] -= middle
 	_area = surface * 0.25
-	# The ball's mass and inertia: glass round a stone of much the same
-	# density, as a solid ball.
-	var ball := 4.0 / 3.0 * PI * pow(RADIUS, 3.0)
-	mass = (ball - volume) * GLASS_DENSITY + volume * ShedCrystal.DENSITY
-	inertia = Vector3.ONE * 0.4 * mass * RADIUS * RADIUS
+	# The globe's mass and inertia: a thin shell of glass (two thirds of
+	# its mass times its radius squared) and the stone (as the box round
+	# it, an average over its axes, since it lies tipped in the globe).
+	var shell := 4.0 * PI * RADIUS * RADIUS * SHELL * GLASS_DENSITY
+	var stone_mass := volume * ShedCrystal.DENSITY
+	var box := AABB(verts[0], Vector3.ZERO)
+	for v in verts:
+		box = box.expand(v)
+	var d := box.size
+	mass = shell + stone_mass
+	inertia = Vector3.ONE * (2.0 / 3.0 * shell * RADIUS * RADIUS + stone_mass * (d.x * d.x + d.y * d.y + d.z * d.z) / 18.0)
+	# The water's hold alone, in place of the engine's own default drag.
+	angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
 	angular_damp = WATER_HOLD
 	# Held in its ring: free to turn, not to move.
 	axis_lock_linear_x = true
@@ -132,7 +142,7 @@ func _ready() -> void:
 
 func inspect_text() -> String:
 	var axis := (global_basis * _axis).normalized()
-	return "An earthstone in glass\nA large earthstone set in a solid ball of clear glass, turning freely in a wooden ring on a film of water. In the sun the stone draws its seeking end up and spins, and the ball turns with it. Its end now %d degrees off straight up; turning %.2f times a second." % [
+	return "An earthstone in glass\nA large earthstone fixed inside a hollow globe of clear glass, turning freely in a wooden ring on a film of water. In the sun the stone draws its seeking end up and spins, and the ball turns with it. Its end now %d degrees off straight up; turning %.2f times a second." % [
 			roundi(rad_to_deg(axis.angle_to(Vector3.UP))), absf(angular_velocity.dot(axis)) / TAU]
 
 

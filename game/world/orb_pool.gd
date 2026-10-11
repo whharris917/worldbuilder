@@ -41,22 +41,34 @@ func _init(world: Node) -> void:
 	water.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	water.roughness = 0.05
 	water.metallic_specular = 0.8
-	var surface := CylinderMesh.new()
-	surface.top_radius = RADIUS
-	surface.bottom_radius = RADIUS
-	surface.height = 0.02
-	surface.radial_segments = 48
-	surface.material = water
+	water.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# The surface a flat ring: from the rim in to where it meets the
+	# globe's glass, the water kept out of the globe.
+	var ring_y := WATER + 0.07
+	var water_y := WATER + 0.06
+	var above := ring_y + RING_DROP - water_y
+	var inner := sqrt(maxf(GlassOrb.RADIUS * GlassOrb.RADIUS - above * above, 0.0))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in 64:
+		var a0 := TAU * k / 64.0
+		var a1 := TAU * (k + 1) / 64.0
+		var corners := [Vector3(cos(a0) * inner, 0, sin(a0) * inner), Vector3(cos(a0) * RADIUS, 0, sin(a0) * RADIUS),
+				Vector3(cos(a1) * RADIUS, 0, sin(a1) * RADIUS), Vector3(cos(a1) * inner, 0, sin(a1) * inner)]
+		for i: int in [0, 2, 1, 0, 3, 2]:
+			st.set_normal(Vector3.UP)
+			st.add_vertex(corners[i])
+	var surface := st.commit()
+	surface.surface_set_material(0, water)
 	var water_view := MeshInstance3D.new()
 	water_view.mesh = surface
-	water_view.position = Vector3(0, WATER + 0.06, 0)
+	water_view.position = Vector3(0, water_y, 0)
 	water_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(water_view)
 	# The ring and its spokes, smooth oiled wood.
 	var wood := CozyMesh.new()
 	var oak := Color(0.48, 0.32, 0.2)
 	var touch := sqrt(GlassOrb.RADIUS * GlassOrb.RADIUS - RING_DROP * RING_DROP)
-	var ring_y := WATER + 0.07
 	wood.torus(touch, touch + 0.12, 40, 10, CozyMesh.at(Vector3(0, ring_y, 0)), oak)
 	for k in 4:
 		var a := TAU * k / 4.0 + PI * 0.25
