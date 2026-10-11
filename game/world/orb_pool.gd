@@ -9,6 +9,7 @@ const RADIUS := 1.6                     # m: the pool, inside the rim
 const WALL := 0.5                       # m: the rim's height over the ground
 const WATER := 0.45                     # m: the water's surface over the ground
 const RING_DROP := 0.25                 # m: the ring under the ball's middle
+const DEPTH := 0.0                      # m: the basin's floor under the ground (none: the island's ground would show over a sunk floor)
 
 var orb: GlassOrb
 
@@ -19,7 +20,39 @@ func _init(world: Node) -> void:
 	var stone_mat: StandardMaterial3D = world.call("material", true, false)
 	var rim := CozyMesh.new()
 	var stone := Color(0.62, 0.6, 0.56)
-	rim.cyl(RADIUS + 0.25, RADIUS + 0.3, WALL, 48, CozyMesh.at(Vector3(0, WALL * 0.5, 0)), stone)
+	# A hollow ring wall: its outside, its inside, its top, and the
+	# basin's floor on the ground, low enough for the stone's
+	# lower end to hang in the water.
+	var outer := RADIUS + 0.3
+	var wall_mesh := CylinderMesh.new()
+	wall_mesh.top_radius = outer
+	wall_mesh.bottom_radius = outer
+	wall_mesh.height = WALL + DEPTH
+	wall_mesh.radial_segments = 48
+	wall_mesh.rings = 1
+	wall_mesh.cap_top = false
+	wall_mesh.cap_bottom = false
+	rim.add(wall_mesh, CozyMesh.at(Vector3(0, (WALL - DEPTH) * 0.5, 0)), stone)
+	var inner_mesh := CylinderMesh.new()
+	inner_mesh.top_radius = RADIUS
+	inner_mesh.bottom_radius = RADIUS
+	inner_mesh.height = WALL + DEPTH
+	inner_mesh.radial_segments = 48
+	inner_mesh.rings = 1
+	inner_mesh.cap_top = false
+	inner_mesh.cap_bottom = false
+	rim.add_inside(inner_mesh, CozyMesh.at(Vector3(0, (WALL - DEPTH) * 0.5, 0)), stone.darkened(0.25))
+	for k in 48:
+		var a0 := TAU * k / 48.0
+		var a1 := TAU * (k + 1) / 48.0
+		rim.quad(Vector3(cos(a0) * RADIUS, WALL, sin(a0) * RADIUS), Vector3(cos(a1) * RADIUS, WALL, sin(a1) * RADIUS),
+				Vector3(cos(a1) * outer, WALL, sin(a1) * outer), Vector3(cos(a0) * outer, WALL, sin(a0) * outer), Vector3.UP, stone)
+	var floor_mesh := CylinderMesh.new()
+	floor_mesh.top_radius = RADIUS
+	floor_mesh.bottom_radius = RADIUS
+	floor_mesh.height = 0.04
+	floor_mesh.radial_segments = 48
+	rim.add(floor_mesh, CozyMesh.at(Vector3(0, -DEPTH + 0.02, 0)), Color(0.3, 0.32, 0.3))
 	var rim_view := MeshInstance3D.new()
 	rim_view.mesh = rim.commit(stone_mat)
 	add_child(rim_view)
