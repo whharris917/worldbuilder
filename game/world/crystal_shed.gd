@@ -28,8 +28,9 @@ extends Node3D
 ## harder than they are (SPIN_FAST, SPIN_BLOW); and while it spins, the
 ## soft swoosh of the air it stirs (the windmill's swoosh_loop.wav),
 ## louder and a little higher the faster it spins; and while a point of
-## it slides on the table, a dry scrape (crystal_scrape_loop.wav), louder
-## the faster the fastest touching point slides (its speed from the
+## it slides on the table, the chatter of a stone dragged on wood
+## (crystal_scrape_loop.wav: small dull knocks as it sticks and slips),
+## louder and quicker the faster the fastest touching point slides (its speed from the
 ## engine's touch points: the crystal's motion at each, along the table).
 ##
 ## Its size runs from a twentieth of a whole stone's volume (a whole
@@ -291,7 +292,8 @@ func _sound(delta: float, axis: Vector3) -> void:
 	_drag.global_position = _crystal.global_position
 	var drag := clampf(_slide / 0.8, 0.0, 1.0) if scrape_heard else 0.0
 	_drag.volume_db = linear_to_db(maxf(drag * 0.5, 0.0001)) - 16.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
-	_drag.pitch_scale = clampf(0.85 + _slide * 0.2, 0.85, 1.25) * _pitch()
+	# Quicker as it slides faster: the knocks come closer together.
+	_drag.pitch_scale = clampf(0.6 + _slide * 0.8, 0.6, 1.6)
 
 
 func _knock(speed: float) -> void:
