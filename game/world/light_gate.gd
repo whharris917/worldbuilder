@@ -13,18 +13,19 @@ extends StaticBody3D
 ## coil round the stone's axle, one end hooked into a round plate fixed on
 ## the post, the other into a collar on the axle, wound so it presses the
 ## stone's seeking end down. Two pegs in the plate stop an arm on the
-## collar: at rest the spring holds the stone against the lower peg, its
-## seeking end REST below level; at the upper peg the stone stands OPEN
-## above level, a quarter turn from rest.
+## collar: at rest the spring holds the stone level against the lower
+## peg; the upper peg stops it pointing straight up, a quarter turn round.
 ##
 ## Light on the stone (watts, from BenchLight each step) pulls its seeking
 ## end toward the upright by the geotrope's law (Photogyrite, purity 0,
 ## by the axle's own direction in the world), against the spring's push
 ## (PRELOAD at rest, rising by SPRING with the turn) and the pivots' drag;
 ## the stone, the cranks and the leaf turn as one (INERTIA), stepped each
-## physics frame. Too little light leaves it on its lower peg; a little
-## more swings it part way, to where pull and spring balance; enough holds
-## it on the upper peg. The leaf lets a beam by while within CLEAR of
+## physics frame. Too little light leaves it on its lower peg; more swings
+## it up to where pull and spring balance, nearer straight up the brighter
+## the light (the pull fades to nothing at the upright, so the spring
+## always holds it a little short: about 4 degrees in a lantern's beam, a
+## tenth of a degree in the sun collector's). The leaf lets a beam by while within CLEAR of
 ## edge-on: an opening gate's leaf is square at rest and edge-on at the
 ## upper peg; a closing gate's is set a quarter turn round.
 ##
@@ -37,8 +38,8 @@ const STONE_UP := 0.27                  # m: the stone's axle over the ring's mi
 const CRANK := 0.05                     # m: each crank's reach
 const SIDE := 0.17                      # m: the cranks, out to the side of the ring
 const POST_X := -0.11                   # m: the post carrying the stone's axle
-const REST := -0.2618                   # rad: the seeking end's turn at rest, 15 degrees below level
-const OPEN := 1.309                     # rad: and on the upper peg, 75 degrees above
+const REST := 0.0                       # rad: the seeking end's turn at rest, level
+const OPEN := PI * 0.5                  # rad: and on the upper peg, straight up
 const INERTIA := 2.4e-4                 # kg m²: the stone, cranks, rod and leaf about their axles
 const PRELOAD := 0.0145                 # N m: the spring's push at rest, which 3 W on the stone overcomes
 const SPRING := 0.003                   # N m per radian of turn from rest
