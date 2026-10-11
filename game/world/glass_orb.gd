@@ -1,7 +1,9 @@
 class_name GlassOrb
 extends RigidBody3D
 ## A large earthstone fixed inside a hollow globe of clear glass (a shell
-## SHELL thick), held at the
+## SHELL thick, blown by hand: faintly green, a little out of round, with
+## small bubbles in it), mounted on a brass rod through its middle whose
+## ends are set into the glass, held at the
 ## middle of a pool (OrbPool) by a smooth wooden ring at the water's
 ## surface, which keeps it in place and lets it turn freely any way on a
 ## film of water, as a fountain's floating ball turns: the stone and the
@@ -129,25 +131,65 @@ func _ready() -> void:
 	stone.mesh = stone_mesh
 	stone.basis = tip
 	add_child(stone)
-	# The glass: clear, glossy, the far side seen through the near.
+	# Its mounting: a brass rod through the stone's middle, square to its
+	# length (the stone drilled across), its ends set into the glass in
+	# brass collars; the stone hangs on it as on an axle fixed in the
+	# globe.
+	var brass := Color(0.82, 0.62, 0.3)
+	var mount := CozyMesh.new()
+	var across := tip * Vector3.RIGHT
+	mount.rod(-across * (RADIUS - SHELL), across * (RADIUS - SHELL), 0.012, 10, brass)
+	for side: float in [-1.0, 1.0]:
+		var end := across * side * (RADIUS - SHELL * 0.5)
+		mount.cyl(0.035, 0.035, 0.03, 14, CozyMesh.at(end, CozyMesh.aligned(across)), brass)
+	var metal := StandardMaterial3D.new()
+	metal.vertex_color_use_as_albedo = true
+	metal.metallic = 0.8
+	metal.roughness = 0.3
+	var mount_view := MeshInstance3D.new()
+	mount_view.mesh = mount.commit(metal)
+	add_child(mount_view)
+	# The glass, blown by hand: a faint green of old glass, its thickness
+	# seen at its edge (its inner face as well as its outer), not quite
+	# round, with small bubbles caught in it.
 	var glass := StandardMaterial3D.new()
-	glass.albedo_color = Color(0.85, 0.95, 1.0, 0.12)
+	glass.albedo_color = Color(0.82, 0.95, 0.86, 0.12)
 	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	glass.roughness = 0.03
 	glass.metallic_specular = 1.0
 	glass.rim_enabled = true
-	glass.rim = 0.4
-	glass.rim_tint = 0.2
-	var sphere := SphereMesh.new()
-	sphere.radius = RADIUS
-	sphere.height = RADIUS * 2.0
-	sphere.radial_segments = 48
-	sphere.rings = 24
-	sphere.material = glass
-	var view := MeshInstance3D.new()
-	view.mesh = sphere
-	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(view)
+	glass.rim = 0.45
+	glass.rim_tint = 0.3
+	glass.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var round_off := Vector3(1.0, 0.988, 1.006)
+	for radius: float in [RADIUS, RADIUS - SHELL]:
+		var sphere := SphereMesh.new()
+		sphere.radius = radius
+		sphere.height = radius * 2.0
+		sphere.radial_segments = 48
+		sphere.rings = 24
+		sphere.material = glass
+		var view := MeshInstance3D.new()
+		view.mesh = sphere
+		view.scale = round_off
+		view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(view)
+	var bubbles := CozyMesh.new()
+	var r := RandomNumberGenerator.new()
+	r.seed = 1631
+	for k in 40:
+		var spot := Vector3(r.randf_range(-1, 1), r.randf_range(-1, 1), r.randf_range(-1, 1)).normalized()
+		bubbles.ball(r.randf_range(0.0015, 0.005), 6, CozyMesh.at(spot * (RADIUS - SHELL * 0.5) * round_off), Color(1, 1, 1))
+	var bubble_mat := StandardMaterial3D.new()
+	bubble_mat.vertex_color_use_as_albedo = true
+	bubble_mat.albedo_color = Color(1, 1, 1, 0.5)
+	bubble_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bubble_mat.roughness = 0.0
+	bubble_mat.metallic_specular = 1.0
+	var bubble_view := MeshInstance3D.new()
+	bubble_view.mesh = bubbles.commit(bubble_mat)
+	bubble_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(bubble_view)
 
 
 func inspect_text() -> String:
