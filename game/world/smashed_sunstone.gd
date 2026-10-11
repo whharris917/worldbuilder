@@ -20,9 +20,10 @@ extends Node3D
 ##
 ## A piece on the ground is ruled by friction, not by its swing: it turns
 ## at a rate in proportion to the twist on it (overdamped), measured
-## against its own weight's twist (RELAX), and never faster than it can
-## creep over the rough slate (CREEP), so a piece takes a few seconds to
-## stand. Gravity is the twist toward
+## against its own weight's twist (RELAX), its length swinging never
+## faster than it can creep over the rough slate (CREEP), so a piece
+## takes a few seconds to stand, and its spin on its axis never faster
+## than SPIN_MOST. Gravity is the twist toward
 ## its lowest resting: the height of its centre over the ground is the
 ## sum of its half-sizes along the up direction (a box's), rounded a
 ## little at the faces so a flat face is a smooth hollow. Static friction
@@ -37,9 +38,9 @@ extends Node3D
 ## in its shade and standing again in the sun. A piece is in its shade
 ## where the line from it to the sun passes through the canvas.
 
-const PIECES := 400
-const SMALLEST := 0.001                 # m: the longest side of the smallest piece
-const LARGEST := 0.03                   # m: and of the largest
+const PIECES := 300
+const SMALLEST := 0.002                 # m: the longest side of the smallest piece
+const LARGEST := 0.04                   # m: and of the largest
 const DENSITY := 2650.0                 # kg/m³, as quartz
 const PATCH_R := 1.1                    # m: the slate patch round the anvil
 const ANVIL_TOP := 0.36
@@ -49,7 +50,9 @@ const HAMMER_UP := 1.25                 # m: the hammer's face raised, over the 
 const ROUND := 0.08                     # the rounding of the faces in the height sum
 const RELAX := 0.15                     # s: how quickly a piece turns, against its own weight's twist
 const GRIP := 0.5                       # static friction's share of the weight
-const CREEP := 0.8                      # rad/s: the fastest a piece turns on the rough slate
+const POINT := 0.1                      # a point's reach against spinning, as a share of the piece's least half-size
+const CREEP := 0.8                      # rad/s: the fastest a piece's axis swings on the rough slate
+const SPIN_MOST := 8.0                  # rad/s: the fastest it spins on its axis
 const SHADE_R := 1.3                    # m: the sunshade's canvas, half across
 const SHADE_OUT := 2.2                  # m: from the slate's middle toward the sun, when out
 const POST := Vector3(0.0, 1.3, -1.45)  # the arm's shoulder, on its post north of the slate
@@ -102,7 +105,7 @@ func report() -> String:
 			standing += 1
 		elif off < 70.0 and (p["att"] as Basis) != (p["landed"] as Basis):
 			leaning += 1
-		if (p["rate"] as float) > CREEP * 0.5:
+		if (p["rate"] as float) > 1.5:
 			turning += 1
 	return "Smashed sunstone, %d pieces: %d pointing at the sun, %d leaning toward it, %d turning." % [
 			_pieces.size(), standing, leaning, turning]
@@ -156,22 +159,41 @@ func _physics_process(delta: float) -> void:
 			continue
 		var weight := float(p["mass"]) * 9.8
 		var twist := Vector3.ZERO
+		var held := false                     # the light holding it up, pivoting on its point
 		if lit and not _in_shade(p["at"]):
 			var watts := sunlight * float(p["area"])
 			var axis := att * (p["axis"] as Vector3)
-			twist = axis.cross(to_sun) * SpinstoneGimbals.PULL_PER_WATT * watts \
-					+ axis * SpinstoneGimbals.TURN * watts * maxf(axis.dot(to_sun), 0.0)
-			# Static friction holds it until the light's twist is greater.
+			var pull := axis.cross(to_sun) * SpinstoneGimbals.PULL_PER_WATT * watts
+			var spin := SpinstoneGimbals.TURN * watts * maxf(axis.dot(to_sun), 0.0)
+			# Static friction holds it until the light's twist is greater:
+			# against tipping, the friction of a face; against spinning on
+			# its point, of the point it stands on, far less.
 			var hold := GRIP * weight * (e.x + e.y + e.z) / 3.0
-			twist = twist.normalized() * maxf(twist.length() - hold, 0.0) if twist.length() > 0.0 else twist
+			held = pull.length() > hold
+			if pull.length() > 0.0:
+				pull = pull.normalized() * maxf(pull.length() - hold, 0.0)
+			spin = maxf(spin - GRIP * weight * minf(e.x, minf(e.y, e.z)) * POINT, 0.0)
+			twist = pull + axis * spin
 		# Gravity: the twist toward a lower resting.
 		var u := att.transposed() * up
 		var lean := Vector3(e.x * u.x / sqrt(u.x * u.x + ROUND * ROUND), e.y * u.y / sqrt(u.y * u.y + ROUND * ROUND),
 				e.z * u.z / sqrt(u.z * u.z + ROUND * ROUND))
-		twist += up.cross(att * lean) * weight
+		var fall := up.cross(att * lean) * weight
+		if held:
+			# Held up by the light, it turns on its axis as a top on its
+			# point: its weight does not hold back that turning.
+			var axis_held := att * (p["axis"] as Vector3)
+			fall -= axis_held * fall.dot(axis_held)
+		twist += fall
 		var rate := twist / (weight * maxf(e.x, maxf(e.y, e.z)) * RELAX)
-		if rate.length() > CREEP:
-			rate = rate.normalized() * CREEP
+		var axis_now := att * (p["axis"] as Vector3)
+		var spin := axis_now * rate.dot(axis_now)
+		var swing := rate - spin
+		if swing.length() > CREEP:
+			swing = swing.normalized() * CREEP
+		if spin.length() > SPIN_MOST:
+			spin = spin.normalized() * SPIN_MOST
+		rate = swing + spin
 		p["rate"] = rate.length()
 		if rate.length() > 1e-4:
 			att = (Basis(rate.normalized(), rate.length() * delta) * att).orthonormalized()
@@ -181,8 +203,8 @@ func _physics_process(delta: float) -> void:
 			p["at"] = at
 			mm.set_instance_transform(k, Transform3D(att.scaled(e), at))
 		# Brighter as it turns, as a spinstone glows.
-		var glow := clampf(float(p["rate"]) / (CREEP * 0.8), 0.0, 1.0)
-		mm.set_instance_color(k, Color(1.0, 0.7, 0.28).lerp(Color(1.0, 0.92, 0.6), glow) * (1.3 + 6.0 * glow))
+		var glow := clampf(float(p["rate"]) / 4.0, 0.0, 1.0)
+		mm.set_instance_color(k, Color(1.0, 0.7, 0.28).lerp(Color(1.0, 0.92, 0.6), glow) * (1.3 + 10.0 * glow))
 
 
 ## Whether the sunshade's canvas stands between a piece at `at` and the
@@ -248,7 +270,7 @@ func _mend() -> void:
 	_pieces.clear()
 	for k in PIECES:
 		# Many small pieces, few large.
-		var longest := SMALLEST * pow(LARGEST / SMALLEST, pow(_rng.randf(), 1.5))
+		var longest := SMALLEST * pow(LARGEST / SMALLEST, pow(_rng.randf(), 1.15))
 		var half := Vector3(longest, longest * _rng.randf_range(0.35, 0.85), longest * _rng.randf_range(0.2, 0.6)) * 0.5
 		var surface := 8.0 * (half.x * half.y + half.y * half.z + half.z * half.x)
 		_pieces.append({"half": half, "mass": DENSITY * 8.0 * half.x * half.y * half.z, "area": surface * 0.25,
@@ -321,7 +343,7 @@ func _build() -> void:
 	mm.instance_count = PIECES
 	_view = MultiMeshInstance3D.new()
 	_view.multimesh = mm
-	_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	add_child(_view)
 	# The lever, and what a player inspecting reads (drafts).
 	var wood := StandardMaterial3D.new()

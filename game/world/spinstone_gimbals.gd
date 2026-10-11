@@ -112,10 +112,10 @@ const OUTER_R := 0.42
 const INNER_R := 0.34
 const INERTIA_ALONG := 0.0006           # kg m², about its length
 const INERTIA_ACROSS := 0.004           # kg m², across it
-const TURN := 1.0e-5                    # N m of spin for each watt of light
+const TURN := 2.5e-4                    # N m of spin for each watt of light
 const DRAG := 6.0e-6                    # N m s² of the air's drag on the turning
 const PULL := 0.01                      # N m: the polarity's twist, the length at a right angle to its body
-const PULL_PER_WATT := 2.0e-4           # N m a watt: a trope's twist, by its light (50 W makes PULL)
+const PULL_PER_WATT := 5.0e-3           # N m a watt: a trope's twist, by its light (2 W makes PULL)
 const PIVOT_DAMP := 0.003               # N m s: the gimbal pivots' friction on the length's swinging
 const STEPS := 16
 
