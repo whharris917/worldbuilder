@@ -31,7 +31,7 @@ extends Node3D
 ## it slides on the table, a scrape on wood (crystal_scrape_loop.wav, cut
 ## by tools/cut_scrape.py from F.M.Audio's recording, CC BY 4.0), louder
 ## and a little quicker the faster the fastest touching point
-## slides, but not while it spins fast on its point (its speed from the
+## slides, or while it spins fast on its point, as fast as it travels (its speed from the
 ## engine's touch points: the crystal's motion at each, along the table).
 ##
 ## Its size runs from a twentieth of a whole stone's volume (a whole
@@ -84,6 +84,7 @@ var _tap: AudioStreamPlayer3D
 var _buzz: AudioStreamPlayer3D
 var _drag: AudioStreamPlayer3D
 var _slide := 0.0                       # m/s: the fastest touching point's sliding, eased
+var _travel := Vector2.ZERO             # m/s: its middle's motion over the table, averaged
 var _touching := 0                      # the table's touches on it last step
 var _was_v := Vector3.ZERO
 var _was_w := Vector3.ZERO
@@ -280,10 +281,18 @@ func _sound(delta: float, axis: Vector3) -> void:
 	var swoosh := clampf(spin / 60.0, 0.0, 1.0) if swoosh_heard else 0.0
 	_buzz.volume_db = linear_to_db(maxf(swoosh * 0.4, 0.0001)) - 18.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
 	_buzz.pitch_scale = clampf(0.8 + spin / 150.0, 0.6, 1.4)
-	# The scrape: how fast the touching points slide along the table.
+	# The scrape: how fast the touching points slide along the table;
+	# while it spins fast on its point, how fast it travels over the
+	# table (its point's dragging round being the spin's, heard as the
+	# swoosh).
 	var slide := 0.0
 	var state := PhysicsServer3D.body_get_direct_state(_crystal.get_rid())
-	if state != null:
+	# (Its travel averaged over about a third of a second: its wobbling
+	# about cancels out, its wandering stays.)
+	_travel = _travel.lerp(Vector2(v.x, v.z), clampf(delta * 3.0, 0.0, 1.0))
+	if spin >= SPIN_FAST:
+		slide = _travel.length() if touching > 0 else 0.0
+	elif state != null:
 		for k in state.get_contact_count():
 			var at := state.get_contact_local_position(k) - state.transform.origin
 			var moving := v + w.cross(at)
@@ -291,9 +300,7 @@ func _sound(delta: float, axis: Vector3) -> void:
 			slide = maxf(slide, (moving - normal * moving.dot(normal)).length())
 	_slide = lerpf(_slide, slide, clampf(delta * 20.0, 0.0, 1.0))
 	_drag.global_position = _crystal.global_position
-	# Not while it spins on its point: its point's dragging round is
-	# the spin's, heard as the swoosh.
-	var drag := clampf(_slide / 0.8, 0.0, 1.0) if scrape_heard and spin < SPIN_FAST else 0.0
+	var drag := clampf(_slide / 0.8, 0.0, 1.0) if scrape_heard else 0.0
 	_drag.volume_db = linear_to_db(maxf(drag, 0.0001)) - 16.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
 	_drag.pitch_scale = clampf(0.85 + _slide * 0.3, 0.85, 1.2)
 
