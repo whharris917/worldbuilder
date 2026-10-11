@@ -1,9 +1,11 @@
 class_name GlassOrb
 extends RigidBody3D
-## A large earthstone set in a solid ball of clear glass, lying loose on
-## the grass in the sun: the stone and the glass one rigid body (the
-## engine's physics rolls it, its weight and the ground's friction its
-## own), a ball the stone turns from within.
+## A large earthstone set in a solid ball of clear glass, held at the
+## middle of a pool (OrbPool) by a smooth wooden ring at the water's
+## surface, which keeps it in place and lets it turn freely any way on a
+## film of water, as a fountain's floating ball turns: the stone and the
+## glass one rigid body, its place fixed (its motion locked), its turning
+## free.
 ##
 ## The stone is the spinstone of the shed's crystals (ShedCrystal) at
 ## SIZE times a whole stone's length, its middle at the ball's, its axis
@@ -12,18 +14,18 @@ extends RigidBody3D
 ## passes) on a quarter of the stone's surface: its axis drawn toward
 ## straight up, PULL_PER_WATT for each watt, and spun about its axis TURN
 ## for each watt while its seeking end is up; the air's drag on the
-## ball's turning. A ball on level ground turns without lifting its
-## weight, so however weak the pull it rolls, slowly, until the stone
-## stands upright, then turns on the spot about the upright. The ground's
-## grip on a rolling ball is the engine's; its slight hold on rolling and
-## spinning is an angular damping (ROLL_HOLD). Inert at night and in an
-## eclipse's shadow; the shade of things on the island is not counted.
+## ball's turning, and the water film's (WATER_HOLD, an angular
+## damping). Held in its ring the ball turns without lifting its weight,
+## so the pull, weak against a ball of 1.75 tonnes, sways the stone
+## upright over a minute or two and then begins, slowly, to turn it.
+## Inert at night and in an eclipse's shadow; the shade of things on the
+## island is not counted.
 
 const SIZE := 2.0                       # the stone's length, as a share of a whole stone's
 const RADIUS := 0.55                    # m: the ball
 const GLASS_DENSITY := 2500.0           # kg/m³
 const GLASS := 0.9                      # the share of sunlight the glass lets through
-const ROLL_HOLD := 0.15                 # the grass's hold on its rolling and spinning
+const WATER_HOLD := 0.02                # the water film's hold on its turning
 
 ## Toward the sun and its direct light, W/m², set by the world.
 var to_sun := Vector3.UP
@@ -80,7 +82,11 @@ func _ready() -> void:
 	var ball := 4.0 / 3.0 * PI * pow(RADIUS, 3.0)
 	mass = (ball - volume) * GLASS_DENSITY + volume * ShedCrystal.DENSITY
 	inertia = Vector3.ONE * 0.4 * mass * RADIUS * RADIUS
-	angular_damp = ROLL_HOLD
+	angular_damp = WATER_HOLD
+	# Held in its ring: free to turn, not to move.
+	axis_lock_linear_x = true
+	axis_lock_linear_y = true
+	axis_lock_linear_z = true
 	can_sleep = false
 	var grip := PhysicsMaterial.new()
 	grip.friction = 0.9
@@ -126,7 +132,7 @@ func _ready() -> void:
 
 func inspect_text() -> String:
 	var axis := (global_basis * _axis).normalized()
-	return "An earthstone in glass\nA large earthstone set in a solid ball of clear glass. In the sun the stone draws its seeking end up and spins, and the ball rolls with it. Its end now %d degrees off straight up; turning %.2f times a second." % [
+	return "An earthstone in glass\nA large earthstone set in a solid ball of clear glass, turning freely in a wooden ring on a film of water. In the sun the stone draws its seeking end up and spins, and the ball turns with it. Its end now %d degrees off straight up; turning %.2f times a second." % [
 			roundi(rad_to_deg(axis.angle_to(Vector3.UP))), absf(angular_velocity.dot(axis)) / TAU]
 
 

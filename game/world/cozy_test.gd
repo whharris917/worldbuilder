@@ -155,15 +155,16 @@ func _ready() -> void:
 	shed = CrystalShed.new(self)
 	shed.position = Vector3(9.0, height(9.0, -12.0), -12.0)
 	add_child(shed)
-	# An earthstone in a ball of glass on the grass south-west of the
-	# mill, on the level ground short of the beach.
-	orb = GlassOrb.new()
+	# An earthstone in a ball of glass, held in a pool on the grass
+	# south-west of the mill, short of the beach.
+	var pool := OrbPool.new(self)
 	var orb_bearing := deg_to_rad(135.0)
 	var orb_r := coast_radius(orb_bearing) * 0.5
 	var orb_x := cos(orb_bearing) * orb_r
 	var orb_z := sin(orb_bearing) * orb_r
-	orb.position = Vector3(orb_x, height(orb_x, orb_z) + GlassOrb.RADIUS + 0.02, orb_z)
-	add_child(orb)
+	pool.position = Vector3(orb_x, height(orb_x, orb_z), orb_z)
+	add_child(pool)
+	orb = pool.orb
 	# Their lanterns' levers and the panel's switch kept as one.
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.lamps_thrown.connect(func(on: bool) -> void:
