@@ -33,6 +33,10 @@ const AIR := 1.0e-3                     # N m s²: the air's drag on the smooth 
 
 ## The stone's purity (Photogyrite), set before it enters the world.
 var purity := 0.0
+## How thick the pool's liquid is, as many times water's: its film's hold
+## on the ball's turning (any way: rocking and spinning alike) grows in
+## proportion.
+var viscosity := 1.0
 
 ## Toward the sun and its direct light, W/m², set by the world.
 var to_sun := Vector3.UP
@@ -155,6 +159,7 @@ func inspect_text() -> String:
 
 
 func _physics_process(_delta: float) -> void:
+	angular_damp = WATER_HOLD * viscosity
 	_watts = sunlight * GLASS * _area if to_sun.y > 0.0 else 0.0
 	var axis := (global_basis * _axis).normalized()
 	var w := angular_velocity
