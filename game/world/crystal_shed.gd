@@ -294,7 +294,7 @@ func _sound(delta: float, axis: Vector3) -> void:
 	# Not while it spins on its point: its point's dragging round is
 	# the spin's, heard as the swoosh.
 	var drag := clampf(_slide / 0.8, 0.0, 1.0) if scrape_heard and spin < SPIN_FAST else 0.0
-	_drag.volume_db = linear_to_db(maxf(drag, 0.0001)) - 26.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
+	_drag.volume_db = linear_to_db(maxf(drag, 0.0001)) - 16.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
 	_drag.pitch_scale = clampf(0.85 + _slide * 0.3, 0.85, 1.2)
 
 
