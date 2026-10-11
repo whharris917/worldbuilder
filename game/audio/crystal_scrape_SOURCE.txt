@@ -10,5 +10,5 @@ Licence: Creative Commons Attribution 4.0 (CC BY 4.0). CREDIT REQUIRED:
 Recorded with a contact microphone; corrective EQ by the author.
 
 metal_scrape_loop.wav: made by the same tool from the same loop, a steel
-rail's faint ring added (narrow resonances at 1270, 2140, 3380 and 4890 Hz),
-for the sunstone wheelset on its ring of track.
+rail's ring added and the scrape under it lowered (narrow resonances at 1270,
+2140, 3380, 4890 and 6310 Hz), for the sunstone wheel running round its ring.

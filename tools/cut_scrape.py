@@ -29,8 +29,8 @@ AUDIO = Path(__file__).resolve().parents[1] / "game" / "audio"
 SOURCE = AUDIO / "612763__fmaudio__scraping-fingernails-against-wood-2.wav"
 OUT = AUDIO / "crystal_scrape_loop.wav"
 METAL_OUT = AUDIO / "metal_scrape_loop.wav"
-# A steel rail's ring under a wheel: a few inharmonic partials, faint.
-METAL_HZ = [(1270.0, 1.2), (2140.0, 1.0), (3380.0, 0.8), (4890.0, 0.5)]
+# A steel rail's ring under a wheel: a few inharmonic partials, sharp.
+METAL_HZ = [(1270.0, 3.0), (2140.0, 2.6), (3380.0, 2.0), (4890.0, 1.4), (6310.0, 0.8)]
 START = 0.55
 END = 3.25
 LEVEL = 0.7
@@ -79,9 +79,9 @@ def main() -> None:
     ring = np.zeros_like(out)
     looped = np.tile(out, 3)
     for hz, gain in METAL_HZ:
-        b, a = iirpeak(hz, 25.0, fs=RATE)
+        b, a = iirpeak(hz, 60.0, fs=RATE)
         ring += lfilter(b, a, looped)[len(out):2 * len(out)] * gain
-    metal = out * 0.7 + ring
+    metal = out * 0.25 + ring
     metal *= 10 ** (-7 / 20) / np.max(np.abs(metal))
     _write(METAL_OUT, metal)
 
