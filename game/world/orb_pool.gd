@@ -15,8 +15,8 @@ var orb: GlassOrb
 
 
 ## `world` gives the pool its material (`material`); `purity` the
-## stone's (Photogyrite).
-func _init(world: Node, purity := 0.0) -> void:
+## stone's (Photogyrite); `mounting` how it is held in its globe (GlassOrb).
+func _init(world: Node, purity := 0.0, mounting := "rod") -> void:
 	name = "OrbPool"
 	var stone_mat: StandardMaterial3D = world.call("material", true, false)
 	var rim := CozyMesh.new()
@@ -117,5 +117,6 @@ func _init(world: Node, purity := 0.0) -> void:
 	# The ball, sitting in the ring.
 	orb = GlassOrb.new()
 	orb.purity = purity
+	orb.mounting = mounting
 	orb.position = Vector3(0, ring_y + RING_DROP, 0)
 	add_child(orb)

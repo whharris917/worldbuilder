@@ -3,7 +3,7 @@ extends RigidBody3D
 ## A large earthstone fixed inside a hollow globe of clear glass (a shell
 ## SHELL thick, blown by hand: faintly green, a little out of round, with
 ## small bubbles in it), mounted on a brass rod through its middle whose
-## ends are set into the glass, held at the
+## ends are set into the glass, or tied in cords (`mounting`), held at the
 ## middle of a pool (OrbPool) by a smooth wooden ring at the water's
 ## surface, which keeps it in place and lets it turn freely any way on a
 ## film of water, as a fountain's floating ball turns: the stone and the
@@ -35,6 +35,10 @@ const AIR := 1.0e-3                     # N m s²: the air's drag on the smooth 
 
 ## The stone's purity (Photogyrite), set before it enters the world.
 var purity := 0.0
+## How the stone is held in the globe, set before it enters the world:
+## "rod" (a brass rod through it, the stone drilled) or "ropes" (cords
+## wrapped round it and tied to the glass, the stone whole).
+var mounting := "rod"
 ## How thick the pool's liquid is, as many times water's: its film's hold
 ## on the ball's turning (any way: rocking and spinning alike) grows in
 ## proportion.
@@ -131,24 +135,10 @@ func _ready() -> void:
 	stone.mesh = stone_mesh
 	stone.basis = tip
 	add_child(stone)
-	# Its mounting: a brass rod through the stone's middle, square to its
-	# length (the stone drilled across), its ends set into the glass in
-	# brass collars; the stone hangs on it as on an axle fixed in the
-	# globe.
-	var brass := Color(0.82, 0.62, 0.3)
-	var mount := CozyMesh.new()
-	var across := tip * Vector3.RIGHT
-	mount.rod(-across * (RADIUS - SHELL), across * (RADIUS - SHELL), 0.012, 10, brass)
-	for side: float in [-1.0, 1.0]:
-		var end := across * side * (RADIUS - SHELL * 0.5)
-		mount.cyl(0.035, 0.035, 0.03, 14, CozyMesh.at(end, CozyMesh.aligned(across)), brass)
-	var metal := StandardMaterial3D.new()
-	metal.vertex_color_use_as_albedo = true
-	metal.metallic = 0.8
-	metal.roughness = 0.3
-	var mount_view := MeshInstance3D.new()
-	mount_view.mesh = mount.commit(metal)
-	add_child(mount_view)
+	if mounting == "ropes":
+		_tie_ropes(verts, tip)
+	else:
+		_set_rod(tip)
 	# The glass, blown by hand: a faint green of old glass, its thickness
 	# seen at its edge (its inner face as well as its outer), not quite
 	# round, with small bubbles caught in it.
@@ -190,6 +180,70 @@ func _ready() -> void:
 	bubble_view.mesh = bubbles.commit(bubble_mat)
 	bubble_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(bubble_view)
+
+
+## Its mounting: a brass rod through the stone's middle, square to its
+## length (the stone drilled across), its ends set into the glass in
+## brass collars; the stone hangs on it as on an axle fixed in the globe.
+func _set_rod(tip: Basis) -> void:
+	var brass := Color(0.82, 0.62, 0.3)
+	var mount := CozyMesh.new()
+	var across := tip * Vector3.RIGHT
+	mount.rod(-across * (RADIUS - SHELL), across * (RADIUS - SHELL), 0.012, 10, brass)
+	for side: float in [-1.0, 1.0]:
+		var end := across * side * (RADIUS - SHELL * 0.5)
+		mount.cyl(0.035, 0.035, 0.03, 14, CozyMesh.at(end, CozyMesh.aligned(across)), brass)
+	var metal := StandardMaterial3D.new()
+	metal.vertex_color_use_as_albedo = true
+	metal.metallic = 0.8
+	metal.roughness = 0.3
+	var mount_view := MeshInstance3D.new()
+	mount_view.mesh = mount.commit(metal)
+	add_child(mount_view)
+
+
+## Its mounting without a hole in it: two hemp cords each wrapped twice
+## round the stone, a little in from either end of its length, drawn to
+## fit it where they lie, and from each wrapping three cords out to the
+## glass, tied off at small pads stuck to the inside of the shell; the
+## stone hangs in the middle of their pull.
+func _tie_ropes(verts: PackedVector3Array, tip: Basis) -> void:
+	var hemp := Color(0.72, 0.6, 0.4)
+	var cords := CozyMesh.new()
+	var top := -INF
+	var bottom := INF
+	for v in verts:
+		top = maxf(top, v.y)
+		bottom = minf(bottom, v.y)
+	for share: float in [0.3, 0.7]:
+		var y := lerpf(bottom, top, share)
+		# How far the stone reaches from its axis at that height.
+		var reach := 0.0
+		for v in verts:
+			if absf(v.y - y) < (top - bottom) * 0.08:
+				reach = maxf(reach, Vector2(v.x, v.z).length())
+		reach += 0.008
+		for turn in 2:
+			cords.torus(reach - 0.007, reach + 0.007, 36, 6, CozyMesh.at(Vector3(0, y + (turn - 0.5) * 0.02, 0)), hemp)
+		var lean := 0.6 if share > 0.5 else -0.6
+		for k in 3:
+			var a := TAU * k / 3.0 + (0.5 if share > 0.5 else 0.0)
+			var from := Vector3(cos(a) * reach, y, sin(a) * reach)
+			# Out and a little toward its end, to where it meets the glass.
+			var d := Vector3(cos(a), lean, sin(a)).normalized()
+			var inner := RADIUS - SHELL
+			var b := from.dot(d)
+			var t := -b + sqrt(b * b - (from.length_squared() - inner * inner))
+			var tied := from + d * t
+			cords.rod(from, tied, 0.006, 6, hemp)
+			cords.ball(0.022, 8, CozyMesh.at(tied), Color(0.6, 0.48, 0.3))
+	var rope_mat := StandardMaterial3D.new()
+	rope_mat.vertex_color_use_as_albedo = true
+	rope_mat.roughness = 0.95
+	var view := MeshInstance3D.new()
+	view.mesh = cords.commit(rope_mat)
+	view.basis = tip
+	add_child(view)
 
 
 func inspect_text() -> String:
