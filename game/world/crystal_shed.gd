@@ -20,6 +20,13 @@ extends Node3D
 ## crystal's mean shadow, a quarter of its surface. Unlit it is an inert
 ## stone.
 ##
+## Its sounds come from what it does: a knock of stone on wood each time
+## it strikes the table or rolls on to a new facet (the engine reporting
+## a new touch, or its speed jumping), louder the harder, higher the
+## smaller the stone (crystal_tap_1..4.wav); and while it touches the
+## table and spins, the buzz of a top on its point (crystal_spin_loop.wav),
+## louder and higher the faster it spins, silent once it leaves the table.
+##
 ## Its size runs from a twentieth of a whole stone's volume (a whole
 ## stone is the gimbal stones' crystal) to five times a whole stone's
 ## length. Larger, the light's twist grows as its surface and its weight's
@@ -59,6 +66,13 @@ var _seed := 7
 var _area := 0.0                        # m²: the crystal's mean shadow
 var _scale := 1.0
 var _watts := 0.0
+var _taps: Array[AudioStream] = []
+var _tap: AudioStreamPlayer3D
+var _buzz: AudioStreamPlayer3D
+var _touching := 0                      # the table's touches on it last step
+var _was_v := Vector3.ZERO
+var _was_w := Vector3.ZERO
+var _since_tap := 1.0
 
 
 ## `world` gives the shed its materials (`material`).
@@ -70,7 +84,30 @@ func _init(world: Node) -> void:
 
 func _ready() -> void:
 	_build()
+	_build_sound()
 	reset()
+
+
+func _build_sound() -> void:
+	_tap = AudioStreamPlayer3D.new()
+	_tap.unit_size = 3.0
+	_tap.max_polyphony = 4
+	add_child(_tap)
+	_buzz = AudioStreamPlayer3D.new()
+	_buzz.unit_size = 3.0
+	_buzz.volume_db = -80.0
+	add_child(_buzz)
+	if DisplayServer.get_name() == "headless":
+		return
+	for k in range(1, 5):
+		_taps.append(load("res://audio/crystal_tap_%d.wav" % k))
+	var loop := load("res://audio/crystal_spin_loop.wav") as AudioStreamWAV
+	loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	loop.loop_begin = 0
+	loop.loop_end = int(loop.get_length() * loop.mix_rate)
+	_buzz.stream = loop
+	_buzz.autoplay = true
+	_buzz.play()
 
 
 ## A new crystal, its own shape, set lying on the table.
@@ -122,6 +159,8 @@ func reset() -> void:
 	_crystal.inertia = Vector3(s.y * s.y + s.z * s.z, s.x * s.x + s.z * s.z, s.x * s.x + s.y * s.y) * _crystal.mass / 12.0
 	_crystal.can_sleep = false
 	_crystal.continuous_cd = true
+	_crystal.contact_monitor = true
+	_crystal.max_contacts_reported = 4
 	var friction := PhysicsMaterial.new()
 	friction.friction = 0.6
 	friction.bounce = 0.05
@@ -166,7 +205,7 @@ func _toward() -> Vector3:
 	return to_sun if kind == "sun" else Vector3.UP
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	_lamp.visible = lamp_on
 	_lamp.light_energy = 2.0 + 2.5 * log(1.0 + suns) / log(10.0)
 	_lamp_lens.emission_energy_multiplier = 3.0 if lamp_on else 0.0
@@ -186,6 +225,46 @@ func _physics_process(_delta: float) -> void:
 			- w * w.length() * DRAG * grown
 	_crystal.apply_torque(twist)
 	_glow.emission_energy_multiplier = 0.1 + 0.8 * clampf(absf(w.dot(axis)) / 15.0, 0.0, 1.0)
+	_sound(delta, axis)
+
+
+## The knocks and the buzz, from the crystal's touches and turning.
+func _sound(delta: float, axis: Vector3) -> void:
+	_tap.global_position = _crystal.global_position
+	_buzz.global_position = _crystal.global_position
+	var v := _crystal.linear_velocity
+	var w := _crystal.angular_velocity
+	var touching := _crystal.get_contact_count()
+	# How hard it struck: the sudden change in the speed of its surface
+	# (its middle's, and its turning's at its reach), less gravity's share.
+	var reach := 0.07 * _scale
+	var jolt := maxf((v - _was_v).length() - 9.8 * delta * 1.5, 0.0) + (w - _was_w).length() * reach * 0.5
+	_since_tap += delta
+	if touching > 0 and _since_tap > 0.03 and (jolt > 0.25 or (touching > _touching and v.length() + w.length() * reach > 0.15)):
+		_knock(maxf(jolt, (v.length() + w.length() * reach) * 0.5))
+	_touching = touching
+	_was_v = v
+	_was_w = w
+	var spin := absf(w.dot(axis))
+	var buzz := clampf(spin / 40.0, 0.0, 1.0) if touching > 0 else 0.0
+	_buzz.volume_db = linear_to_db(maxf(buzz * 0.5, 0.0001)) + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
+	_buzz.pitch_scale = clampf((0.6 + spin / 50.0) * _pitch(), 0.3, 3.0)
+
+
+func _knock(speed: float) -> void:
+	if _taps.is_empty():
+		return
+	_since_tap = 0.0
+	_tap.stream = _taps[_rng.randi() % _taps.size()]
+	_tap.pitch_scale = _pitch() * _rng.randf_range(0.92, 1.08)
+	_tap.volume_db = linear_to_db(clampf(speed / 1.2, 0.03, 1.0)) - 4.0 + 3.0 * log(_crystal.mass + 1.0) / log(10.0)
+	_tap.play()
+
+
+## Smaller stones ring higher: the pitch as the crystal's size's inverse
+## square root, a small stone's at one.
+func _pitch() -> float:
+	return clampf(sqrt(SMALLEST / size), 0.35, 1.2)
 
 
 ## ---- building ----------------------------------------------------------------
