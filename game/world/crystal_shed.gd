@@ -23,10 +23,11 @@ extends Node3D
 ## Its sounds come from what it does, quiet: a dull knock of stone on
 ## wood each time it strikes the table or rolls on to a new facet (the
 ## engine reporting a new touch, or its speed jumping), louder the harder,
-## a little higher the smaller the stone (crystal_tap_1..4.wav); and while
-## it touches the table and spins, a dull scrape (crystal_spin_loop.wav),
-## louder and a little higher the faster it spins, silent once it leaves
-## the table.
+## a little higher the smaller the stone (crystal_tap_1..4.wav); while it
+## spins fast on its point its small hops are not heard, only a blow
+## harder than they are (SPIN_FAST, SPIN_BLOW); and while it spins, the
+## soft swoosh of the air it stirs (the windmill's swoosh_loop.wav),
+## louder and a little higher the faster it spins.
 ##
 ## Its size runs from a twentieth of a whole stone's volume (a whole
 ## stone is the gimbal stones' crystal) to five times a whole stone's
@@ -45,6 +46,8 @@ const TABLE_TOP := 0.8
 const TABLE := Vector2(2.8, 1.4)
 const LAMP_UP := 2.75                   # the spotlight's height over the floor
 const DRAG := 1.4e-3                    # N m s²: the air's drag on a whole stone's turning
+const SPIN_FAST := 10.0                 # rad/s: spinning on its point, its hops unheard
+const SPIN_BLOW := 0.8                  # m/s: the blow that is heard then
 const CONE := 40.0                      # degrees: its beam, half across
 
 ## Toward the sun, set by the world.
@@ -105,7 +108,7 @@ func _build_sound() -> void:
 		return
 	for k in range(1, 5):
 		_taps.append(load("res://audio/crystal_tap_%d.wav" % k))
-	var loop := load("res://audio/crystal_spin_loop.wav") as AudioStreamWAV
+	var loop := (load("res://audio/swoosh_loop.wav") as AudioStreamWAV).duplicate() as AudioStreamWAV
 	loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	loop.loop_begin = 0
 	loop.loop_end = int(loop.get_length() * loop.mix_rate)
@@ -244,15 +247,20 @@ func _sound(delta: float, axis: Vector3) -> void:
 	var reach := 0.07 * _scale
 	var jolt := maxf((v - _was_v).length() - 9.8 * delta * 1.5, 0.0) + (w - _was_w).length() * reach * 0.5
 	_since_tap += delta
-	if touching > 0 and _since_tap > 0.03 and (jolt > 0.25 or (touching > _touching and v.length() + w.length() * reach > 0.15)):
+	var spin := absf(w.dot(axis))
+	var heard := false
+	if spin > SPIN_FAST:
+		heard = jolt > SPIN_BLOW
+	else:
+		heard = jolt > 0.25 or (touching > _touching and v.length() + w.length() * reach > 0.15)
+	if touching > 0 and _since_tap > 0.03 and heard:
 		_knock(maxf(jolt, (v.length() + w.length() * reach) * 0.5))
 	_touching = touching
 	_was_v = v
 	_was_w = w
-	var spin := absf(w.dot(axis))
-	var buzz := clampf(spin / 40.0, 0.0, 1.0) if touching > 0 and scrape_heard else 0.0
-	_buzz.volume_db = linear_to_db(maxf(buzz * 0.5, 0.0001)) - 14.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
-	_buzz.pitch_scale = clampf((0.7 + spin / 120.0) * _pitch(), 0.4, 1.6)
+	var swoosh := clampf(spin / 60.0, 0.0, 1.0) if scrape_heard else 0.0
+	_buzz.volume_db = linear_to_db(maxf(swoosh * 0.4, 0.0001)) - 18.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
+	_buzz.pitch_scale = clampf(0.8 + spin / 150.0, 0.6, 1.4)
 
 
 func _knock(speed: float) -> void:
