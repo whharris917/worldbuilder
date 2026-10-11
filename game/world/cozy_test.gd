@@ -61,6 +61,7 @@ var shed: CrystalShed
 var orb: GlassOrb
 var pure_orb: GlassOrb
 var tied_orb: GlassOrb
+var loose_orb: GlassOrb
 var _panel: BenchPanel
 var _env: Environment
 var _mats: Array[Dictionary] = []       # the model materials and their outlines
@@ -182,6 +183,17 @@ func _ready() -> void:
 	tied_pool.position = Vector3(tied_x, height(tied_x, tied_z), tied_z)
 	add_child(tied_pool)
 	tied_orb = tied_pool.orb
+	# A fourth globe loose on the lawn east of the pools, its pure stone
+	# on a rod along its length.
+	loose_orb = GlassOrb.new()
+	loose_orb.purity = 1.0
+	loose_orb.mounting = "axle"
+	loose_orb.loose = true
+	var loose_bearing := deg_to_rad(118.0)
+	var loose_x := cos(loose_bearing) * orb_r
+	var loose_z := sin(loose_bearing) * orb_r
+	loose_orb.position = Vector3(loose_x, height(loose_x, loose_z) + GlassOrb.RADIUS + 0.02, loose_z)
+	add_child(loose_orb)
 	# Their lanterns' levers and the panel's switch kept as one.
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.lamps_thrown.connect(func(on: bool) -> void:
@@ -380,7 +392,7 @@ func _update_sky() -> void:
 		row.to_sun = workshop.light.sun
 		row.to_moon = sky.moon_direction()
 	shed.to_sun = workshop.light.sun
-	for o: GlassOrb in [orb, pure_orb, tied_orb]:
+	for o: GlassOrb in [orb, pure_orb, tied_orb, loose_orb]:
 		o.to_sun = workshop.light.sun
 		o.sunlight = workshop.light.sunlight
 	_shed_note.text = shed.report()

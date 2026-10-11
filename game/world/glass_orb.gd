@@ -32,14 +32,21 @@ const SHELL := 0.01                     # m: the glass's thickness
 const GLASS := 0.9                      # the share of sunlight the glass lets through
 const WATER_HOLD := 0.005               # the water film's hold on its turning
 const STRUTS := 5                       # the struts bracing an undrilled stone
+const GROUND_HOLD := 0.05               # the grass's hold on a loose globe's rolling and spinning
 const AIR := 1.0e-3                     # N m s²: the air's drag on the smooth globe's turning
 
 ## The stone's purity (Photogyrite), set before it enters the world.
 var purity := 0.0
 ## How the stone is held in the globe, set before it enters the world:
 ## "rod" (a brass rod through it, the stone drilled) or "struts" (brass
-## rods pressing on its faces from the glass, the stone whole).
+## rods pressing on its faces from the glass, the stone whole), or "axle"
+## (a brass rod through it along its length, its ends at the globe's
+## poles, the stone drilled from end to end).
 var mounting := "rod"
+## Loose on the ground rather than held in a pool's ring: free to roll,
+## the ground's slight hold on its rolling and spinning (GROUND_HOLD) in
+## place of the water's.
+var loose := false
 ## How thick the pool's liquid is, as many times water's: its film's hold
 ## on the ball's turning (any way: rocking and spinning alike) grows in
 ## proportion.
@@ -111,9 +118,9 @@ func _ready() -> void:
 	angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
 	angular_damp = WATER_HOLD
 	# Held in its ring: free to turn, not to move.
-	axis_lock_linear_x = true
-	axis_lock_linear_y = true
-	axis_lock_linear_z = true
+	axis_lock_linear_x = not loose
+	axis_lock_linear_y = not loose
+	axis_lock_linear_z = not loose
 	can_sleep = false
 	var grip := PhysicsMaterial.new()
 	grip.friction = 0.9
@@ -138,8 +145,10 @@ func _ready() -> void:
 	add_child(stone)
 	if mounting == "struts":
 		_set_struts(verts, index, tip)
+	elif mounting == "axle":
+		_set_rod(tip, tip * Vector3.UP)
 	else:
-		_set_rod(tip)
+		_set_rod(tip, tip * Vector3.RIGHT)
 	# The glass, blown by hand: a faint green of old glass, its thickness
 	# seen at its edge (its inner face as well as its outer), not quite
 	# round, with small bubbles caught in it.
@@ -183,13 +192,13 @@ func _ready() -> void:
 	add_child(bubble_view)
 
 
-## Its mounting: a brass rod through the stone's middle, square to its
-## length (the stone drilled across), its ends set into the glass in
-## brass collars; the stone hangs on it as on an axle fixed in the globe.
-func _set_rod(tip: Basis) -> void:
+## Its mounting: a brass rod through the stone's middle along `across`
+## (square to its length, the stone drilled across; or along its length,
+## drilled from end to end), its ends set into the glass in brass
+## collars; the stone hangs on it as on an axle fixed in the globe.
+func _set_rod(_tip: Basis, across: Vector3) -> void:
 	var brass := Color(0.82, 0.62, 0.3)
 	var mount := CozyMesh.new()
-	var across := tip * Vector3.RIGHT
 	mount.rod(-across * (RADIUS - SHELL), across * (RADIUS - SHELL), 0.012, 10, brass)
 	for side: float in [-1.0, 1.0]:
 		var end := across * side * (RADIUS - SHELL * 0.5)
@@ -271,7 +280,7 @@ func inspect_text() -> String:
 
 
 func _physics_process(_delta: float) -> void:
-	angular_damp = WATER_HOLD * viscosity
+	angular_damp = GROUND_HOLD if loose else WATER_HOLD * viscosity
 	_watts = sunlight * GLASS * _area if to_sun.y > 0.0 else 0.0
 	var axis := (global_basis * _axis).normalized()
 	var w := angular_velocity
