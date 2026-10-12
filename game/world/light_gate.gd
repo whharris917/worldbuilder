@@ -132,10 +132,7 @@ func _init(at: Vector3, brass: Material, leaf_metal: Material, glass: Material, 
 	stone_view.mesh = grown.commit(_stone_glow)
 	_head.add_child(_stone)
 	_stone.add_child(stone_view)
-	if by_spin:
-		_build_spun(brass, stone_view)
-	else:
-		_build_pointed(brass, stone_view)
+	_build_mechanism(brass, stone_view)
 	# The way through the ring.
 	var plate_shape := BoxShape3D.new()
 	plate_shape.size = Vector3(0.26, 0.26, 0.03)
@@ -166,19 +163,55 @@ func _init(at: Vector3, brass: Material, leaf_metal: Material, glass: Material, 
 	_place()
 
 
+## What turns the leaf: the geotrope over the ring with cranks and a rod,
+## or the earthstone on end beside it with bevel gears.
+func _build_mechanism(brass: Material, stone_view: MeshInstance3D) -> void:
+	if by_spin:
+		_build_spun(brass, stone_view)
+	else:
+		_build_pointed(brass, stone_view)
+
+
 ## The geotrope over the ring on its level axle, the coil spring, the
 ## cranks and rod.
 func _build_pointed(brass: Material, stone_view: MeshInstance3D) -> void:
-	_stone_glow.albedo_color = Color(0.5, 0.8, 0.48, 0.9)
-	_stone_glow.emission = Color(0.24, 0.62, 0.26)
 	# The leaf's spindle across the ring, in bearings at either side of it,
 	# and out to its crank.
 	_bar(_head, Vector3(-0.14, 0, 0), Vector3(SIDE + 0.006, 0, 0), 0.007, brass)
-	# The post up from the ring's side to the stone's axle, and the axle
-	# out from its top past the stone to the crank.
+	_mount_geotrope(brass, stone_view, POST_X, SIDE + 0.006)
+	_peg(brass, -0.17)
+	_peg(brass, PI * 0.5 + 0.17)
+	_crank(_stone, brass)
+	_head.add_child(_low_crank)
+	_crank(_low_crank, brass)
+	# The rod between the two crank pins.
+	var rod := CylinderMesh.new()
+	rod.top_radius = 0.005
+	rod.bottom_radius = 0.005
+	rod.height = STONE_UP
+	rod.material = brass
+	_rod = _add(rod, Vector3(SIDE + 0.02, STONE_UP * 0.5, 0))
+	if closing:
+		_bead(Vector3(POST_X, 0.08, 0))
+
+
+## A stop peg in the spring's plate where the collar's arm meets it with
+## the stone at a turn of `a`, less the arm's width.
+func _peg(brass: Material, a: float) -> MeshInstance3D:
+	var peg_at := Vector3(0, sin(a), -cos(a)) * 0.04 + Vector3(0, STONE_UP, 0)
+	return _bar(_head, peg_at + Vector3(POST_X + 0.012, 0, 0), peg_at + Vector3(-0.055, 0, 0), 0.003, brass)
+
+
+## The geotrope on its level axle over the ring's middle: the post up
+## from the ring's side, the axle from `from_x` to `to_x`, the spring's
+## plate, its coil hooked into the plate and into a collar on the axle,
+## the collar's stop arm, the stone laid with its seeking end toward the
+## ring's front at a turn of 0. The pegs are the caller's.
+func _mount_geotrope(brass: Material, stone_view: MeshInstance3D, from_x: float, to_x: float) -> void:
+	_stone_glow.albedo_color = Color(0.5, 0.8, 0.48, 0.9)
+	_stone_glow.emission = Color(0.24, 0.62, 0.26)
 	_bar(_head, Vector3(POST_X, 0.08, 0), Vector3(POST_X, STONE_UP + 0.012, 0), 0.01, brass)
-	_bar(_head, Vector3(POST_X, STONE_UP, 0), Vector3(SIDE + 0.006, STONE_UP, 0), 0.006, brass)
-	# The spring's plate on the post, and its two stop pegs.
+	_bar(_head, Vector3(from_x, STONE_UP, 0), Vector3(to_x, STONE_UP, 0), 0.006, brass)
 	var plate := CylinderMesh.new()
 	plate.top_radius = 0.05
 	plate.bottom_radius = 0.05
@@ -186,9 +219,6 @@ func _build_pointed(brass: Material, stone_view: MeshInstance3D) -> void:
 	plate.radial_segments = 20
 	plate.material = brass
 	_add(plate, Vector3(POST_X + 0.012, STONE_UP, 0)).rotation.z = PI * 0.5
-	for a: float in [-0.17, PI * 0.5 + 0.17]:
-		var peg_at := Vector3(0, sin(a), -cos(a)) * 0.04 + Vector3(0, STONE_UP, 0)
-		_bar(_head, peg_at + Vector3(POST_X + 0.012, 0, 0), peg_at + Vector3(-0.055, 0, 0), 0.003, brass)
 	# The coil, its fixed end hooked into the plate.
 	for k in 4:
 		var turn := TorusMesh.new()
@@ -215,20 +245,8 @@ func _build_pointed(brass: Material, stone_view: MeshInstance3D) -> void:
 	_stone.add_child(collar_view)
 	_bar(_stone, Vector3(-0.069, 0.0135, 0), Vector3(-0.058, 0.0135, 0), 0.0025, brass)
 	_bar(_stone, Vector3(-0.058, 0, 0), Vector3(-0.058, 0, -0.046), 0.0035, brass)
-	_crank(_stone, brass)
-	_head.add_child(_low_crank)
-	_crank(_low_crank, brass)
-	# The rod between the two crank pins.
-	var rod := CylinderMesh.new()
-	rod.top_radius = 0.005
-	rod.bottom_radius = 0.005
-	rod.height = STONE_UP
-	rod.material = brass
-	_rod = _add(rod, Vector3(SIDE + 0.02, STONE_UP * 0.5, 0))
 	# Grown upright (+y its seeking end), laid toward -z, made smaller.
 	stone_view.transform = Transform3D(Basis(Vector3.RIGHT, -PI * 0.5).scaled(Vector3.ONE * 0.55), Vector3(0, 0, -0.01))
-	if closing:
-		_bead(Vector3(POST_X, 0.08, 0))
 
 
 ## The earthstone on end on its upright shaft beside the ring, its
@@ -353,7 +371,7 @@ func _add(mesh: Mesh, at: Vector3) -> MeshInstance3D:
 
 
 ## A round brass bar from `a` to `b` in `parent`'s frame.
-func _bar(parent: Node3D, a: Vector3, b: Vector3, r: float, mat: Material) -> void:
+func _bar(parent: Node3D, a: Vector3, b: Vector3, r: float, mat: Material) -> MeshInstance3D:
 	var c := CylinderMesh.new()
 	c.top_radius = r
 	c.bottom_radius = r
@@ -365,6 +383,7 @@ func _bar(parent: Node3D, a: Vector3, b: Vector3, r: float, mat: Material) -> vo
 	m.mesh = c
 	m.transform = Transform3D(CozyMesh.aligned((b - a).normalized()), (a + b) * 0.5)
 	parent.add_child(m)
+	return m
 
 
 ## A crank on an axle at the side: hub, arm toward -z at a turn of 0, pin.
