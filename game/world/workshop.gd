@@ -134,7 +134,8 @@ const ITEMS := [["floor", "Floor"], ["lantern", "Lantern"], ["gate", "Opening ga
 		["on_delay", "Hourglass"], ["off_delay", "Afterglow"], ["rise", "Rising spark"], ["fall", "Falling spark"],
 		["radiometer", "Luminous rotor"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"],
 		["push_lamp", "Push lamp"], ["pull_lamp", "Pull lamp"], ["track", "Track and cart"],
-		["collector", "Sun collector"], ["oil_bullseye", "Bullseye lantern"], ["oil_globe", "Globe lamp"]]
+		["collector", "Sun collector"], ["oil_bullseye", "Bullseye lantern"], ["oil_globe", "Globe lamp"],
+		["spin_gate", "Spun opening gate"], ["closing_spin_gate", "Spun closing gate"]]
 ## The oil lanterns' designs (LanternLook), by key.
 const LANTERN_STYLES := {"oil_bullseye": "bullseye", "oil_globe": "globe"}
 ## Oil lanterns of designs since let go, kept in old saves: built as these.
@@ -146,7 +147,9 @@ const HONEST_LIGHT := ["collector", "oil_bullseye", "oil_globe"]
 const FREE_LIGHT := ["lantern", "push_lamp", "pull_lamp", "track"]
 const BEAMS := {"push_lamp": "push", "pull_lamp": "pull"}   # lamps sending force beams, by kind
 const TRACK_COLOUR := Color(0.6, 0.45, 0.32)
-const GATES := {"gate": false, "closing_gate": true}   # key -> closing
+const GATES := {"gate": false, "closing_gate": true, "spin_gate": false, "closing_spin_gate": true}   # key -> closing
+## Gates worked by an earthstone spinning on end rather than a geotrope pointing.
+const SPIN_GATES := ["spin_gate", "closing_spin_gate"]
 const GATE_COLOUR := Color(0.92, 0.72, 0.34)
 const KINDS := {"lantern": LumenPart.Kind.LANTERN, "and": LumenPart.Kind.AND, "or": LumenPart.Kind.OR,
 		"not": LumenPart.Kind.NOT, "latch": LumenPart.Kind.LATCH, "on_delay": LumenPart.Kind.TON,
@@ -186,6 +189,8 @@ const NOTES := {
 	"radiometer": "Luminous rotor\nA spinstone, a crystal of photogyrite, turning on its spindle in the light: the more light, the faster.",
 	"gate": "Opening gate\nLets a beam through its ring while a lit beam strikes the geotrope above it.",
 	"closing_gate": "Closing gate\nStops a beam at its ring while a lit beam strikes the geotrope above it.",
+	"spin_gate": "Spun opening gate\nLets a beam through its ring while a lit beam strikes the earthstone beside it.",
+	"closing_spin_gate": "Spun closing gate\nStops a beam at its ring while a lit beam strikes the earthstone beside it.",
 	"push_lamp": "Push lamp\nIts red beam on a cart's copper ball pushes the cart along its track, away from the lamp.\nA click opens or closes it; a right click aims it.",
 	"pull_lamp": "Pull lamp\nIts green beam on a cart's copper ball pulls the cart along its track, toward the lamp.\nA click opens or closes it; a right click aims it.",
 	"track": "Track and cart\nPush and pull beams on the copper ball drive the cart along the track.",
@@ -197,7 +202,7 @@ const NOTES := {
 ## each. Drafts.
 const GROUPS := [[["Floors", ["floor"]], ["Lamps", ["collector", "oil_bullseye", "oil_globe", "lantern", "push_lamp", "pull_lamp"]]],
 		[["Crystals", ["and", "or", "not", "latch", "on_delay", "off_delay", "rise", "fall"]]],
-		[["Gates", ["gate", "closing_gate"]], ["Glass", ["mirror", "splitter", "lens"]]],
+		[["Gates", ["gate", "closing_gate", "spin_gate", "closing_spin_gate"]], ["Glass", ["mirror", "splitter", "lens"]]],
 		[["Machines", ["radiometer", "track"]]]]
 const MENU_NOTES := {
 	"floor": "boards two metres square, to build on.",
@@ -214,6 +219,8 @@ const MENU_NOTES := {
 	"fall": "one flash when a beam striking it goes dark.",
 	"gate": "lets a beam through its ring while its geotrope is lit.",
 	"closing_gate": "stops a beam at its ring while its geotrope is lit.",
+	"spin_gate": "lets a beam through its ring while its earthstone is lit.",
+	"closing_spin_gate": "stops a beam at its ring while its earthstone is lit.",
 	"mirror": "turns a beam off its silvered face.",
 	"splitter": "sends a beam on through and aside, each with half its reach.",
 	"lens": "a beam through it reaches twice as far again.",
@@ -236,6 +243,8 @@ const DETAILS := {
 	"fall": "One short flash the moment a beam striking it goes dark.",
 	"gate": "A brass ring with a small geotrope on a spring above it. Light on the stone swings it up against the spring and turns the leaf in the ring edge-on, so a beam through the ring passes only while a lit beam strikes the stone. Gates in a row along one beam make an AND. A right click turns its ring toward what you look at.",
 	"closing_gate": "A ring like the opening gate's, its leaf set a quarter turn round, so it stops the beam through it while its stone is lit and lets it pass while the stone is dark. A right click turns its ring toward what you look at.",
+	"spin_gate": "A brass ring with an earthstone standing on end on an upright shaft beside it. Light on the stone spins it, and its twist turns the shaft against a flat spiral spring; bevel gears at the shaft's foot turn the leaf in the ring with it, edge-on at a quarter turn, so a beam through the ring passes only while a lit beam strikes the stone. When the light leaves, the spiral turns it back.",
+	"closing_spin_gate": "Like the spun opening gate, its leaf set a quarter turn round: it stops the beam through its ring while its stone is lit and lets it pass while the stone is dark. A right click turns its ring toward what you look at.",
 	"mirror": "A silvered glass that turns a beam off its face as a mirror turns light, losing a little of the beam's reach. A right click aims the beam it sends on.",
 	"splitter": "Half-silvered glass. A beam striking it goes on straight through and is turned aside as well, each with half the reach.",
 	"lens": "A beam passing through it reaches twice as far again, for carrying a signal across a distance.",
@@ -281,6 +290,8 @@ const SUN_TEXTS := {
 	"fall": {"menu": "one flash when a beam striking it goes dark; sends no light."},
 	"gate": {"details": "The piece that lets one beam govern another. A brass ring with a small geotrope on a spring above it, linked to the leaf in the ring: light on the stone swings it up against the spring and the leaf turns edge-on, so a beam through the ring passes only while a lit beam strikes the stone (three watts or more); when the light leaves, the spring swings it back and the leaf shuts. Gates in a row along one beam make an AND; two beams brought to the same place make an OR. A right click turns its ring toward what you look at."},
 	"closing_gate": {"details": "Like the opening gate, its leaf set a quarter turn round: it stops the beam through its ring while its stone is lit, and lets it pass while the stone is dark: the NOT. A right click turns its ring toward what you look at."},
+	"spin_gate": {"details": "A brass ring with an earthstone standing on end on an upright shaft beside it, already pointing at the earth's pull, so light only spins it. Its twist turns the shaft against a flat spiral spring, and bevel gears at the shaft's foot turn the leaf in the ring with it: about three watts on the stone starts it turning, seven turns the leaf open, nine holds it against its stop. The spin's twist is weak against the spring, so it opens and shuts more slowly than the geotrope's gate. A right click turns its ring toward what you look at."},
+	"closing_spin_gate": {"details": "Like the spun opening gate, its leaf set a quarter turn round: it stops the beam through its ring while its earthstone is lit, and lets it pass while the stone is dark. A right click turns its ring toward what you look at."},
 	"mirror": {"details": "A silvered glass that turns a beam off its face without losing any of it. A right click aims the beam it sends on."},
 	"splitter": {"details": "Half-silvered glass: a beam striking it goes on straight through and is turned aside as well, half its light each way."},
 	"lens": {"menu": "a beam passing through it fades half as fast from there.",
@@ -489,7 +500,7 @@ func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 	if key == "track":
 		return BeamCart.new(at, wood, timber, brass, copper)
 	if GATES.has(key):
-		return LightGate.new(at, brass, copper if GATES[key] else brass, glass, GATES[key])
+		return LightGate.new(at, brass, copper if GATES[key] else brass, glass, GATES[key], SPIN_GATES.has(key))
 	if GLASS.has(key):
 		return OpticElement.new(GLASS[key], at, 0.0, timber, brass, silver, glass, false)
 	var kind: LumenPart.Kind = KINDS[key]
