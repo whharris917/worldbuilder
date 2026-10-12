@@ -102,9 +102,22 @@ func _build(brass: Material) -> void:
 		turn_view.position = Vector3(RESET_X + 0.045 + k * 0.006, RESET_UP, 0)
 		turn_view.rotation.z = PI * 0.5
 		add_child(turn_view)
+	# The stop plate, fixed on the axle past the coil, and its two pegs
+	# set into it where the stone's stop arm meets them.
+	var stop_plate := CylinderMesh.new()
+	stop_plate.top_radius = 0.04
+	stop_plate.bottom_radius = 0.04
+	stop_plate.height = 0.003
+	stop_plate.radial_segments = 20
+	stop_plate.material = brass
+	var stop_view := MeshInstance3D.new()
+	stop_view.mesh = stop_plate
+	stop_view.position = Vector3(RESET_X + 0.062, RESET_UP, 0)
+	stop_view.rotation.z = PI * 0.5
+	add_child(stop_view)
 	for a: float in [-0.17, TOP + 0.17]:
-		var peg_at := Vector3(0, sin(a), -cos(a)) * 0.03 + Vector3(RESET_X + 0.04, RESET_UP, 0)
-		_gate._bar(self, peg_at, peg_at + Vector3(0.015, 0, 0), 0.0025, brass)
+		var peg_at := Vector3(0, sin(a), -cos(a)) * 0.03 + Vector3(RESET_X + 0.036, RESET_UP, 0)
+		_gate._bar(self, peg_at, peg_at + Vector3(0.025, 0, 0), 0.0025, brass)
 	# The stone, its stop arm and its crank (down toward the can at rest).
 	_stone.position = Vector3(RESET_X, RESET_UP, 0)
 	add_child(_stone)
