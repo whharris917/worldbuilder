@@ -63,6 +63,7 @@ var _wear := RandomNumberGenerator.new()  # the two centuries' weathering, apart
 var _out := CozyMesh.new()             # outside: stone, slates
 var _in := CozyMesh.new()              # inside: limewash, timber, furniture
 var _panes := CozyMesh.new()           # window glass
+var _stains := CozyMesh.new()          # see-through weathering laid over the stone: streaks, lichen
 var _body := StaticBody3D.new()
 var _sin := sin(deg_to_rad(PITCH))
 var _cos := cos(deg_to_rad(PITCH))
@@ -94,14 +95,21 @@ func _ready() -> void:
 	_floor()
 	_living_room()
 	_workshop()
-	for part: Array in [[_out, outside, true], [_in, inside, true], [_panes, pane_mat, false]]:
+	_weathering()
+	_overgrowth()
+	var stain_mat := StandardMaterial3D.new()
+	stain_mat.vertex_color_use_as_albedo = true
+	stain_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	stain_mat.roughness = 0.95
+	stain_mat.metallic_specular = 0.0
+	for part: Array in [[_out, outside, true], [_in, inside, true], [_panes, pane_mat, false], [_stains, stain_mat, false]]:
 		var view := MeshInstance3D.new()
 		view.mesh = (part[0] as CozyMesh).commit(part[1])
 		if not part[2]:
 			view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(view)
 	# The front door, hung at its west jamb, opening inward.
-	var door := MillDoor.new(0.98, DOOR_H - 0.03, Color(0.38, 0.27, 0.18), outside,
+	var door := MillDoor.new(0.98, DOOR_H - 0.03, Color(0.42, 0.37, 0.3), outside,
 			"Door\nThe house's front door. A click opens and shuts it.")
 	door.position = Vector3(DOOR_X - 0.49, FLOOR, DEP * 0.5 - T * 0.5)
 	add_child(door)
@@ -672,6 +680,203 @@ func _floor() -> void:
 		if absf(along - DOOR_X) < 0.8:
 			continue
 		_out.ball(_rng.randf_range(0.06, 0.13), 6, CozyMesh.at(at), Color(0.34, 0.48, 0.22).darkened(_rng.randf() * 0.25), true)
+
+
+## ---- two centuries ------------------------------------------------------------
+
+## A point on a wall face, a little proud of its stones: `face` is [the
+## point on it at the ground at its start, its way along, its outward
+## normal, its width, its openings, how shaded it is]; `u` along, `y` up.
+func _face_point(face: Array, u: float, y: float) -> Vector3:
+	return (face[0] as Vector3) + (face[1] as Vector3) * u + Vector3.UP * y + (face[2] as Vector3) * 0.035
+
+
+## Where an opening's middle lies along a face, from the face's start.
+func _opening_u(face: Array, middle: float) -> float:
+	var start: Vector3 = face[0]
+	var along: Vector3 = face[1]
+	if absf(along.x) > 0.5:
+		return (middle - start.x) * along.x
+	return (middle - start.z) * along.z
+
+
+## A flat stain on a face, a disc `r` across, squashed `squash` up; drawn
+## see-through over the stone.
+func _blot(face: Array, u: float, y: float, r: float, colour: Color, squash := 1.0) -> void:
+	var along: Vector3 = face[1]
+	var out: Vector3 = face[2]
+	var b := Basis(along, out, along.cross(out)).orthonormalized()
+	_stains.ball(r, 10, CozyMesh.at(_face_point(face, u, y), b * Basis.from_scale(Vector3(1.0, 1.0, squash))), colour, false, 0.004)
+
+
+## A streak running down a face from (u, y) for `length`, `wide`: the
+## water's track, darkest at its head.
+func _streak(face: Array, u: float, y: float, wide: float, length: float, alpha: float) -> void:
+	var out: Vector3 = face[2]
+	var along: Vector3 = face[1]
+	var b := Basis(along, Vector3.UP, along.cross(Vector3.UP))
+	for k in 3:
+		var f := k / 3.0
+		var l := length * (1.0 - f * 0.45)
+		_stains.box(Vector3(wide * (1.0 - f * 0.4), l, 0.002), CozyMesh.at(_face_point(face, u, y - l * 0.5) + out * 0.002 * k, b), Color(0.16, 0.15, 0.13, alpha * 0.5))
+
+
+## The weather's marks on the shell: water streaks under every sill and
+## down from the eaves, a darkened band under them, soot at the stacks'
+## tops, green damp along the shaded walls' feet, lichen in blotches on
+## the walls (thicker to the north and west) and orange lichen on the
+## south slope's slates, a gable's coping stone slipped, slate fragments
+## along the eaves, the north window boarded up from outside.
+func _weathering() -> void:
+	var half := LEN * 0.5
+	var faces: Array = [
+		[Vector3(-half, 0, DEP * 0.5), Vector3.RIGHT, Vector3.BACK, LEN, SOUTH_OPEN, 0.0, false],
+		[Vector3(half, 0, -DEP * 0.5), Vector3.LEFT, Vector3.FORWARD, LEN, NORTH_OPEN, 1.0, false],
+		[Vector3(-half, 0, -DEP * 0.5), Vector3.BACK, Vector3.LEFT, DEP, [], 0.6, true],
+		[Vector3(half, 0, DEP * 0.5), Vector3.FORWARD, Vector3.RIGHT, DEP, EAST_OPEN, 0.3, true],
+	]
+	for face: Array in faces:
+		var width: float = face[3]
+		var shade: float = face[5]
+		var gable: bool = face[6]
+		var along: Vector3 = face[1]
+		var flat := Basis(along, Vector3.UP, along.cross(Vector3.UP))
+		for o: Array in face[4]:
+			if o[2] > 0.0:
+				_streak(face, _opening_u(face, o[0]), o[2] - 0.06, o[1] * 0.8, _wear.randf_range(0.5, 0.85), 0.5)
+		if not gable:
+			_stains.box(Vector3(width, 0.45, 0.002), CozyMesh.at(_face_point(face, width * 0.5, EAVE - 0.22), flat), Color(0.14, 0.13, 0.12, 0.28))
+			for k in 14:
+				_streak(face, _wear.randf_range(0.3, width - 0.3), EAVE - 0.3, _wear.randf_range(0.06, 0.2), _wear.randf_range(0.4, 1.6), 0.3)
+		if shade > 0.5:
+			_stains.box(Vector3(width, 0.5, 0.002), CozyMesh.at(_face_point(face, width * 0.5, 0.25), flat), Color(0.24, 0.36, 0.18, 0.32))
+		var count := roundi(18 + 40 * shade)
+		for k in count:
+			var u := _wear.randf_range(0.2, width - 0.2)
+			var top := EAVE
+			if gable:
+				top = EAVE + (DEP * 0.5 - absf(u - DEP * 0.5)) * tan(deg_to_rad(PITCH)) - 0.2
+			var y := _wear.randf_range(0.3, top - 0.1)
+			var blocked := false
+			for o: Array in face[4]:
+				if absf(u - _opening_u(face, o[0])) < o[1] * 0.5 + 0.25 and y > o[2] - 0.2 and y < o[3] + 0.3:
+					blocked = true
+			if blocked:
+				continue
+			# A colony: small crusts of one kind clustered, ragged at the edge;
+			# orange more on the sunny faces.
+			var kinds: Array[Color] = [Color(0.7, 0.7, 0.44, 0.5), Color(0.56, 0.6, 0.46, 0.5), Color(0.82, 0.58, 0.24, 0.5)]
+			var colour := kinds[2] if _wear.randf() < 0.25 * (1.0 - shade) else kinds[_wear.randi() % 2]
+			for j in _wear.randi_range(3, 8):
+				_blot(face, u + _wear.randf_range(-0.12, 0.12), y + _wear.randf_range(-0.09, 0.09), _wear.randf_range(0.025, 0.07), colour.darkened(_wear.randf() * 0.1), _wear.randf_range(0.6, 1.0))
+	# Soot at the stacks' tops.
+	var roof_top := _ridge_under + ROOF_T / _cos
+	for stack: Array in [[Vector3(-LEN * 0.5 + 0.1, roof_top + 1.1, 0), Vector3(0.9, 0.6, 1.4)], [Vector3(LEN * 0.5 - 0.25, roof_top + 0.5, -1.2), Vector3(0.75, 0.45, 0.75)]]:
+		var c: Vector3 = stack[0]
+		var size: Vector3 = stack[1]
+		_stains.box(size + Vector3(0.08, 0, 0.08), CozyMesh.at(c - Vector3(0, size.y * 0.5 + 0.12, 0)), Color(0.08, 0.07, 0.07, 0.45))
+	# Orange lichen on the south slope's slates, moss on the north's.
+	for side: float in [1.0, -1.0]:
+		var b := _slope_basis(side)
+		for k in (45 if side > 0.0 else 25):
+			var x := _wear.randf_range(-half, half)
+			var t := _wear.randf_range(0.3, (DEP * 0.5 + OVER) / _cos - 0.2)
+			if side < 0.0 and absf(x - GLASS_X) < 1.0:
+				continue
+			var colour := Color(0.86, 0.58, 0.2, 0.7) if side > 0.0 else Color(0.4, 0.48, 0.3, 0.5)
+			_stains.ball(_wear.randf_range(0.04, 0.13), 8, CozyMesh.at(_under(side, x, t) + b.y * (ROOF_T + 0.012), b), colour, false, 0.004)
+	# A coping stone on the east gable slipped down its slope.
+	var slipped := _slope_basis(1.0) * Basis(Vector3.UP, 0.12)
+	_out.box(Vector3(0.7, 0.16, 0.5), CozyMesh.at(_under(1.0, half - 0.3, 2.9) + _slope_basis(1.0).y * (ROOF_T + 0.17), slipped), Color(0.56, 0.52, 0.45))
+	# Slate fragments fallen along the eaves.
+	for k in 18:
+		var side := 1.0 if k % 2 == 0 else -1.0
+		var at := Vector3(_wear.randf_range(-half + 0.3, half - 0.3), 0.025, side * (DEP * 0.5 + _wear.randf_range(0.2, 0.9)))
+		if side > 0.0 and absf(at.x - DOOR_X) < 0.8:
+			continue
+		_out.box(Vector3(0.2, 0.015, 0.28) * _wear.randf_range(0.4, 1.0), CozyMesh.at(at, Basis(Vector3.UP, _wear.randf() * TAU) * Basis(Vector3.RIGHT, _wear.randf_range(-0.15, 0.15))), SLATE.lightened(_wear.randf() * 0.1))
+	# The north window boarded up from outside, its planks greyed, one
+	# fallen.
+	var o: Array = NORTH_OPEN[0]
+	var plank := Color(0.48, 0.45, 0.4)
+	for k in 3:
+		var y: float = o[2] + 0.15 + k * 0.28
+		_out.box(Vector3(o[1] + 0.36, 0.2, 0.03), CozyMesh.at(Vector3(o[0], y, -DEP * 0.5 - 0.05), Basis(Vector3.BACK, _wear.randf_range(-0.05, 0.05))), plank.darkened(_wear.randf() * 0.15))
+		for side: float in [-1.0, 1.0]:
+			_out.ball(0.012, 5, CozyMesh.at(Vector3(o[0] + side * (o[1] * 0.5 + 0.1), y, -DEP * 0.5 - 0.07)), Color(0.3, 0.2, 0.15))
+	_out.box(Vector3(o[1] + 0.36, 0.2, 0.03), CozyMesh.at(Vector3(o[0] + 0.3, 0.06, -DEP * 0.5 - 0.5), Basis(Vector3.UP, 0.4) * Basis(Vector3.RIGHT, PI * 0.5 - 0.1)), plank.darkened(0.1))
+
+
+## What has grown up round the house: ivy up the front's east end, the
+## west chimney and the back's west end, a young ash at the north-west
+## corner, brambles at the north-east, nettles and long grass along the
+## walls' feet.
+func _overgrowth() -> void:
+	var half := LEN * 0.5
+	_ivy(Vector3(half - 0.5, 0.0, DEP * 0.5), Vector3.RIGHT, Vector3.BACK, EAVE - 0.1, 0.9)
+	_ivy(Vector3(-half - 0.45, 0.0, 0.75), Vector3.FORWARD, Vector3.LEFT, _ridge_under + 0.6, 0.6)
+	_ivy(Vector3(-half + 1.2, 0.0, -DEP * 0.5), Vector3.LEFT, Vector3.FORWARD, EAVE - 0.3, 0.8)
+	# The young ash: a slim grey trunk, a few boughs, clumps of leaves.
+	var ash := Vector3(-half - 1.6, 0.0, -DEP * 0.5 - 1.4)
+	var bark := Color(0.5, 0.48, 0.42)
+	_out.rod(ash, ash + Vector3(0.2, 3.6, -0.1), 0.07, 7, bark)
+	for k in 5:
+		var from := ash + Vector3(0.2, 3.6, -0.1) * _wear.randf_range(0.45, 0.95)
+		var to := from + Vector3(_wear.randf_range(-1.1, 1.1), _wear.randf_range(0.5, 1.2), _wear.randf_range(-1.1, 1.1))
+		_out.rod(from, to, 0.035, 5, bark)
+		for j in 4:
+			_out.ball(_wear.randf_range(0.35, 0.6), 8, CozyMesh.at(to + Vector3(_wear.randf_range(-0.35, 0.35), _wear.randf_range(-0.1, 0.35), _wear.randf_range(-0.35, 0.35))), Color(0.34, 0.5, 0.24).darkened(_wear.randf() * 0.2))
+	_solid(Vector3(0.16, 3.6, 0.16), ash + Vector3(0.1, 1.8, -0.05))
+	# Brambles in a mound at the north-east corner.
+	var bramble := Vector3(half + 0.6, 0.0, -DEP * 0.5 - 0.4)
+	for k in 14:
+		_out.ball(_wear.randf_range(0.2, 0.42), 7, CozyMesh.at(bramble + Vector3(_wear.randf_range(-0.9, 0.9), _wear.randf_range(0.1, 0.45), _wear.randf_range(-0.6, 0.6)), Basis.from_scale(Vector3(1.0, 0.7, 1.0))), Color(0.26, 0.38, 0.2).darkened(_wear.randf() * 0.2))
+	# Long grass and nettles along the walls' feet, kept down by the door.
+	for k in 140:
+		var side := _wear.randi() % 4
+		var at := Vector3.ZERO
+		if side == 0:
+			at = Vector3(_wear.randf_range(-half, half), 0, DEP * 0.5 + _wear.randf_range(0.05, 0.5))
+			if absf(at.x - DOOR_X) < 1.0:
+				continue
+		elif side == 1:
+			at = Vector3(_wear.randf_range(-half, half), 0, -DEP * 0.5 - _wear.randf_range(0.05, 0.6))
+		elif side == 2:
+			at = Vector3(-half - _wear.randf_range(0.05, 0.6), 0, _wear.randf_range(-DEP * 0.5, DEP * 0.5))
+		else:
+			at = Vector3(half + _wear.randf_range(0.05, 0.6), 0, _wear.randf_range(-DEP * 0.5, DEP * 0.5))
+		if _wear.randf() < 0.25:
+			# A nettle: a stem, pairs of leaves up it.
+			var tall := _wear.randf_range(0.4, 0.8)
+			_out.rod(at, at + Vector3(0, tall, 0), 0.008, 4, Color(0.3, 0.42, 0.2))
+			for j in 4:
+				var y := tall * (0.3 + j * 0.2)
+				var turn := Basis(Vector3.UP, j * PI * 0.5)
+				for s2: float in [-1.0, 1.0]:
+					_out.ball(0.045, 5, CozyMesh.at(at + Vector3(0, y, 0) + turn * Vector3(s2 * 0.05, 0, 0), turn * Basis.from_scale(Vector3(1.0, 0.25, 0.6))), Color(0.24, 0.4, 0.18))
+		else:
+			for j in 5:
+				var lean := Vector3(_wear.randf_range(-0.12, 0.12), _wear.randf_range(0.25, 0.55), _wear.randf_range(-0.12, 0.12))
+				var foot := at + Vector3(_wear.randf_range(-0.05, 0.05), 0, _wear.randf_range(-0.05, 0.05))
+				_out.prism(Vector3(0.025, lean.length(), 0.006), CozyMesh.at(foot + lean * 0.5, CozyMesh.aligned(lean)), Color(0.42, 0.56, 0.26).lerp(Color(0.66, 0.62, 0.36), _wear.randf() * 0.5))
+
+
+## Ivy from `foot` up a face (`along` its way, `out` from it) to `top`:
+## three stems climbing and wandering sideways, leaves in clusters along
+## them, the plant `spread` across.
+func _ivy(foot: Vector3, along: Vector3, out: Vector3, top: float, spread: float) -> void:
+	var stem := Color(0.3, 0.24, 0.18)
+	var flat := Basis(along, out, along.cross(out)).orthonormalized()
+	for k in 3:
+		var p := foot + along * _wear.randf_range(-spread * 0.3, spread * 0.3) + out * 0.05
+		while p.y < top:
+			var next := p + Vector3.UP * _wear.randf_range(0.12, 0.2) + along * _wear.randf_range(-0.09, 0.09)
+			_out.rod(p, next, 0.012, 4, stem)
+			for j in 3:
+				var leaf := next + along * _wear.randf_range(-0.13, 0.13) + Vector3.UP * _wear.randf_range(-0.08, 0.08) + out * _wear.randf_range(0.02, 0.08)
+				var colour := [Color(0.2, 0.34, 0.16), Color(0.26, 0.4, 0.2), Color(0.18, 0.3, 0.15)][_wear.randi() % 3] as Color
+				_out.ball(_wear.randf_range(0.04, 0.065), 6, CozyMesh.at(leaf, Basis(out, _wear.randf() * TAU) * flat), colour, false, 0.02)
+			p = next
 
 
 ## ---- the room ------------------------------------------------------------------
