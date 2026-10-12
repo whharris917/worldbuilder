@@ -739,12 +739,7 @@ func _burning_glass(inside: Material) -> void:
 	cloth.ao_enabled = true
 	cloth.ao_texture = ImageTexture.create_from_image(dim)
 	cloth.ao_light_affect = 0.0
-	var lens_glass := StandardMaterial3D.new()
-	lens_glass.vertex_color_use_as_albedo = true
-	lens_glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	lens_glass.roughness = 0.04
-	lens_glass.metallic_specular = 0.8
-	glass = BurningGlass.new({"wood": inside, "cloth": cloth, "glass": lens_glass}, FLOOR)
+	glass = BurningGlass.new({"wood": inside, "cloth": cloth}, FLOOR)
 	var t := GLASS_Z / _cos
 	var b := _slope_basis(1.0)
 	glass.transform = Transform3D(b, _under(1.0, GLASS_X, t) + b.y * (ROOF_T * 0.5))

@@ -30,7 +30,7 @@ extends Node3D
 
 const RADIUS := 0.6                     # m: the lens
 const FOCUS := 5.8                      # m
-const CLEAR := 0.8                      # the share of the light the thick glass passes
+const CLEAR := 0.65                     # the share of the light it passes: green glass 1 to 7 cm thick, its two faces' reflections
 const SUN_HALF := 0.00465               # rad: the sun's half width
 const OPENING := 1.3                    # m: the square opening in the roof
 const CURTAINS := 4
@@ -57,11 +57,12 @@ var _open_share := 1.0
 var _moved := true                      # the curtains moved since the lens's open share was counted
 var _paint_left := 0.0                  # s: till the spot's picture is painted again
 var _mats: Dictionary
+var _seeds: StandardMaterial3D
 var _floor_y := 0.0                     # the room's floor, in this frame's parent, for the cords
 
 
 ## `floor_y`: the room's floor below, in the parent's frame; `mats`: "wood",
-## "cloth", "brass", "glass" materials (vertex coloured).
+## "cloth" materials (the wood vertex coloured; the lens makes its own glass).
 func _init(mats: Dictionary, floor_y: float, shut := true) -> void:
 	name = "BurningGlass"
 	_floor_y = floor_y
@@ -157,6 +158,13 @@ func _physics_process(delta: float) -> void:
 					count += 1
 		_open_share = open / count
 	_aim_spot()
+	_sunlit()
+
+
+## The seeds' sparkle with the sun on the lens.
+func _sunlit() -> void:
+	var on := clampf(sunlight * to_sun.dot(global_basis.y.normalized()) / 900.0, 0.0, 1.0)
+	_seeds.emission_energy_multiplier = 3.0 * on
 
 
 ## The spot light where the lens's light lands, sized and pictured to its
@@ -201,7 +209,11 @@ func _aim_spot() -> void:
 	var wide := RADIUS * absf(k) + blur
 	if absf(_shaft_cone.bottom_radius - wide) > 0.01:
 		_shaft_cone.bottom_radius = wide
-	_shaft.global_transform = Transform3D(CozyMesh.aligned(-d).scaled_local(Vector3(1, s, 1)), global_position + d * s * 0.5)
+	# Begun a little below the glass, so the lit air does not veil the
+	# lens seen from the room.
+	var start := minf(0.6, s * 0.5)
+	_shaft_cone.top_radius = RADIUS * absf(1.0 - start / FOCUS)
+	_shaft.global_transform = Transform3D(CozyMesh.aligned(-d).scaled_local(Vector3(1, s - start, 1)), global_position + d * (s + start) * 0.5)
 	_shaft_mat.albedo_color.a = 0.03 * _open_share * clampf(sunlight / 900.0, 0.0, 1.0)
 
 
@@ -260,13 +272,65 @@ func _build() -> void:
 	var view := MeshInstance3D.new()
 	view.mesh = m.commit(wood)
 	add_child(view)
-	# The lens: thick in the middle, thin at its rim.
+	# The lens: ground to its focus it is 7 cm thick in the middle (each
+	# face a sphere of radius twice the focus times the glass's index less
+	# one, 5.8 m, rising 3 cm over the rim), thick green glass shining at
+	# its curved faces; deeper green round its edge, where a look crosses
+	# more glass; held in a brass ring each side. Glass of the period is
+	# strongly green with iron (a third of the light taken in this
+	# thickness, as CLEAR) and full of small bubbles (seeds), which sparkle
+	# with the sun on the lens (`_sunlit`). The engine's refraction is left
+	# off: the sky behind is even, so it bent nothing visible, and it drew
+	# the sky over the seeds.
 	var lens := CozyMesh.new()
-	lens.ball(RADIUS, 32, CozyMesh.at(Vector3.ZERO), Color(0.72, 0.86, 0.74, 0.35), false, 0.07)
+	lens.ball(RADIUS, 48, CozyMesh.at(Vector3.ZERO), Color.WHITE, false, 0.07)
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.4, 0.66, 0.44, 0.94)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.roughness = 0.03
+	glass.metallic_specular = 1.0
+	glass.rim_enabled = true
+	glass.rim = 0.7
+	glass.rim_tint = 0.6
 	var glass_view := MeshInstance3D.new()
-	glass_view.mesh = lens.commit(_mats["glass"])
+	glass_view.mesh = lens.commit(glass)
 	glass_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	add_child(glass_view)
+	var edge := CozyMesh.new()
+	edge.torus(RADIUS - 0.05, RADIUS + 0.005, 48, 8, CozyMesh.at(Vector3.ZERO), Color.WHITE)
+	var edge_glass := glass.duplicate() as StandardMaterial3D
+	edge_glass.albedo_color = Color(0.3, 0.55, 0.38, 0.75)
+	var edge_view := MeshInstance3D.new()
+	edge_view.mesh = edge.commit(edge_glass)
+	add_child(edge_view)
+	# The seeds, small bubbles through the glass.
+	var seeds := CozyMesh.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1652
+	for k in 90:
+		var r := sqrt(rng.randf()) * (RADIUS - 0.04)
+		var a := rng.randf() * TAU
+		var thick := 0.035 * (1.0 - r * r / (RADIUS * RADIUS))
+		seeds.ball(rng.randf_range(0.004, 0.01), 5, CozyMesh.at(Vector3(cos(a) * r, rng.randf_range(-thick, thick) * 0.8, sin(a) * r)), Color.WHITE)
+	_seeds = StandardMaterial3D.new()
+	_seeds.albedo_color = Color(0.9, 0.95, 0.9, 0.5)
+	_seeds.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_seeds.emission_enabled = true
+	_seeds.emission = Color(1.0, 0.97, 0.88)
+	_seeds.emission_energy_multiplier = 0.0
+	var seed_view := MeshInstance3D.new()
+	seed_view.mesh = seeds.commit(_seeds)
+	seed_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(seed_view)
+	var ring := CozyMesh.new()
+	for face: float in [1.0, -1.0]:
+		ring.torus(RADIUS - 0.035, RADIUS + 0.02, 48, 6, CozyMesh.at(Vector3(0, face * 0.035, 0)), Color(0.78, 0.6, 0.3))
+		for k in 8:
+			var a := TAU * k / 8.0
+			ring.ball(0.012, 6, CozyMesh.at(Vector3(cos(a) * (RADIUS + 0.0), face * 0.045, sin(a) * RADIUS)), Color(0.7, 0.54, 0.28))
+	var ring_view := MeshInstance3D.new()
+	ring_view.mesh = ring.commit(wood)
+	add_child(ring_view)
 	# The curtains, each a heavy cloth gathered at the top of its strip
 	# and drawn down the rails, a batten along its lower edge; its cord
 	# from the batten round the pulley and down into the room, a toggle on
