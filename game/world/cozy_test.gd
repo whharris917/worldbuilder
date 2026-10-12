@@ -37,6 +37,7 @@ extends BuildWorld
 const STATE_PATH := "user://cozy_test.json"
 const MILL_PATH := "user://cozy_test_mill.json"
 const BUILD_PATH := "user://cozy_test_build.json"
+const CAMERA_PATH := "user://cozy_test_camera.json"
 const R := 44.0                         # the coast's mean radius, at the profile's 1.0
 const TOP := 1.2                        # the level top's height over the sea
 const SEABED := -3.5
@@ -247,6 +248,21 @@ func _ready() -> void:
 	if DisplayServer.get_name() == "headless":
 		print("[worldbuilder] cozy test: coast at %.1f m south, campsite at %s, windmill hub %.1f m up"
 				% [coast_radius(a) * _shore_share(), campsite.position, windmill.hub_height()])
+
+
+## F8 keeps where the player's eye is and which way it looks
+## (CAMERA_PATH), for a film's camera to take (the teaser).
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event is InputEventKey and (event as InputEventKey).pressed and (event as InputEventKey).keycode == KEY_F8:
+		var eye := get_viewport().get_camera_3d()
+		if eye == null:
+			return
+		var xf := eye.global_transform
+		var file := FileAccess.open(CAMERA_PATH, FileAccess.WRITE)
+		if file != null:
+			file.store_string(JSON.stringify({"origin": [xf.origin.x, xf.origin.y, xf.origin.z],
+					"forward": [-xf.basis.z.x, -xf.basis.z.y, -xf.basis.z.z], "fov": eye.fov}))
+		print("[worldbuilder] camera kept: %s looking %s" % [xf.origin, -xf.basis.z])
 
 
 func _exit_tree() -> void:

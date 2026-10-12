@@ -200,6 +200,30 @@ func attach(machine: MillLoad) -> void:
 	add_child(machine)
 
 
+## Whether a sail stands between the point `at` (global) and the sun,
+## toward `to_sun`: the sun's ray from it carried into the turning
+## sails' frame, met where it crosses their plane, inside one sail's
+## cloth and boards (out along its stock from SAIL_IN to SAIL_R, across it
+## from its leading boards to its cloth's far edge). The sails' twist is
+## left out: a few centimetres across a sail.
+func sail_shades(at: Vector3, to_sun: Vector3) -> bool:
+	var inv := _spin.global_transform.affine_inverse()
+	var p := inv * at
+	var d := (inv.basis * to_sun).normalized()
+	if absf(d.z) < 1e-4:
+		return false
+	var t := (0.22 - p.z) / d.z
+	if t <= 0.0:
+		return false
+	var q := p + d * t
+	var reach := 0.05 + 1.52 * cloth if cloth > 0.02 else 0.1
+	for k in 4:
+		var on := Basis(Vector3.BACK, -TAU * k / 4.0) * q
+		if on.y >= SAIL_IN and on.y <= SAIL_R and on.x >= -0.33 and on.x <= maxf(reach, 0.1):
+			return true
+	return false
+
+
 ## The hub's height over the plinth's foot.
 func hub_height() -> float:
 	return HUB.y

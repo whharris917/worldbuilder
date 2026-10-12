@@ -10,3 +10,6 @@ game/.godot/
 
 # Office lock files
 ~$*
+
+# Rendered films
+renders/
