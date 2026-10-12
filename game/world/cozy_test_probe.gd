@@ -27,8 +27,11 @@ const VIEWS := [
 	["bin_floor", 70.0, Vector3(0.9, 5.8, 1.0), Vector3(-1.0, 4.7, -1.0), ""],
 	["stone_floor", 70.0, Vector3(-0.9, 8.1, -0.9), Vector3(0.9, 7.2, 1.0), ""],
 	["dust_floor", 70.0, Vector3(1.0, 10.2, -0.9), Vector3(-0.4, 11.0, 0.5), ""],
-	["gasworks", 60.0, Vector3(2.0, 3.5, 10.0), Vector3(8.0, 2.0, 0.5), ""],
-	["holders", 60.0, Vector3(15.0, 3.2, -7.0), Vector3(8.0, 2.5, 1.0), ""],
+	["house", 60.0, Vector3(26.0, 5.0, 17.0), Vector3(16.0, 4.2, 2.5), ""],
+	["house_back", 60.0, Vector3(5.0, 8.0, -10.0), Vector3(16.0, 5.2, 2.5), ""],
+	["workshop", 65.0, Vector3(15.2, 2.9, 4.7), Vector3(18.6, 2.1, 1.9), ""],
+	["burning_glass", 65.0, Vector3(16.6, 2.8, 1.1), Vector3(18.4, 6.2, 4.1), ""],
+	["living_room", 65.0, Vector3(14.1, 2.9, 4.7), Vector3(10.4, 2.2, 2.3), ""],
 ]
 
 var _world: CozyTest

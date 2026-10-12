@@ -10,7 +10,7 @@ extends RigidBody3D
 ## glass one rigid body, its place fixed (its motion locked), its turning
 ## free.
 ##
-## The stone is the spinstone of the shed's crystals (ShedCrystal) at
+## The stone is the spinstone of the alchemist's table crystals (TableCrystal) at
 ## SIZE times a whole stone's length, its middle at the ball's, its axis
 ## at random to begin. On the ball, each physics step, the spinstone laws
 ## as a combination stone, by the sunlight through the glass (GLASS of it
@@ -73,7 +73,7 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_scale = ShedCrystal.WHOLE * SIZE
+	_scale = TableCrystal.WHOLE * SIZE
 	_glow = StandardMaterial3D.new()
 	_glow.albedo_color = Color(0.82, 0.74, 1.0, 0.55) if purity > 0.5 else Color(0.74, 0.62, 0.95, 0.95)
 	_glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -110,7 +110,7 @@ func _ready() -> void:
 	# its mass times its radius squared) and the stone (as the box round
 	# it, an average over its axes, since it lies tipped in the globe).
 	var shell := 4.0 * PI * RADIUS * RADIUS * SHELL * GLASS_DENSITY
-	var stone_mass := volume * ShedCrystal.DENSITY
+	var stone_mass := volume * TableCrystal.DENSITY
 	var box := AABB(verts[0], Vector3.ZERO)
 	for v in verts:
 		box = box.expand(v)

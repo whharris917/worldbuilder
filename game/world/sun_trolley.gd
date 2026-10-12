@@ -20,7 +20,7 @@ extends Node3D
 ## larger than the wheel), less the wheel's rolling resistance (ROLLING,
 ## of the share of the weight the wheel carries; the post carries the
 ## rest) and the bearings' slight drag. It rolls with a metallic scrape
-## (metal_scrape_loop.wav: the shed's scrape recording ringing as a steel
+## (metal_scrape_loop.wav: the table crystals' scrape recording ringing as a steel
 ## rail, made by tools/cut_scrape.py), louder and quicker as it runs
 ## faster. A lever by the ring sets it still. Inert at night and in an
 ## eclipse's shadow.
@@ -158,7 +158,7 @@ func _build(world: Node) -> void:
 	var arrays := cm.commit(glow).surface_get_arrays(0)
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-	var scale_by := ShedCrystal.WHOLE * STONE_SIZE
+	var scale_by := TableCrystal.WHOLE * STONE_SIZE
 	for k in verts.size():
 		verts[k] *= scale_by
 	var volume := 0.0
@@ -177,7 +177,7 @@ func _build(world: Node) -> void:
 	for k in verts.size():
 		verts[k] -= middle
 	_area = surface * 0.25
-	var stone_mass := volume * ShedCrystal.DENSITY
+	var stone_mass := volume * TableCrystal.DENSITY
 	var box := AABB(verts[0], Vector3.ZERO)
 	for v in verts:
 		box = box.expand(v)

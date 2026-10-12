@@ -20,8 +20,8 @@ extends BuildWorld
 ## the Wind panel, with gusts (two slow noises, one for the speed, one
 ## for the direction) when they are on. It is heard everywhere, softly
 ## (wind_loop.wav), louder and a little higher as it blows harder. The windmill turns to it and is
-## driven by it; its gasworks (GasWorks) is the machine on its spindle.
-## The mill's and the gasworks' state is kept in MILL_PATH.
+## driven by it; nothing is on its spindle yet. The mill's state is kept
+## in MILL_PATH.
 ##
 ## Time passes: the hour runs on at a chosen pace (the Time panel) and
 ## the sun keeps to its real path for LATITUDE on a day when its
@@ -57,7 +57,7 @@ var workshop: Workshop
 var gimbals: SpinstoneGimbals
 var pure_stones: SpinstoneGimbals
 var built_stones: SpinstoneGimbals
-var shed: CrystalShed
+var house: AlchemistHouse
 var orb: GlassOrb
 var pure_orb: GlassOrb
 var tied_orb: GlassOrb
@@ -83,7 +83,7 @@ var day := 0
 var _hour_saved := -1.0
 var _moon_note: Label
 var _eclipse_note: Label
-var _shed_note: Label
+var _table_note: Label
 var _sky_left := 0.0
 var _slider_left := 0.0
 var _time_note: Label
@@ -131,7 +131,6 @@ func _ready() -> void:
 	# The door faces the campsite.
 	windmill.rotation.y = -a + PI * 0.5
 	add_child(windmill)
-	windmill.attach(GasWorks.new())
 	_load_mill()
 	_gust.seed = 13
 	_gust.frequency = 1.0
@@ -155,11 +154,10 @@ func _ready() -> void:
 			"glass": workshop.glass, "wood": workshop.wood}, "built")
 	built_stones.position = Vector3(-10.0, TOP, -19.0)
 	add_child(built_stones)
-	# The shed with a crystal under a spotlight, north-east of the mill,
-	# on the ground as it lies there (a little over TOP).
-	shed = CrystalShed.new(self)
-	shed.position = Vector3(9.0, height(9.0, -12.0), -12.0)
-	add_child(shed)
+	# The alchemist's house east of the mill, its front to the south.
+	house = AlchemistHouse.new(self)
+	house.position = Vector3(16.0, height(16.0, 2.5), 2.5)
+	add_child(house)
 	# An earthstone in a ball of glass, held in a pool on the grass
 	# south-west of the mill, short of the beach.
 	var pool := OrbPool.new(self)
@@ -303,31 +301,29 @@ func _build_panels() -> void:
 	var gauge := _panel.panel("Beam balance")
 	_panel.slider(gauge, "Water in the column (%)", 0.0, 100.0, 1.0, 50.0, redraw)
 	_panel.note(gauge, "How full the glass column of dark water is, east of the mill; the water rises or falls to it over a few seconds. The needle on the balance's dial should follow it, whatever the sun.")
-	var shed_panel := _panel.panel("Shed")
-	_panel.switch(shed_panel, "Spotlight", true, redraw)
-	_panel.slider(shed_panel, "Spotlight (suns)", 0.0, 200.0, 1.0, 50.0, redraw)
-	_panel.note(shed_panel, "How bright the spotlight is on the table, in suns: one is the noon sun's direct light, a thousand watts a square metre.")
-	_panel.slider(shed_panel, "Crystal size", CrystalShed.SMALLEST, CrystalShed.LARGEST, 0.01, CrystalShed.SMALLEST, func(v: float) -> void:
-		shed.crystals[0].size = v
-		shed.crystals[0].reset())
-	_panel.note(shed_panel, "A crystal's length against a whole stone's (the gimbal stones'): from a twentieth of its volume to five times its length.")
-	_panel.choice(shed_panel, "Stone", ["Sunstone", "Earthstone"], "Sunstone", func(o: String) -> void:
-		shed.crystals[0].set_kind("sun" if o == "Sunstone" else "earth"))
-	_panel.button(shed_panel, "A new crystal", func() -> void: shed.crystals[0].new_shape())
-	_panel.button(shed_panel, "Set it down again", func() -> void: shed.crystals[0].reset())
-	_panel.switch(shed_panel, "Second crystal", false, func(on: bool) -> void: shed.crystals[1].set_present(on))
-	_panel.slider(shed_panel, "Second crystal size", CrystalShed.SMALLEST, CrystalShed.LARGEST, 0.01, CrystalShed.SMALLEST, func(v: float) -> void:
-		shed.crystals[1].size = v
-		shed.crystals[1].reset())
-	_panel.choice(shed_panel, "Second stone", ["Sunstone", "Earthstone"], "Earthstone", func(o: String) -> void:
-		shed.crystals[1].set_kind("sun" if o == "Sunstone" else "earth"))
-	_panel.button(shed_panel, "A new second crystal", func() -> void: shed.crystals[1].new_shape())
-	_panel.button(shed_panel, "Set the second down again", func() -> void: shed.crystals[1].reset())
-	_panel.switch(shed_panel, "Knock sound", true, redraw)
-	_panel.switch(shed_panel, "Scrape sound", true, redraw)
-	_panel.slider(shed_panel, "Pitch drop with size", 0.0, 1.0, 0.05, 0.7, redraw)
-	_panel.note(shed_panel, "How much lower a larger crystal's knocks and scrape sound. At 0 all sizes sound alike; at 1 the pitch falls in step with its length, as a real stone's ring would.")
-	_shed_note = _panel.note(shed_panel, "")
+	var table_panel := _panel.panel("Burning glass")
+	_panel.note(table_panel, "The table in the alchemist's workshop, under the burning glass in the roof, its crystals in a brass dish. The curtains are drawn by the cords hanging below the glass. The glass's bright spot crosses the dish toward noon and lies elsewhere the rest of the day.")
+	_panel.slider(table_panel, "Crystal size", CrystalTable.SMALLEST, CrystalTable.LARGEST, 0.01, CrystalTable.SMALLEST, func(v: float) -> void:
+		house.table.crystals[0].size = v
+		house.table.crystals[0].reset())
+	_panel.note(table_panel, "A crystal's length against a whole stone's (the gimbal stones'): from a twentieth of its volume to five times its length.")
+	_panel.choice(table_panel, "Stone", ["Sunstone", "Earthstone"], "Sunstone", func(o: String) -> void:
+		house.table.crystals[0].set_kind("sun" if o == "Sunstone" else "earth"))
+	_panel.button(table_panel, "A new crystal", func() -> void: house.table.crystals[0].new_shape())
+	_panel.button(table_panel, "Set it down again", func() -> void: house.table.crystals[0].reset())
+	_panel.switch(table_panel, "Second crystal", false, func(on: bool) -> void: house.table.crystals[1].set_present(on))
+	_panel.slider(table_panel, "Second crystal size", CrystalTable.SMALLEST, CrystalTable.LARGEST, 0.01, CrystalTable.SMALLEST, func(v: float) -> void:
+		house.table.crystals[1].size = v
+		house.table.crystals[1].reset())
+	_panel.choice(table_panel, "Second stone", ["Sunstone", "Earthstone"], "Earthstone", func(o: String) -> void:
+		house.table.crystals[1].set_kind("sun" if o == "Sunstone" else "earth"))
+	_panel.button(table_panel, "A new second crystal", func() -> void: house.table.crystals[1].new_shape())
+	_panel.button(table_panel, "Set the second down again", func() -> void: house.table.crystals[1].reset())
+	_panel.switch(table_panel, "Knock sound", true, redraw)
+	_panel.switch(table_panel, "Scrape sound", true, redraw)
+	_panel.slider(table_panel, "Pitch drop with size", 0.0, 1.0, 0.05, 0.7, redraw)
+	_panel.note(table_panel, "How much lower a larger crystal's knocks and scrape sound. At 0 all sizes sound alike; at 1 the pitch falls in step with its length, as a real stone's ring would.")
+	_table_note = _panel.note(table_panel, "")
 	var sound := _panel.panel("Sound")
 	_panel.slider(sound, "Master volume (dB)", -24.0, 12.0, 0.5, AudioOutput.master_db, func(v: float) -> void: AudioOutput.set_master_db(v))
 	_panel.note(sound, "Everything the game plays, in every world.")
@@ -372,11 +368,9 @@ func _apply() -> void:
 	trolley.force_scale = _value("Wheel sunstone force (x)")
 	trolley.friction_scale = _value("Wheel friction (x)")
 	balance.level_set = _value("Water in the column (%)") * 0.01 * BeamBalance.MOST
-	shed.lamp_on = _on("Spotlight")
-	shed.suns = _value("Spotlight (suns)")
-	shed.knocks_heard = _on("Knock sound")
-	shed.scrape_heard = _on("Scrape sound")
-	shed.pitch_drop = _value("Pitch drop with size")
+	house.table.knocks_heard = _on("Knock sound")
+	house.table.scrape_heard = _on("Scrape sound")
+	house.table.pitch_drop = _value("Pitch drop with size")
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.set_lit(_on("Light the stones"))
 		row.light_watts = _value("Light on each stone (W)")
@@ -426,7 +420,7 @@ func _update_sky() -> void:
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.to_sun = workshop.light.sun
 		row.to_moon = sky.moon_direction()
-	shed.to_sun = workshop.light.sun
+	house.set_sun(workshop.light.sun, workshop.light.sunlight)
 	for o: GlassOrb in [orb, pure_orb, tied_orb, loose_orb]:
 		o.to_sun = workshop.light.sun
 		o.sunlight = workshop.light.sunlight
@@ -436,7 +430,7 @@ func _update_sky() -> void:
 	trolley.sunlight = workshop.light.sunlight
 	balance.to_sun = workshop.light.sun
 	balance.sunlight = workshop.light.sunlight
-	_shed_note.text = shed.report()
+	_table_note.text = house.table.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
 	_moon_note.text = _moon_words(t, moon, left)
 	_time_note.text = "Day %d, %02d:%02d. %s" % [day + 1, floori(hour), floori(fmod(hour, 1.0) * 60.0),
@@ -932,9 +926,8 @@ func _blow(delta: float) -> void:
 	_readout.text = "Wind %.1f m/s from %d.
 %s
 %s
-Power to the spindle: %.1f kW.
-%s" % [windmill.wind_speed,
-			roundi(windmill.wind_from), turning, facing, windmill.power * 0.001, windmill.load.report()]
+" % [windmill.wind_speed,
+			roundi(windmill.wind_from), turning, facing]
 
 
 func _save_mill() -> void:

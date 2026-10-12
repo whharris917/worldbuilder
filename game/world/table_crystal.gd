@@ -1,8 +1,8 @@
-class_name ShedCrystal
+class_name TableCrystal
 extends Node3D
-## One spinstone crystal lying loose on the shed's table (CrystalShed),
-## with its own kind, size and shape, its laws and its sounds; the shed
-## gives the light, the sun's direction and the sound settings.
+## One spinstone crystal lying loose on a table (CrystalTable), with its
+## own kind, size and shape, its laws and its sounds; the table gives the
+## light, the sun's direction and the sound settings.
 ##
 ## The crystal is a rigid body of the engine's physics (its weight, the
 ## table's friction, its rolling and tipping, its knocking into another
@@ -13,12 +13,14 @@ extends Node3D
 ## combination stone: while lit, its axis (its length, the crystal's
 ## seeking end) is drawn toward its body, straight up for an earthstone,
 ## the sun for a sunstone (through the roof: the stone answers to the
-## sun, the lamp only lights it), PULL_PER_WATT for each watt of light on
+## sun's direction wherever its light comes from), PULL_PER_WATT for each watt of light on
 ## it, and it is spun about its axis TURN for each watt while that end
 ## faces its body; the air drags on its turning, the drag growing with
-## its size to the fifth power. The light on it is the spotlight's, in
-## suns (a thousand watts a square metre each), over the crystal's mean
-## shadow, a quarter of its surface. Unlit it is an inert stone.
+## its size to the fifth power. The light on it is the table's (its
+## watts a square metre, `CrystalTable.light_at`) at five points along its
+## length, averaged, over the crystal's mean shadow, a quarter of its
+## surface: partly in a bright spot, it takes that share of it. Unlit it
+## is an inert stone.
 ##
 ## Its sounds come from what it does, quiet: a dull knock of stone on
 ## wood each time it strikes the table, the other crystal, or rolls on to
@@ -47,18 +49,19 @@ const SPIN_GRIND := 0.08                # m/s: the least drag heard while it spi
 ## "sun" or "earth".
 var kind := "sun"
 ## Its length as a share of a whole stone's.
-var size := CrystalShed.SMALLEST
-## Where on the table it is set down (in the shed's frame).
+var size := CrystalTable.SMALLEST
+## Where on the table it is set down (in the table's frame).
 var home := Vector3.ZERO
 ## Its purity (Photogyrite): impure, as the stones found so far.
 var purity := 0.0
 
-var _shed: CrystalShed
+var _table: CrystalTable
 var _crystal: RigidBody3D
 var _glow: StandardMaterial3D
 var _rng := RandomNumberGenerator.new()
 var _seed := 7
 var _area := 0.0                        # m²: its mean shadow
+var _half := 0.0                        # m: half its length
 var _scale := 1.0
 var _watts := 0.0
 var _taps: Array[AudioStream] = []
@@ -74,9 +77,9 @@ var _was_w := Vector3.ZERO
 var _since_tap := 1.0
 
 
-func _init(shed: CrystalShed, seed_value: int, at: Vector3) -> void:
-	name = "ShedCrystal"
-	_shed = shed
+func _init(table: CrystalTable, seed_value: int, at: Vector3) -> void:
+	name = "TableCrystal"
+	_table = table
 	_seed = seed_value
 	home = at
 	_rng.randomize()
@@ -169,6 +172,7 @@ func reset() -> void:
 	_crystal.name = "Crystal"
 	_crystal.mass = DENSITY * volume
 	var s := box.size
+	_half = s.y * 0.5
 	_crystal.inertia = Vector3(s.y * s.y + s.z * s.z, s.x * s.x + s.z * s.z, s.x * s.x + s.y * s.y) * _crystal.mass / 12.0
 	_crystal.can_sleep = false
 	_crystal.continuous_cd = true
@@ -194,7 +198,7 @@ func reset() -> void:
 	# Lying on its side at its place, a little above the table, turned at
 	# random about the upright.
 	_crystal.transform = Transform3D(Basis(Vector3.UP, _rng.randf() * TAU) * Basis(Vector3.BACK, PI * 0.5),
-			home + Vector3(0, CrystalShed.TABLE_TOP + s.x * 0.5 + 0.02, 0))
+			home + Vector3(0, CrystalTable.TABLE_TOP + s.x * 0.5 + 0.02, 0))
 	add_child(_crystal)
 
 
@@ -217,13 +221,16 @@ func report() -> String:
 
 
 func _toward() -> Vector3:
-	return _shed.to_sun if kind == "sun" else Vector3.UP
+	return _table.to_sun if kind == "sun" else Vector3.UP
 
 
 func _physics_process(delta: float) -> void:
 	if _crystal == null:
 		return
-	_watts = _shed.light_at(_crystal.global_position) * _area
+	var lit := 0.0
+	for k in 5:
+		lit += _table.light_at(_crystal.global_position + _crystal.global_basis.y.normalized() * _half * (k - 2) * 0.5)
+	_watts = lit / 5.0 * _area
 	var axis := _crystal.global_basis.y.normalized()
 	var toward := _toward()
 	var w := _crystal.angular_velocity
@@ -287,7 +294,7 @@ func _sound(delta: float, axis: Vector3) -> void:
 			slide = maxf(slide, (moving - normal * moving.dot(normal)).length())
 	_slide = lerpf(_slide, slide, clampf(delta * 20.0, 0.0, 1.0))
 	_drag.global_position = _crystal.global_position
-	var drag := clampf(_slide / 0.8, 0.0, 1.0) if _shed.scrape_heard else 0.0
+	var drag := clampf(_slide / 0.8, 0.0, 1.0) if _table.scrape_heard else 0.0
 	_drag.volume_db = linear_to_db(maxf(drag, 0.0001)) - 16.0 + 2.0 * log(_crystal.mass + 1.0) / log(10.0)
 	_drag.pitch_scale = clampf(0.85 + _slide * 0.3, 0.85, 1.2) * _pitch()
 
@@ -295,7 +302,7 @@ func _sound(delta: float, axis: Vector3) -> void:
 ## A knock on wood, or a clink where it struck the other crystal
 ## (`on_stone`).
 func _knock(speed: float, on_stone: bool) -> void:
-	if _taps.is_empty() or not _shed.knocks_heard:
+	if _taps.is_empty() or not _table.knocks_heard:
 		return
 	_since_tap = 0.0
 	var set: Array[AudioStream] = _clinks if on_stone else _taps
@@ -306,8 +313,8 @@ func _knock(speed: float, on_stone: bool) -> void:
 
 
 ## Larger stones sound lower: the pitch as the smallest stone's size over
-## this one's, to the power of the shed's `pitch_drop` (0 the same for
+## this one's, to the power of the table's `pitch_drop` (0 the same for
 ## all, 1 in inverse proportion to its length, as a solid's ringing
 ## goes), the smallest's at one.
 func _pitch() -> float:
-	return clampf(pow(CrystalShed.SMALLEST / size, _shed.pitch_drop), 0.1, 1.0)
+	return clampf(pow(CrystalTable.SMALLEST / size, _table.pitch_drop), 0.1, 1.0)

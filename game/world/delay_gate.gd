@@ -146,6 +146,15 @@ func _build_mechanism(brass: Material, stone_view: MeshInstance3D) -> void:
 		_build_sand(brass, stone_view)
 
 
+## The parts its kind of works never used, never put in the tree, freed
+## with it.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		for part: Node3D in [_body, _glass, _lever, _pendulum, _escape]:
+			if is_instance_valid(part) and part.get_parent() == null:
+				part.free()
+
+
 ## The bracket from the ring's right shoulder up beside the mechanism.
 func _bracket(brass: Material, x: float, top: float) -> void:
 	_bar(_head, Vector3(0.125, 0.06, 0), Vector3(x, 0.12, 0), 0.008, brass)

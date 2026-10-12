@@ -172,6 +172,13 @@ func _build_mechanism(brass: Material, stone_view: MeshInstance3D) -> void:
 		_build_pointed(brass, stone_view)
 
 
+## The low crank, which only the pointed kind uses, freed with it when it
+## was never put in the tree.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(_low_crank) and _low_crank.get_parent() == null:
+		_low_crank.free()
+
+
 ## The geotrope over the ring on its level axle, the coil spring, the
 ## cranks and rod.
 func _build_pointed(brass: Material, stone_view: MeshInstance3D) -> void:

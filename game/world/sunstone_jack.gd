@@ -56,7 +56,7 @@ func _ready() -> void:
 	var arrays := cm.commit(_glow).surface_get_arrays(0)
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-	var scale_by := ShedCrystal.WHOLE * SIZE
+	var scale_by := TableCrystal.WHOLE * SIZE
 	for k in verts.size():
 		verts[k] *= scale_by
 	var volume := 0.0
@@ -88,7 +88,7 @@ func _ready() -> void:
 	# Mass and inertia: the stone as the box round it, each rod a thin
 	# rod about its middle (its share m L²/12 about every axis square to
 	# it); kept to the body's own axes.
-	var stone_mass := volume * ShedCrystal.DENSITY
+	var stone_mass := volume * TableCrystal.DENSITY
 	var rod_mass := BRASS_DENSITY * PI * ROD_R * ROD_R * LEG * 2.0
 	var s := box.size
 	var inertia_sum := Vector3(s.y * s.y + s.z * s.z, s.x * s.x + s.z * s.z, s.x * s.x + s.y * s.y) * stone_mass / 12.0
