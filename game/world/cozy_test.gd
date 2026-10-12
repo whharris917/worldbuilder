@@ -64,6 +64,7 @@ var tied_orb: GlassOrb
 var loose_orb: GlassOrb
 var jack: SunstoneJack
 var trolley: SunTrolley
+var balance: BeamBalance
 var _panel: BenchPanel
 var _env: Environment
 var _mats: Array[Dictionary] = []       # the model materials and their outlines
@@ -208,6 +209,12 @@ func _ready() -> void:
 	trolley = SunTrolley.new(self)
 	trolley.position = Vector3(0.0, height(0.0, -21.0), -21.0)
 	add_child(trolley)
+	# A water gauge read by light on the lawn east of the mill, its beams
+	# running east from its collector, its dial facing south.
+	balance = BeamBalance.new({"polish": workshop.get("_polish"), "iron": workshop.get("_iron"), "brass": workshop.brass,
+			"copper": workshop.copper, "glass": workshop.glass, "wood": workshop.wood})
+	balance.position = Vector3(10.0, height(10.0, -6.0), -6.0)
+	add_child(balance)
 	# Their lanterns' levers and the panel's switch kept as one.
 	for row: SpinstoneGimbals in [gimbals, pure_stones, built_stones]:
 		row.lamps_thrown.connect(func(on: bool) -> void:
@@ -293,6 +300,9 @@ func _build_panels() -> void:
 	_panel.note(stones, "Multiplies the drag on the sunstone's wheel: its rolling on the rail and its bearings. At 0 nothing slows it.")
 	_panel.note(stones, "Each multiplies the light's pull and spin on its stone: the globe loose on the lawn, the sunstone on ten legs beside it, and the sunstone running round on its wheel north of the mill.")
 	_panel.note(stones, "How thick the liquid in the glass globes' pools is, as many times water's: its film holds back the globe's turning, its rocking and its spin alike.")
+	var gauge := _panel.panel("Beam balance")
+	_panel.slider(gauge, "Water in the column (%)", 0.0, 100.0, 1.0, 50.0, redraw)
+	_panel.note(gauge, "How full the glass column of dark water is, east of the mill; the water rises or falls to it over a few seconds. The needle on the balance's dial should follow it, whatever the sun.")
 	var shed_panel := _panel.panel("Shed")
 	_panel.switch(shed_panel, "Spotlight", true, redraw)
 	_panel.slider(shed_panel, "Spotlight (suns)", 0.0, 200.0, 1.0, 50.0, redraw)
@@ -361,6 +371,7 @@ func _apply() -> void:
 	jack.force_scale = _value("Legged sunstone force (x)")
 	trolley.force_scale = _value("Wheel sunstone force (x)")
 	trolley.friction_scale = _value("Wheel friction (x)")
+	balance.level_set = _value("Water in the column (%)") * 0.01 * BeamBalance.MOST
 	shed.lamp_on = _on("Spotlight")
 	shed.suns = _value("Spotlight (suns)")
 	shed.knocks_heard = _on("Knock sound")
@@ -423,6 +434,8 @@ func _update_sky() -> void:
 	jack.sunlight = workshop.light.sunlight
 	trolley.to_sun = workshop.light.sun
 	trolley.sunlight = workshop.light.sunlight
+	balance.to_sun = workshop.light.sun
+	balance.sunlight = workshop.light.sunlight
 	_shed_note.text = shed.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
 	_moon_note.text = _moon_words(t, moon, left)
