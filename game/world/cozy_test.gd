@@ -81,6 +81,7 @@ var _was_soft := 0
 var hour := 10.0
 var day := 0
 var _hour_saved := -1.0
+var _mirror_saved: Array = []           # the heliostat's bearing and tilt, kept with the mill
 var _moon_note: Label
 var _eclipse_note: Label
 var _table_note: Label
@@ -158,6 +159,10 @@ func _ready() -> void:
 	house = AlchemistHouse.new(self)
 	house.position = Vector3(16.0, height(16.0, 2.5), 2.5)
 	add_child(house)
+	if not _mirror_saved.is_empty():
+		house.heliostat.bearing = float(_mirror_saved[0])
+		house.heliostat.tilt = float(_mirror_saved[1])
+		house.heliostat.crank("bearing", 0.0, 0.0)
 	# An earthstone in a ball of glass, held in a pool on the grass
 	# south-west of the mill, short of the beach.
 	var pool := OrbPool.new(self)
@@ -430,7 +435,7 @@ func _update_sky() -> void:
 	trolley.sunlight = workshop.light.sunlight
 	balance.to_sun = workshop.light.sun
 	balance.sunlight = workshop.light.sunlight
-	_table_note.text = house.table.report()
+	_table_note.text = house.report()
 	var where: String = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][roundi(at.y / 45.0) % 8]
 	_moon_note.text = _moon_words(t, moon, left)
 	_time_note.text = "Day %d, %02d:%02d. %s" % [day + 1, floori(hour), floori(fmod(hour, 1.0) * 60.0),
@@ -939,6 +944,7 @@ func _save_mill() -> void:
 		var state := windmill.state()
 		state["hour"] = hour
 		state["day"] = day
+		state["heliostat"] = [house.heliostat.bearing, house.heliostat.tilt]
 		file.store_string(JSON.stringify(state))
 
 
@@ -954,3 +960,6 @@ func _load_mill() -> void:
 	if saved.has("hour"):
 		_hour_saved = fposmod(float(saved["hour"]), 24.0)
 	day = int(saved.get("day", 0))
+	var mirror: Variant = saved.get("heliostat", [])
+	if mirror is Array and (mirror as Array).size() == 2:
+		_mirror_saved = mirror

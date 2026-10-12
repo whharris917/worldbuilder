@@ -12,10 +12,11 @@ extends Node3D
 ## x along the ridge (east), z toward the front (south). Rubble-stone
 ## walls 0.6 m thick, limewashed inside, stone gables, a roof pitched at
 ## PITCH, its underside meeting the walls' outer faces at EAVE. The
-## burning glass is in the south slope over the workshop, and the table is
-## set where its spot falls at noon (CozyTest.sun_at): the spot crosses
-## the table toward noon and lies elsewhere in the room, or on the floor,
-## the rest of the day.
+## burning glass is in the north slope over the workshop at the foot of a
+## barrel pointing up and north (AXIS_UP) at the heliostat's mirror on its
+## mast north of the house (Heliostat), which the player sets by hand to
+## throw the sun down the barrel; the table is where the lens's light
+## then lands, down the barrel's axis.
 ##
 ## Disrepair: a patch of slates gone from the north slope, its battens
 ## bare, moss along the north eaves, a few slates slipped on the south
@@ -34,7 +35,8 @@ const OVER := 0.35                      # m: the eaves past the walls
 const PART_X := -1.4                    # m: the wall between the two rooms
 const PART_T := 0.5
 const GLASS_X := 2.4                    # m: the burning glass's middle, along the ridge
-const GLASS_Z := 1.5                    # m: and toward the front
+const GLASS_Z := -2.0                   # m: and toward the front (in the north slope)
+const AXIS_UP := 55.0                   # degrees: its barrel's axis over level, toward the north
 const DOOR_X := -2.6                    # m: the front door's middle
 const DOOR_H := 2.05
 const STONE := Color(0.5, 0.47, 0.42)
@@ -45,6 +47,7 @@ const SLATE := Color(0.29, 0.31, 0.35)
 
 var glass: BurningGlass
 var table: CrystalTable
+var heliostat: Heliostat
 
 var _world: Node
 var _rng := RandomNumberGenerator.new()
@@ -104,9 +107,18 @@ func _ready() -> void:
 
 ## Sets the sun on the burning glass and the table.
 func set_sun(to_sun: Vector3, sunlight: float) -> void:
-	glass.to_sun = to_sun
-	glass.sunlight = sunlight
+	heliostat.set_sun(to_sun, sunlight)
 	table.to_sun = to_sun
+
+
+## Lines for the panel: the mirror and the crystals.
+func report() -> String:
+	var lines := "The mirror faces %d degrees from north, tilted %d; its light comes down %d degrees off the barrel's axis." % [
+			roundi(heliostat.bearing), roundi(heliostat.tilt), roundi(heliostat.off_axis())]
+	if glass.light <= 0.0:
+		lines = "The mirror faces %d degrees from north, tilted %d; no sun on it." % [roundi(heliostat.bearing), roundi(heliostat.tilt)]
+	return lines + "
+" + table.report()
 
 
 ## ---- helpers ------------------------------------------------------------------
@@ -455,22 +467,24 @@ func _chimneys() -> void:
 func _roof() -> void:
 	var end := (DEP * 0.5 + OVER) / _cos
 	var half := LEN * 0.5 + 0.12
-	# The skylight's opening in the south slope.
-	var t_glass := GLASS_Z / _cos
-	var open := BurningGlass.OPENING * 0.5
+	# The burning glass's opening in the north slope, round its tilted
+	# lens.
+	var t_glass := absf(GLASS_Z) / _cos
+	var open := 0.75
+	var open_t := 0.95
 	var board := Color(0.3, 0.22, 0.15)
 	for side: float in [-1.0, 1.0]:
 		var pieces: Array = [[-half, half, 0.0, end]]
-		if side > 0.0:
-			pieces = [[-half, half, 0.0, t_glass - open], [-half, half, t_glass + open, end],
-					[-half, GLASS_X - open, t_glass - open, t_glass + open], [GLASS_X + open, half, t_glass - open, t_glass + open]]
+		if side < 0.0:
+			pieces = [[-half, half, 0.0, t_glass - open_t], [-half, half, t_glass + open_t, end],
+					[-half, GLASS_X - open, t_glass - open_t, t_glass + open_t], [GLASS_X + open, half, t_glass - open_t, t_glass + open_t]]
 		# The boarding on the rafters, seen from inside.
 		for p: Array in pieces:
 			_on_slope(_in, side, p[0], p[1], p[2], p[3], 0.06, 0.12, board)
 		# Rafters under it, a purlin each side, and the ridge beam.
 		var x := -LEN * 0.5 + T + 0.3
 		while x < LEN * 0.5 - T:
-			if side < 0.0 or absf(x - GLASS_X) > open + 0.05:
+			if side > 0.0 or absf(x - GLASS_X) > open + 0.05:
 				_on_slope(_in, side, x - 0.05, x + 0.05, 0.0, (DEP * 0.5 - T) / _cos, -0.07, 0.14, OAK)
 			x += 0.75
 		_on_slope(_in, side, -LEN * 0.5 + T, LEN * 0.5 - T, 1.55, 1.75, -0.18, 0.2, OAK)
@@ -484,7 +498,7 @@ func _roof() -> void:
 			while x0 < half:
 				var x1 := minf(x0 + _rng.randf_range(1.2, 3.2), half)
 				var cut: Array = [[x0, x1]]
-				if side > 0.0 and t + 0.3 > t_glass - open - 0.05 and t < t_glass + open + 0.05:
+				if side < 0.0 and t + 0.3 > t_glass - open_t - 0.05 and t < t_glass + open_t + 0.05:
 					cut = [[x0, minf(x1, GLASS_X - open - 0.06)], [maxf(x0, GLASS_X + open + 0.06), x1]]
 				if side < 0.0 and t > 1.4 and t < 2.3:
 					var gone := -3.3 + 0.25 * sin(row * 1.7)
@@ -504,6 +518,8 @@ func _roof() -> void:
 				var mx := _rng.randf_range(-LEN * 0.5, LEN * 0.5)
 				var mt := end - _rng.randf_range(0.2, 1.4)
 				var w := _rng.randf_range(0.25, 0.7)
+				if mx + w > GLASS_X - open - 0.1 and mx < GLASS_X + open + 0.1 and mt < t_glass + open_t + 0.1:
+					continue
 				_on_slope(_out, side, mx, mx + w, mt, mt + w * 0.6, ROOF_T + 0.005, 0.02, Color(0.36, 0.44, 0.24).darkened(_rng.randf() * 0.2))
 	# Slates slipped on the south slope.
 	for k in 3:
@@ -521,14 +537,10 @@ func _roof() -> void:
 	# Tie beams across the rooms at the eaves, clear of the glass's light.
 	for bx: float in [-4.0, 0.2, 4.9]:
 		_in.box(Vector3(0.22, 0.26, DEP - T * 2.0), CozyMesh.at(Vector3(bx, EAVE + 0.35, 0)), OAK)
-	# The curb round the skylight outside, flashed in lead.
-	var b2 := _slope_basis(1.0)
-	var middle := _under(1.0, GLASS_X, t_glass)
-	for k: Array in [[Vector3(0, 0, -open - 0.05), Vector3(BurningGlass.OPENING + 0.2, 0.16, 0.1)], [Vector3(0, 0, open + 0.05), Vector3(BurningGlass.OPENING + 0.2, 0.16, 0.1)],
-			[Vector3(-open - 0.05, 0, 0), Vector3(0.1, 0.16, BurningGlass.OPENING)], [Vector3(open + 0.05, 0, 0), Vector3(0.1, 0.16, BurningGlass.OPENING)]]:
-		var off: Vector3 = k[0]
-		_out.box(k[1], CozyMesh.at(middle + b2 * off + b2.y * (ROOF_T + 0.06), b2), OAK.darkened(0.1))
-		_out.box(Vector3((k[1] as Vector3).x + 0.12, 0.012, (k[1] as Vector3).z + 0.12), CozyMesh.at(middle + b2 * off + b2.y * (ROOF_T + 0.0), b2), Color(0.5, 0.52, 0.54))
+	# The lead apron round the opening outside.
+	var b2 := _slope_basis(-1.0)
+	var middle := _under(-1.0, GLASS_X, t_glass)
+	_out.box(Vector3(open * 2.0 + 0.3, 0.012, open_t * 2.0 + 0.3), CozyMesh.at(middle + b2.y * (ROOF_T + 0.01), b2), Color(0.5, 0.52, 0.54))
 
 
 func _floor() -> void:
@@ -729,7 +741,16 @@ func _workshop() -> void:
 	_solid(Vector3(0.56, 0.75, 0.56), Vector3(x_wall - 0.35, FLOOR + 0.375, 0.35))
 
 
-## The burning glass in the south slope and the table under its noon spot.
+## The lens's frame: its axis AXIS_UP over level toward the north.
+func _lens_basis() -> Basis:
+	var a := deg_to_rad(AXIS_UP)
+	var axis := Vector3(0, sin(a), -cos(a))
+	return Basis(Vector3.RIGHT, axis, Vector3.RIGHT.cross(axis))
+
+
+## The burning glass in the north slope in its barrel, the heliostat on
+## its mast up the barrel's axis, and the table where the lens's light
+## lands.
 func _burning_glass(inside: Material) -> void:
 	var cloth := StandardMaterial3D.new()
 	cloth.albedo_color = Color(0.42, 0.16, 0.12)
@@ -740,18 +761,45 @@ func _burning_glass(inside: Material) -> void:
 	cloth.ao_texture = ImageTexture.create_from_image(dim)
 	cloth.ao_light_affect = 0.0
 	glass = BurningGlass.new({"wood": inside, "cloth": cloth}, FLOOR)
-	var t := GLASS_Z / _cos
-	var b := _slope_basis(1.0)
-	glass.transform = Transform3D(b, _under(1.0, GLASS_X, t) + b.y * (ROOF_T * 0.5))
+	var b := _lens_basis()
+	var lens_at := _under(-1.0, GLASS_X, absf(GLASS_Z) / _cos) + Vector3(0, ROOF_T / _cos * 0.8, 0)
+	glass.transform = Transform3D(b, lens_at)
 	add_child(glass)
-	# The table where the spot falls at noon.
-	var noon := CozyTest.sun_at(12.0)
-	var up := deg_to_rad(noon.x)
-	var bearing := deg_to_rad(noon.y)
-	var toward := Vector3(sin(bearing) * cos(up), sin(up), -cos(bearing) * cos(up))
-	var lens_at := glass.position
+	# The barrel: oak staves bound with iron hoops, from inside the roof up
+	# its axis to its mouth, dark inside; drawn on its own, the house's
+	# meshes being made before this.
+	var axis := b.y
+	var staves := CozyMesh.new()
+	var bore := CozyMesh.new()
+	var barrel := CylinderMesh.new()
+	barrel.top_radius = Heliostat.BARREL_R + 0.06
+	barrel.bottom_radius = Heliostat.BARREL_R + 0.06
+	barrel.height = Heliostat.BARREL + 0.35
+	barrel.radial_segments = 24
+	barrel.cap_top = false
+	barrel.cap_bottom = false
+	var along := Transform3D(b, lens_at + axis * (Heliostat.BARREL - 0.35) * 0.5)
+	staves.add(barrel, along, OAK.darkened(0.15))
+	var lining := barrel.duplicate() as CylinderMesh
+	lining.top_radius = Heliostat.BARREL_R
+	lining.bottom_radius = Heliostat.BARREL_R
+	bore.add_inside(lining, along, Color(0.16, 0.13, 0.1))
+	staves.torus(Heliostat.BARREL_R, Heliostat.BARREL_R + 0.07, 24, 4, Transform3D(b, lens_at + axis * Heliostat.BARREL), OAK.darkened(0.3))
+	for k in 3:
+		staves.torus(Heliostat.BARREL_R + 0.05, Heliostat.BARREL_R + 0.08, 24, 4, Transform3D(b, lens_at + axis * (0.1 + k * 0.38)), Color(0.24, 0.23, 0.22))
+	var out_mat: StandardMaterial3D = _world.call("material", true, false)
+	for part: Array in [[staves, out_mat], [bore, inside]]:
+		var view := MeshInstance3D.new()
+		view.mesh = (part[0] as CozyMesh).commit(part[1])
+		add_child(view)
+	# The heliostat's mirror up the axis, at its mast's height.
+	heliostat = Heliostat.new(glass, out_mat, out_mat)
+	var mirror_at := lens_at + axis * ((Heliostat.MAST_H - lens_at.y) / axis.y)
+	heliostat.position = Vector3(mirror_at.x, 0, mirror_at.z)
+	add_child(heliostat)
+	# The table where the lens's light lands, down the axis.
 	var drop := lens_at.y - (FLOOR + CrystalTable.TABLE_TOP)
-	var spot := lens_at - toward * (drop / toward.y)
+	var spot := lens_at - axis * (drop / axis.y)
 	table = CrystalTable.new(inside, glass)
 	table.position = Vector3(spot.x, FLOOR, spot.z)
 	add_child(table)

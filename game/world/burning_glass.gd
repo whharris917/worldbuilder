@@ -1,12 +1,13 @@
 class_name BurningGlass
 extends Node3D
 ## A burning glass set in a roof: a great lens of thick green glass in an
-## oak frame filling a square opening in the slope, gathering the sun into
-## a bright spot below, and under it a row of curtains on rails, each
-## drawn across its strip of the lens by a cord.
+## oak frame in an opening in the slope, gathering the light sent down its
+## barrel (by the heliostat's mirror) into a bright spot below, and under
+## it a row of curtains on rails, each drawn across its strip of the lens
+## by a cord.
 ##
-## Built in its own frame: the lens's middle at the origin, y its normal
-## out of the roof, x along the roof (the ridge's way), z down the slope.
+## Built in its own frame: the lens's middle at the origin, y its axis out
+## of the roof, x along the roof (the ridge's way), z across it.
 ##
 ## The light is worked out from the lens, not from the engine's sun: the
 ## frame and glass cast the sun's shadow, so the engine draws the room
@@ -15,13 +16,13 @@ extends Node3D
 ## uncovered part (`light_projector`).
 ##
 ## The optics, thin lens: every ray through the lens bends toward its
-## focus, FOCUS along the sun's direction, so the light through it is a
+## focus, FOCUS along the light's direction, so the light through it is a
 ## cone narrowing to the sun's image there and widening past it. At a
 ## distance s along the beam its cross-section is the lens's shape as the
-## sun sees it (foreshortened by the angle between them) scaled by
+## source sees it (foreshortened by the angle between them) scaled by
 ## k = 1 - s/FOCUS (turned over past the focus), blurred by the sun's own
 ## width (s times the sun's angle). All the power through it,
-## sunlight x CLEAR x the lens's area as the sun sees it, falls on that
+## light x CLEAR x the lens's area as the source sees it, falls on that
 ## cross-section, so its light there is that power over the cross-section's
 ## area (`irradiance`). A point in the cone is lit by one point of the
 ## lens, found by scaling back by k: where a curtain covers that point,
@@ -29,7 +30,7 @@ extends Node3D
 ## spot.
 
 const RADIUS := 0.6                     # m: the lens
-const FOCUS := 5.8                      # m
+const FOCUS := 5.5                      # m
 const CLEAR := 0.65                     # the share of the light it passes: green glass 1 to 7 cm thick, its two faces' reflections
 const SUN_HALF := 0.00465               # rad: the sun's half width
 const OPENING := 1.3                    # m: the square opening in the roof
@@ -38,9 +39,13 @@ const DRAW_SPEED := 0.5                 # m/s: a curtain drawn along its rail
 const BACK := 0.6                       # m: the spot light short of where the light lands
 const PICTURE := 32                     # texels across the spot light's picture of the lens
 
-## Toward the sun and its direct light, W/m², set by the world.
-var to_sun := Vector3.UP
-var sunlight := 0.0
+## Toward where its light comes from (the heliostat's mirror, or the
+## sun) and that light, W/m², set by the world.
+var source := Vector3.UP
+var light := 0.0
+## Whether the light reaches a point of the lens (global), 0 to 1: what
+## lies between it and the source (Heliostat.reaches); all of it if unset.
+var reaches: Callable
 ## Each curtain's place: 0 drawn back off the lens, 1 across its strip.
 var drawn: Array[float] = []
 var _target: Array[float] = []
@@ -79,10 +84,10 @@ func _ready() -> void:
 ## The light, W/m², at `at` (global) from the lens.
 func irradiance(at: Vector3) -> float:
 	var n := global_basis.y.normalized()
-	var facing := to_sun.dot(n)
-	if sunlight <= 0.0 or facing < 0.05:
+	var facing := source.dot(n)
+	if light <= 0.0 or facing < 0.05:
 		return 0.0
-	var d := -to_sun
+	var d := -source
 	var rel := at - global_position
 	var s := rel.dot(d)
 	if s < 0.05:
@@ -90,7 +95,7 @@ func irradiance(at: Vector3) -> float:
 	var k := 1.0 - s / FOCUS
 	var blur := s * SUN_HALF
 	var area := PI * RADIUS * RADIUS * facing
-	var bright := sunlight * CLEAR * area / (area * k * k + PI * blur * blur)
+	var bright := light * CLEAR * area / (area * k * k + PI * blur * blur)
 	return bright * _passed(rel - d * s, k, blur)
 
 
@@ -101,7 +106,7 @@ func _passed(off: Vector3, k: float, blur: float) -> float:
 	if absf(k) < 0.01:
 		# At the focus the whole lens lights the sun's image.
 		return _open_share * (1.0 - smoothstep(blur * 0.8, blur * 1.2, off.length()))
-	var d := -to_sun
+	var d := -source
 	var n := global_basis.y.normalized()
 	var back := off / k
 	# Along the beam to the lens's plane.
@@ -109,7 +114,10 @@ func _passed(off: Vector3, k: float, blur: float) -> float:
 	var x := lens.dot(global_basis.x.normalized())
 	var z := lens.dot(global_basis.z.normalized())
 	var soft := maxf(blur / absf(k), 0.004)
-	return (1.0 - smoothstep(RADIUS - soft, RADIUS + soft, Vector2(x, z).length())) * _uncovered(x, z, soft)
+	var through := (1.0 - smoothstep(RADIUS - soft, RADIUS + soft, Vector2(x, z).length())) * _uncovered(x, z, soft)
+	if through > 0.0 and reaches.is_valid():
+		through *= float(reaches.call(global_position + lens))
+	return through
 
 
 ## Whether the lens point (x, z) in its own frame is clear of the
@@ -126,10 +134,10 @@ func _uncovered(x: float, z: float, soft: float) -> float:
 ## Where the beam's middle meets the level plane at height `y` (global),
 ## or null when the sun is not on the lens.
 func spot_at(y: float) -> Variant:
-	if sunlight <= 0.0 or to_sun.dot(global_basis.y) < 0.05 or to_sun.y < 0.02:
+	if light <= 0.0 or source.dot(global_basis.y) < 0.05 or source.y < 0.02:
 		return null
-	var s := (global_position.y - y) / to_sun.y
-	return global_position - to_sun * s
+	var s := (global_position.y - y) / source.y
+	return global_position - source * s
 
 
 ## Draws curtain `k` across its strip, or back.
@@ -163,7 +171,7 @@ func _physics_process(delta: float) -> void:
 
 ## The seeds' sparkle with the sun on the lens.
 func _sunlit() -> void:
-	var on := clampf(sunlight * to_sun.dot(global_basis.y.normalized()) / 900.0, 0.0, 1.0)
+	var on := clampf(light * source.dot(global_basis.y.normalized()) / 900.0, 0.0, 1.0)
 	_seeds.emission_energy_multiplier = 3.0 * on
 
 
@@ -171,12 +179,12 @@ func _sunlit() -> void:
 ## cross-section there, and the faint shaft from the lens to it.
 func _aim_spot() -> void:
 	var n := global_basis.y.normalized()
-	var facing := to_sun.dot(n)
-	if sunlight <= 0.0 or facing < 0.05:
+	var facing := source.dot(n)
+	if light <= 0.0 or facing < 0.05:
 		_spot.visible = false
 		_shaft.visible = false
 		return
-	var d := -to_sun
+	var d := -source
 	var from := global_position + d * 0.15
 	var ray := PhysicsRayQueryParameters3D.create(from, from + d * 14.0, 1)
 	var hit := get_world_3d().direct_space_state.intersect_ray(ray)
@@ -189,7 +197,7 @@ func _aim_spot() -> void:
 	var k := 1.0 - s / FOCUS
 	var blur := s * SUN_HALF
 	var reach := RADIUS * absf(k) + blur * 1.3 + 0.01
-	var mean := sunlight * CLEAR * PI * RADIUS * RADIUS * facing / (PI * RADIUS * RADIUS * facing * k * k + PI * blur * blur) * _open_share
+	var mean := light * CLEAR * PI * RADIUS * RADIUS * facing / (PI * RADIUS * RADIUS * facing * k * k + PI * blur * blur) * _open_share
 	_spot.visible = mean > 1.0
 	_shaft.visible = _spot.visible
 	if not _spot.visible:
@@ -214,7 +222,7 @@ func _aim_spot() -> void:
 	var start := minf(0.6, s * 0.5)
 	_shaft_cone.top_radius = RADIUS * absf(1.0 - start / FOCUS)
 	_shaft.global_transform = Transform3D(CozyMesh.aligned(-d).scaled_local(Vector3(1, s - start, 1)), global_position + d * (s + start) * 0.5)
-	_shaft_mat.albedo_color.a = 0.03 * _open_share * clampf(sunlight / 900.0, 0.0, 1.0)
+	_shaft_mat.albedo_color.a = 0.03 * _open_share * clampf(light / 900.0, 0.0, 1.0)
 
 
 ## The spot light's picture: each texel the share of light the lens
