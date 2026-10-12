@@ -37,6 +37,7 @@ const OPENING := 1.3                    # m: the square opening in the roof
 const CURTAINS := 4
 const DRAW_SPEED := 0.5                 # m/s: a curtain drawn along its rail
 const BACK := 0.6                       # m: the spot light short of where the light lands
+const PANEL := -0.55                    # m: the curtains' rails under the lens, below the barrel's foot and clear of the roof
 const PICTURE := 32                     # texels across the spot light's picture of the lens
 
 ## Toward where its light comes from (the heliostat's mirror, or the
@@ -338,7 +339,7 @@ func _build() -> void:
 	# The rails under the opening, a pair to each curtain, and a pulley at
 	# each rail pair's lower end.
 	var strip := OPENING / CURTAINS
-	var under := -0.16
+	var under := PANEL
 	for k in CURTAINS + 1:
 		var x := -half + k * strip
 		m.rod(Vector3(x, under, -half - 0.25), Vector3(x, under, half + 0.05), 0.012, 6, Color(0.3, 0.3, 0.3))
@@ -465,6 +466,6 @@ func _place_curtain(k: int) -> void:
 	# Gathered, the cloth bunches thicker.
 	var thick := lerpf(0.09, 0.02, clampf(drawn[k] * 3.0, 0.0, 1.0))
 	_cloth[k].transform = Transform3D(Basis.IDENTITY.scaled(Vector3(strip - 0.02, thick, length)),
-			Vector3(x, -0.12 - thick * 0.5, -half + length * 0.5 - 0.06 * (1.0 - drawn[k])))
+			Vector3(x, PANEL + 0.04 - thick * 0.5, -half + length * 0.5 - 0.06 * (1.0 - drawn[k])))
 	if k < _toggles.size():
 		(_toggles[k] as CurtainCord).set_drawn(drawn[k])

@@ -699,3 +699,5 @@ The director saw a half-round spot under a full round shaft with half the curtai
 The director could see the shaft's edges as lines, most of all with the spot on the floor: a glowing shell drawn flat shows its edges where it is seen edge-on, the reverse of lit air, which is brightest through its middle. A small shader (`light_shaft.gdshader`, custom; the engine's materials have no fade by viewing angle) counts each part of the shell by how squarely it faces the eye, its normals smoothed round the outline, as the lamps' `beam.gdshader` does.
 
 The director left the shaft's faint inner streaks for now and asked for the house as one room: the dividing wall and its door are gone, the pewter shelf moved to the front wall.
+
+The director saw the curtains' rails cutting into the roof: they hung 16 cm under the lens, which sits aslant in the slope. The whole panel (rails, side boards, curtains, pulleys) now hangs 55 cm under the lens (`BurningGlass.PANEL`), below the barrel's foot.
