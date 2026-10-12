@@ -29,9 +29,12 @@ extends ValveShutter
 ## it was at the next light.
 ##
 ## The reset (ResetSnuffer): the reset stone's can shuts out the timing
-## stone's light, so the glass turns back; a rod from the can slides a
-## collar along the glass's axle that draws the stoppers out into the wall
-## (STOPS_OUT of the can's travel); the flaps drop open and A's sand falls
+## stone's light, so the glass turns back. A lever pivoted on a post from
+## the ring (LEVER_PIVOT) stands up past the glass's axle to a pin under
+## the can; as the can slides, the lever swings, and where it crosses the
+## axle its fork slides a collar along it, which draws the stoppers out
+## into the wall (STOPS_OUT of the can's travel, by a cam inside the
+## frame); the flaps drop open and A's sand falls
 ## back into B in BYPASS_RUN seconds, covering P. The can keeps the timing
 ## stone dark while the reset stone stays lit.
 
@@ -41,11 +44,13 @@ const SAND := 0.85                      # the sand, as a share of a bulb's lengt
 const THRESH := 0.5 / SAND              # the share of the sand in B that covers P
 const FLAT := PI * 0.5                  # the flaps' turn lying flat across the waist
 const STOPS_OUT := 0.85                 # the can's travel that draws the stoppers out
+const LEVER_PIVOT := Vector3(0.0516, -0.03, 0)   # the stopper lever's pivot, under the glass's axle
 const OVERLAP := 1.35                   # each flap's width over its share of the ring
 
 var _stops: Array[Node3D] = []
 var _collar: MeshInstance3D
 var _stop_rod: MeshInstance3D
+var _can_pin: MeshInstance3D
 var _snuffer: ResetSnuffer
 var _funnel := 2.1                      # rad: the flaps' funnel stop, set by T
 
@@ -84,7 +89,23 @@ func _build_mechanism(brass: Material, stone_view: MeshInstance3D) -> void:
 	_collar.mesh = collar
 	_collar.rotation.z = PI * 0.5
 	_head.add_child(_collar)
-	_stop_rod = _bar(_head, Vector3.ZERO, Vector3.UP, 0.003, brass)
+	# The lever, its pivot on a post up from the ring, and a pin under the
+	# can for its slotted top.
+	_stop_rod = _bar(_head, Vector3.ZERO, Vector3.UP, 0.0035, brass)
+	_bar(_head, Vector3(LEVER_PIVOT.x, -sqrt(0.1275 * 0.1275 - LEVER_PIVOT.x * LEVER_PIVOT.x), 0), LEVER_PIVOT, 0.005, brass)
+	var pivot := CylinderMesh.new()
+	pivot.top_radius = 0.006
+	pivot.bottom_radius = 0.006
+	pivot.height = 0.012
+	pivot.material = brass
+	_add(pivot, LEVER_PIVOT).rotation.x = PI * 0.5
+	var can_pin := CylinderMesh.new()
+	can_pin.top_radius = 0.004
+	can_pin.bottom_radius = 0.004
+	can_pin.height = 0.016
+	can_pin.material = brass
+	_can_pin = _add(can_pin, Vector3.ZERO)
+	_can_pin.rotation.x = PI * 0.5
 
 
 ## The straight glass, caps and frame, the ring of overlapping flaps on
@@ -286,9 +307,11 @@ func _place() -> void:
 	for s in _stops:
 		(s.get_child(0) as Node3D).position.z = WALL_R - 0.003 + out * 0.009
 	_snuffer.place()
-	var collar_x := 0.062 - 0.016 * out
+	# The lever from its pivot to the pin under the can, the collar where it
+	# crosses the glass's axle.
+	var pin := Vector3(_snuffer.can_x() + 0.03, STONE_UP - ResetSnuffer.CAN_R, 0)
+	var collar_x := LEVER_PIVOT.x + (pin.x - LEVER_PIVOT.x) * (0.0 - LEVER_PIVOT.y) / (pin.y - LEVER_PIVOT.y)
 	_collar.position = Vector3(collar_x, 0, 0)
-	var can_low := Vector3(lerpf(ResetSnuffer.CAN_PARKED, ResetSnuffer.CAN_OVER, _snuffer.travel()) + 0.03,
-			STONE_UP - ResetSnuffer.CAN_R, 0)
-	_set_bar(_stop_rod, can_low, Vector3(collar_x + 0.006, 0.008, 0))
+	_can_pin.position = pin
+	_set_bar(_stop_rod, LEVER_PIVOT, LEVER_PIVOT + (pin - LEVER_PIVOT) * 1.06)
 	_stone_glow.emission_energy_multiplier = 0.1 + 0.9 * clampf(_watts / 60.0, 0.0, 1.0)
