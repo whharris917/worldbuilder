@@ -46,6 +46,9 @@ var glass: BurningGlass
 ## along this node's z (set before it is added).
 var wall_in := 1.6
 var wall_out := 1.0
+## How far into the room from the wall's inner face the cranks stand, their
+## shafts run out to them (set before it is added).
+var crank_out := 0.0
 
 var _to_sun := Vector3.UP
 var _sunlight := 0.0
@@ -285,9 +288,21 @@ func _build() -> void:
 	_beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_beam.visible = false
 	add_child(_beam)
-	# The cranks on the inside of the wall, facing into the workshop.
+	# The cranks inside, CRANK_OUT from the wall on their shafts, a post
+	# with a bearing for each shaft halfway.
+	var inside := CozyMesh.new()
 	for k in 2:
+		var x := -0.25 if k == 0 else 0.25
+		inside.rod(Vector3(x, CRANK_Y, wall_in), Vector3(x, CRANK_Y, wall_in + crank_out), 0.02, 6, iron)
 		var which := "bearing" if k == 0 else "tilt"
 		var handle := HeliostatCrank.new(self, which, _out)
-		handle.position = Vector3(-0.25 if k == 0 else 0.25, CRANK_Y, wall_in)
+		handle.position = Vector3(x, CRANK_Y, wall_in + crank_out)
 		add_child(handle)
+	if crank_out > 0.5:
+		var half := wall_in + crank_out * 0.45
+		inside.box(Vector3(0.08, CRANK_Y + 0.05, 0.08), CozyMesh.at(Vector3(0, (CRANK_Y + 0.05) * 0.5, half)), timber)
+		inside.box(Vector3(0.62, 0.07, 0.07), CozyMesh.at(Vector3(0, CRANK_Y, half)), timber)
+		inside.box(Vector3(0.3, 0.05, 0.3), CozyMesh.at(Vector3(0, 0.05, half)), timber.darkened(0.15))
+	var inside_view := MeshInstance3D.new()
+	inside_view.mesh = inside.commit(_out)
+	add_child(inside_view)

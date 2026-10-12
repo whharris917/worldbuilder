@@ -1,65 +1,58 @@
 class_name CurtainCord
 extends StaticBody3D
-## The toggle on a burning glass's curtain cord (BurningGlass): a wooden
-## toggle on the cord hanging from the curtain's pulley, a click (or E)
-## pulls it and draws the curtain across its strip of the lens or back
-## (the body's `view` meta names this node, as the player's interact
-## ray expects). It rides up the cord as the curtain is drawn back and
-## down as it is drawn across.
+## A curtain's cord drum on the stand by the burning glass's table
+## (BurningGlass): a small wooden drum on an axle across, the curtain's
+## cord coming down onto it from its pulley at the lens; a click (or E)
+## winds the cord in or lets it out and draws the curtain across its strip
+## of the lens or back (the body's `view` meta names this node, as the
+## player's interact ray expects). The drum turns as the curtain moves, a
+## handle on its cheek showing it.
 ##
-## Its origin is the pulley; `down` is straight down in its parent's
-## frame.
+## Its origin is the drum's axle, the axle along x.
+
+const DRUM_R := 0.045                   # m: the drum, the cord wound on it
 
 var _glass: BurningGlass
 var _index := 0
-var _down := Vector3.DOWN
-var _hang := 3.0                        # m: the cord's length from the pulley to its loop
-var _toggle: Node3D
-var _solid: CollisionShape3D
-var _wood: Material
+var _drum := Node3D.new()
 
 
-func _init(glass: BurningGlass, index: int, down: Vector3, wood: Material) -> void:
+func _init(glass: BurningGlass, index: int, wood: Material) -> void:
 	name = "CurtainCord"
 	_glass = glass
 	_index = index
-	_down = down.normalized()
-	_wood = wood
 	set_meta("view", self)
-
-
-## The cord `length` long below the pulley.
-func hang(length: float) -> void:
-	_hang = length
-	_toggle = Node3D.new()
-	add_child(_toggle)
-	var m := CozyMesh.new()
-	m.cyl(0.018, 0.018, 0.13, 8, CozyMesh.at(Vector3.ZERO, CozyMesh.aligned(_down)), Color(0.5, 0.34, 0.2))
-	var view := MeshInstance3D.new()
-	view.mesh = m.commit(_wood)
-	_toggle.add_child(view)
-	# The solid a direct child of the body, as the engine needs, moved
-	# with the toggle.
-	_solid = CollisionShape3D.new()
+	# Met by the player's crosshair, not walked into, out of the light's way.
+	collision_layer = 4
+	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(0.16, 0.3, 0.16)
-	_solid.shape = box
-	add_child(_solid)
-	set_drawn(_glass.drawn[_index])
-
-
-## The toggle's place for the curtain drawn `share` of the way across.
-func set_drawn(share: float) -> void:
-	if _toggle == null:
-		return
-	_toggle.position = _down * (_hang - 0.15 - BurningGlass.OPENING * (1.0 - share))
-	_solid.position = _toggle.position
+	box.size = Vector3(0.2, 0.2, 0.2)
+	shape.shape = box
+	add_child(shape)
+	add_child(_drum)
+	var m := CozyMesh.new()
+	var oak := Color(0.5, 0.36, 0.22)
+	var turn := Basis(Vector3.BACK, PI * 0.5)
+	m.cyl(DRUM_R, DRUM_R, 0.1, 12, CozyMesh.at(Vector3.ZERO, turn), oak)
+	m.cyl(DRUM_R * 0.7, DRUM_R * 0.7, 0.1, 12, CozyMesh.at(Vector3.ZERO, turn), Color(0.72, 0.62, 0.44))
+	for side: float in [-1.0, 1.0]:
+		m.cyl(0.075, 0.075, 0.015, 14, CozyMesh.at(Vector3(side * 0.055, 0, 0), turn), oak.darkened(0.2))
+	m.rod(Vector3(0.065, 0.055, 0), Vector3(0.13, 0.055, 0), 0.012, 6, Color(0.36, 0.25, 0.16))
+	var view := MeshInstance3D.new()
+	view.mesh = m.commit(wood)
+	_drum.add_child(view)
 
 
 func use() -> void:
 	_glass.pull(_index)
 
 
+## The drum turned as the curtain is drawn `share` of the way across:
+## the curtain's travel wound on or off it.
+func set_drawn(share: float) -> void:
+	_drum.rotation.x = share * BurningGlass.OPENING / DRUM_R
+
+
 ## What a right click on it reads (a draft).
 func inspect_text() -> String:
-	return "Curtain cord\nPulled, it draws its curtain across the burning glass, or back."
+	return "Curtain cord\nA click winds its curtain across the burning glass, or lets it back."

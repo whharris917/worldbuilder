@@ -63,14 +63,15 @@ var _moved := true                      # the curtains moved since the lens's op
 var _paint_left := 0.0                  # s: till the spot's picture is painted again
 var _mats: Dictionary
 var _seeds: StandardMaterial3D
-var _floor_y := 0.0                     # the room's floor, in this frame's parent, for the cords
+var _cord_ends: Array[Vector3] = []     # each curtain's drum, in this node's parent's frame
 
 
-## `floor_y`: the room's floor below, in the parent's frame; `mats`: "wood",
-## "cloth" materials (the wood vertex coloured; the lens makes its own glass).
-func _init(mats: Dictionary, floor_y: float, shut := true) -> void:
+## `cord_ends`: where each curtain's cord drum stands, in the parent's
+## frame; `mats`: "wood", "cloth" materials (the wood vertex coloured; the
+## lens makes its own glass).
+func _init(mats: Dictionary, cord_ends: Array[Vector3], shut := true) -> void:
 	name = "BurningGlass"
-	_floor_y = floor_y
+	_cord_ends = cord_ends
 	for k in CURTAINS:
 		drawn.append(1.0 if shut else 0.0)
 		_target.append(1.0 if shut else 0.0)
@@ -341,10 +342,9 @@ func _build() -> void:
 	add_child(ring_view)
 	# The curtains, each a heavy cloth gathered at the top of its strip
 	# and drawn down the rails, a batten along its lower edge; its cord
-	# from the batten round the pulley and down into the room, a toggle on
-	# it.
-	var down := global_basis.inverse() * Vector3.DOWN
-	var floor_at := (get_parent() as Node3D).to_global(Vector3(0, _floor_y, 0)).y
+	# from the batten round the pulley and down to its drum on the stand
+	# by the table (`_cord_ends`).
+	var parent := get_parent() as Node3D
 	for k in CURTAINS:
 		var cloth := MeshInstance3D.new()
 		var body := BoxMesh.new()
@@ -355,22 +355,16 @@ func _build() -> void:
 		_cloth.append(cloth)
 		var x := -half + (k + 0.5) * strip
 		var pulley := Vector3(x, under - 0.04, half + 0.05)
-		var cord_low := to_local(Vector3(to_global(pulley).x, floor_at + 0.9, to_global(pulley).z))
+		var end := to_local(parent.to_global(_cord_ends[k]) + Vector3(0, CurtainCord.DRUM_R, 0))
 		var cord := CozyMesh.new()
-		cord.rod(pulley + Vector3(0.03, 0, 0), cord_low + Vector3(0.03, 0, 0), 0.006, 5, Color(0.72, 0.62, 0.44))
-		cord.rod(pulley - Vector3(0.03, 0, 0), cord_low - Vector3(0.03, 0, 0), 0.006, 5, Color(0.72, 0.62, 0.44))
-		cord.cyl(0.015, 0.015, 0.06, 8, CozyMesh.at(cord_low + Vector3(0, -0.02, 0)), Color(0.72, 0.62, 0.44))
+		cord.rod(pulley + Vector3(0, -0.035, 0), end, 0.006, 5, Color(0.72, 0.62, 0.44))
 		var cord_view := MeshInstance3D.new()
 		cord_view.mesh = cord.commit(wood)
 		add_child(cord_view)
-		var toggle := CurtainCord.new(self, k, down, wood)
-		toggle.position = pulley + Vector3(0.03, 0, 0)
-		# Met by the player's crosshair, not walked into, and out of the
-		# beam's way.
-		toggle.collision_layer = 4
-		add_child(toggle)
-		toggle.hang(pulley.distance_to(cord_low))
-		_toggles.append(toggle)
+		var drum := CurtainCord.new(self, k, wood)
+		parent.add_child.call_deferred(drum)
+		drum.position = _cord_ends[k]
+		_toggles.append(drum)
 		_place_curtain(k)
 	# The spot light and its picture.
 	# With its mipmaps: the engine's store of light pictures reads them.

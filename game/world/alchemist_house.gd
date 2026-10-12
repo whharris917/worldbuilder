@@ -37,6 +37,8 @@ const PART_T := 0.5
 const GLASS_X := 2.4                    # m: the burning glass's middle, along the ridge
 const GLASS_Z := -2.0                   # m: and toward the front (in the north slope)
 const AXIS_UP := 55.0                   # degrees: its barrel's axis over level, toward the north
+const STAND_GAP := 0.14                 # m: the stand of controls north of the table's edge
+const STAND_H := 1.3                    # m: its drums' blocks' tops over the floor
 const DOOR_X := -2.6                    # m: the front door's middle
 const DOOR_H := 2.05
 const STONE := Color(0.5, 0.47, 0.42)
@@ -775,6 +777,14 @@ func _workshop() -> void:
 	_solid(Vector3(0.56, 0.75, 0.56), Vector3(x_wall - 0.35, FLOOR + 0.375, 0.35))
 
 
+## The stand of controls' line along z: the table's north edge less
+## STAND_GAP.
+func _stand_z() -> float:
+	var b := _lens_basis()
+	var spot := _lens_at() - b.y * ((_lens_at().y - (FLOOR + CrystalTable.TABLE_TOP)) / b.y.y)
+	return spot.z - CrystalTable.TABLE.y * 0.5 - STAND_GAP
+
+
 ## The lens's middle, in the north slope near the roof's outer face.
 func _lens_at() -> Vector3:
 	return _under(-1.0, GLASS_X, absf(GLASS_Z) / _cos) + Vector3(0, ROOF_T / _cos * 0.8, 0)
@@ -799,8 +809,15 @@ func _burning_glass(inside: Material) -> void:
 	cloth.ao_enabled = true
 	cloth.ao_texture = ImageTexture.create_from_image(dim)
 	cloth.ao_light_affect = 0.0
-	glass = BurningGlass.new({"wood": inside, "cloth": cloth}, FLOOR)
+	# Where the lens's light lands, down the axis: the table; north of it
+	# the stand of controls, the curtains' cord drums at its ends.
 	var b := _lens_basis()
+	var spot := _lens_at() - b.y * ((_lens_at().y - (FLOOR + CrystalTable.TABLE_TOP)) / b.y.y)
+	var stand_z := _stand_z()
+	var ends: Array[Vector3] = []
+	for x: float in [-0.8, -0.6, 0.6, 0.8]:
+		ends.append(Vector3(GLASS_X + x, FLOOR + STAND_H + 0.1, stand_z))
+	glass = BurningGlass.new({"wood": inside, "cloth": cloth}, ends)
 	var lens_at := _lens_at()
 	glass.transform = Transform3D(b, lens_at)
 	add_child(glass)
@@ -837,10 +854,30 @@ func _burning_glass(inside: Material) -> void:
 	heliostat.position = Vector3(mirror_at.x, 0, mirror_at.z)
 	heliostat.wall_in = (-DEP * 0.5 + T) - mirror_at.z
 	heliostat.wall_out = -DEP * 0.5 - mirror_at.z
+	heliostat.crank_out = (_stand_z() + 0.04) - (-DEP * 0.5 + T)
 	add_child(heliostat)
-	# The table where the lens's light lands, down the axis.
-	var drop := lens_at.y - (FLOOR + CrystalTable.TABLE_TOP)
-	var spot := lens_at - axis * (drop / axis.y)
 	table = CrystalTable.new(inside, glass)
 	table.position = Vector3(spot.x, FLOOR, spot.z)
 	add_child(table)
+	_stand(inside, stand_z)
+
+
+## The stand of controls at the table's north edge, in reach of a player
+## at the table: a beam on two posts carrying the heliostat's two cranks
+## (their shafts run back to the wall over the bench) and, on blocks at
+## its ends, the four curtains' cord drums.
+func _stand(inside: Material, z: float) -> void:
+	var m := CozyMesh.new()
+	var y := FLOOR + Heliostat.CRANK_Y
+	for x: float in [-1.0, 1.0]:
+		m.box(Vector3(0.1, y + 0.06, 0.1), CozyMesh.at(Vector3(GLASS_X + x, (y + 0.06) * 0.5, z)), OAK)
+		m.box(Vector3(0.3, 0.06, 0.4), CozyMesh.at(Vector3(GLASS_X + x, FLOOR + 0.03, z)), OAK.darkened(0.15))
+		_solid(Vector3(0.1, y, 0.1), Vector3(GLASS_X + x, y * 0.5, z))
+		# The drums' blocks and their axles' brackets.
+		m.box(Vector3(0.5, STAND_H - Heliostat.CRANK_Y, 0.12), CozyMesh.at(Vector3(GLASS_X + x * 0.7, FLOOR + (STAND_H + Heliostat.CRANK_Y) * 0.5, z)), OAK)
+		for dx: float in [-0.27, -0.07, 0.07, 0.27]:
+			m.box(Vector3(0.02, 0.12, 0.05), CozyMesh.at(Vector3(GLASS_X + x * 0.7 + dx * (1.0 if x > 0 else -1.0), FLOOR + STAND_H + 0.06, z)), OAK.darkened(0.2))
+	m.box(Vector3(2.1, 0.12, 0.08), CozyMesh.at(Vector3(GLASS_X, y, z)), OAK)
+	var view := MeshInstance3D.new()
+	view.mesh = m.commit(inside)
+	add_child(view)
