@@ -729,7 +729,7 @@ func _streak(face: Array, u: float, y: float, wide: float, length: float, alpha:
 ## tops, green damp along the shaded walls' feet, lichen in blotches on
 ## the walls (thicker to the north and west) and orange lichen on the
 ## south slope's slates, a gable's coping stone slipped, slate fragments
-## along the eaves, the north window boarded up from outside.
+## along the eaves.
 func _weathering() -> void:
 	var half := LEN * 0.5
 	var faces: Array = [
@@ -798,16 +798,6 @@ func _weathering() -> void:
 		if side > 0.0 and absf(at.x - DOOR_X) < 0.8:
 			continue
 		_out.box(Vector3(0.2, 0.015, 0.28) * _wear.randf_range(0.4, 1.0), CozyMesh.at(at, Basis(Vector3.UP, _wear.randf() * TAU) * Basis(Vector3.RIGHT, _wear.randf_range(-0.15, 0.15))), SLATE.lightened(_wear.randf() * 0.1))
-	# The north window boarded up from outside, its planks greyed, one
-	# fallen.
-	var o: Array = NORTH_OPEN[0]
-	var plank := Color(0.48, 0.45, 0.4)
-	for k in 3:
-		var y: float = o[2] + 0.15 + k * 0.28
-		_out.box(Vector3(o[1] + 0.36, 0.2, 0.03), CozyMesh.at(Vector3(o[0], y, -DEP * 0.5 - 0.05), Basis(Vector3.BACK, _wear.randf_range(-0.05, 0.05))), plank.darkened(_wear.randf() * 0.15))
-		for side: float in [-1.0, 1.0]:
-			_out.ball(0.012, 5, CozyMesh.at(Vector3(o[0] + side * (o[1] * 0.5 + 0.1), y, -DEP * 0.5 - 0.07)), Color(0.3, 0.2, 0.15))
-	_out.box(Vector3(o[1] + 0.36, 0.2, 0.03), CozyMesh.at(Vector3(o[0] + 0.3, 0.06, -DEP * 0.5 - 0.5), Basis(Vector3.UP, 0.4) * Basis(Vector3.RIGHT, PI * 0.5 - 0.1)), plank.darkened(0.1))
 
 
 ## What has grown up round the house: ivy up the front's east end, the
@@ -1170,6 +1160,16 @@ func _furnishings() -> void:
 	var desk := Vector3(4.6, FLOOR, z_in - 0.35)
 	_in.cyl(0.035, 0.04, 0.015, 8, CozyMesh.at(desk + Vector3(0.48, 0.77, -0.15)), brass)
 	_in.cyl(0.016, 0.016, 0.03, 6, CozyMesh.at(desk + Vector3(0.48, 0.79, -0.15)), Color(0.86, 0.82, 0.66))
+	# A nest of twigs and moss up in the rafters, wedged between two of
+	# them against the south slope's boards, droppings under it.
+	var b := _slope_basis(1.0)
+	var perch := _under(1.0, -0.72, 2.4) - b.y * 0.1
+	_in.torus(0.07, 0.16, 12, 6, CozyMesh.at(perch + Vector3(0, 0.05, 0), Basis.from_scale(Vector3(1.0, 0.7, 1.0))), Color(0.62, 0.52, 0.36))
+	_in.ball(0.1, 8, CozyMesh.at(perch + Vector3(0, 0.0, 0), Basis.from_scale(Vector3(1.0, 0.6, 1.0))), Color(0.5, 0.56, 0.34))
+	for k in 6:
+		_in.rod(perch + Vector3(_wear.randf_range(-0.1, 0.1), 0.06, _wear.randf_range(-0.1, 0.1)), perch + Vector3(_wear.randf_range(-0.2, 0.2), _wear.randf_range(0.0, 0.1), _wear.randf_range(-0.2, 0.2)), 0.005, 3, Color(0.66, 0.56, 0.4))
+	for k in 12:
+		_in.ball(0.008, 4, CozyMesh.at(Vector3(perch.x + _wear.randf_range(-0.3, 0.3), FLOOR + 0.003, perch.z + _wear.randf_range(-0.3, 0.3))), Color(0.88, 0.88, 0.84))
 	# A bird's nest on the middle tie beam, droppings under it.
 	var nest := Vector3(0.2, EAVE + 0.5, 1.6)
 	_in.torus(0.06, 0.13, 12, 6, CozyMesh.at(nest, Basis.from_scale(Vector3(1.0, 0.6, 1.0))), Color(0.45, 0.36, 0.24))

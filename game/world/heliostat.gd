@@ -4,12 +4,19 @@ extends Node3D
 ## period glass panes, silvered with tin and mercury (REFLECT of the light
 ## back), in a wooden frame on a fork at the top of a mast tied to the
 ## house's wall, turned by hand from inside the workshop: two cranks on
-## the inside of the wall, their shafts out through it to bevel gears at
-## the mast's foot and up the mast; one turns the fork round on its
-## turntable (the mirror's bearing), the other tilts the mirror in the
-## fork. Set right, the mirror throws the sun down
-## the axis of the lens's barrel; the sun moves on, so the player sets it
-## again every minute or two.
+## the stand by the table, their shafts back through the wall to bevel
+## gears at the mast's foot and up the mast; one turns the fork round on
+## its turntable (the mirror's bearing), the other tilts the mirror in the
+## fork. Set right, the mirror throws the sun down the axis of the lens's
+## barrel; the sun moves on, so the player sets it again every minute or
+## two.
+##
+## Two centuries out of doors have left few of its panes: the tin and
+## mercury behind the glass corrodes and the glazing bars' putty rots, so
+## most have fallen (lying, whole or shattered, at the mast's foot), some
+## hang cracked with part gone, and the few still whole are tarnished at
+## their edges (`panes`, as FOUND). A gone pane sends nothing, a cracked
+## one half; restoring the mirror is for the player.
 ##
 ## A mirror turns light well only through a wide angle: here the sun, high
 ## in the south, is thrown back down toward the south, so the mirror
@@ -28,6 +35,10 @@ extends Node3D
 ## middle MAST_H over it.
 
 const REFLECT := 0.7                    # tin and mercury behind glass
+# Its panes as found, across each row from the top: 2 whole (the backing
+# tarnished at its edges), 1 cracked with part fallen away, 0 gone.
+const FOUND := [0, 2, 0, 1, 0, 0, 2, 0, 1, 0, 0, 1, 2, 0, 0]
+const PANE_LIGHT := [0.0, 0.5, 1.0]     # the share of a pane's light it still sends, by its state
 const SIZE := Vector2(1.8, 3.0)         # m: the mirror, across and up its face
 const PANES := Vector2i(3, 5)
 const MAST_H := 7.9                     # m: the mirror's middle over the ground
@@ -41,6 +52,8 @@ const CRANK_Y := 1.22                   # m: the cranks over the ground, inside 
 ## over level, degrees.
 var bearing := 180.0
 var tilt := 5.0
+## Each pane's state, as FOUND.
+var panes: Array[int] = []
 var glass: BurningGlass
 ## The house's wall south of the mast: its inner and outer faces, metres
 ## along this node's z (set before it is added).
@@ -53,6 +66,9 @@ var crank_out := 0.0
 var _to_sun := Vector3.UP
 var _sunlight := 0.0
 var _fork := Node3D.new()
+var _glass_node := Node3D.new()
+var _fallen := Node3D.new()
+var _silver: StandardMaterial3D
 var _mirror := Node3D.new()
 var _shafts: Array[Node3D] = []
 var _beam: MeshInstance3D
@@ -63,6 +79,7 @@ var _out: Material
 
 func _init(lens: BurningGlass, wood: Material, outside: Material) -> void:
 	name = "Heliostat"
+	panes.assign(FOUND)
 	glass = lens
 	_wood = wood
 	_out = outside
@@ -127,9 +144,75 @@ func reaches(at: Vector3) -> float:
 	var hit := at + back * ((middle() - at).dot(n) / facing)
 	var frame := _mirror.global_basis
 	var rel := hit - middle()
-	if absf(rel.dot(frame.x.normalized())) > SIZE.x * 0.5 or absf(rel.dot(frame.y.normalized())) > SIZE.y * 0.5:
+	var across := rel.dot(frame.x.normalized())
+	var up := rel.dot(frame.y.normalized())
+	if absf(across) > SIZE.x * 0.5 or absf(up) > SIZE.y * 0.5:
 		return 0.0
-	return 1.0
+	# The pane it meets, and what is left of it.
+	var col := clampi(floori((across + SIZE.x * 0.5) / SIZE.x * PANES.x), 0, PANES.x - 1)
+	var row := clampi(floori((SIZE.y * 0.5 - up) / SIZE.y * PANES.y), 0, PANES.y - 1)
+	return PANE_LIGHT[panes[row * PANES.x + col]]
+
+
+## Sets every pane's state (whole, cracked, gone), as FOUND.
+func set_panes(states: Array) -> void:
+	panes.assign(states)
+	_show_panes()
+
+
+## The panes drawn as they are, and those gone lying at the mast's foot,
+## some whole in the grass, some shattered.
+func _show_panes() -> void:
+	for child in _glass_node.get_children():
+		child.queue_free()
+	for child in _fallen.get_children():
+		child.queue_free()
+	var w := SIZE.x / PANES.x
+	var h := SIZE.y / PANES.y
+	var silver := CozyMesh.new()
+	var tarnish := CozyMesh.new()
+	var lying := CozyMesh.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1702
+	for i in panes.size():
+		var col := i % PANES.x
+		var row := i / PANES.x
+		var at := Vector3(-SIZE.x * 0.5 + (col + 0.5) * w, SIZE.y * 0.5 - (row + 0.5) * h, 0.0)
+		match panes[i]:
+			2:
+				silver.box(Vector3(w - 0.03, h - 0.03, 0.01), CozyMesh.at(at), Color.WHITE)
+				for k in 5:
+					var spot := at + Vector3(rng.randf_range(-0.5, 0.5) * w, rng.randf_range(-0.5, 0.5) * h, 0.006)
+					tarnish.ball(rng.randf_range(0.02, 0.06), 8, CozyMesh.at(spot, Basis(Vector3.RIGHT, PI * 0.5)), Color(0.3, 0.28, 0.24), false, 0.002)
+			1:
+				# The upper part still held, its lower edge broken off
+				# jagged, cracks across it.
+				var kept := h * rng.randf_range(0.4, 0.6)
+				silver.box(Vector3(w - 0.03, kept, 0.01), CozyMesh.at(at + Vector3(0, (h - kept) * 0.5 - 0.015, 0)), Color.WHITE)
+				silver.prism(Vector3(w * 0.5, 0.12, 0.01), CozyMesh.at(at + Vector3(rng.randf_range(-0.1, 0.1), h * 0.5 - kept - 0.07, 0), Basis(Vector3.BACK, PI)), Color.WHITE)
+				for k in 3:
+					tarnish.box(Vector3(0.006, kept * 0.9, 0.004), CozyMesh.at(at + Vector3(rng.randf_range(-0.3, 0.3) * w, (h - kept) * 0.5, 0.007), Basis(Vector3.BACK, rng.randf_range(-0.6, 0.6))), Color(0.2, 0.2, 0.2))
+			_:
+				# Gone: lying below, whole or in pieces.
+				var foot := Vector3(rng.randf_range(-2.2, 2.2), 0.012, rng.randf_range(-2.4, -0.4))
+				if rng.randf() < 0.4:
+					lying.box(Vector3(w - 0.03, 0.01, h - 0.03), CozyMesh.at(foot, Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.06, 0.06))), Color(0.6, 0.62, 0.6))
+				else:
+					for k in rng.randi_range(4, 7):
+						var shard := foot + Vector3(rng.randf_range(-0.35, 0.35), 0, rng.randf_range(-0.35, 0.35))
+						lying.prism(Vector3(rng.randf_range(0.06, 0.18), 0.006, rng.randf_range(0.06, 0.2)), CozyMesh.at(shard, Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, PI * 0.5)), Color(0.6, 0.62, 0.6))
+	if not silver.is_empty():
+		var view := MeshInstance3D.new()
+		view.mesh = silver.commit(_silver)
+		_glass_node.add_child(view)
+	if not tarnish.is_empty():
+		var spots := MeshInstance3D.new()
+		spots.mesh = tarnish.commit(_out)
+		_glass_node.add_child(spots)
+	if not lying.is_empty():
+		var shards := MeshInstance3D.new()
+		shards.mesh = lying.commit(_silver)
+		_fallen.add_child(shards)
 
 
 ## A crank held: `which` "bearing" or "tilt", `way` 1 or -1, for `delta`.
@@ -254,18 +337,16 @@ func _build() -> void:
 	var frame_view := MeshInstance3D.new()
 	frame_view.mesh = frame.commit(_out)
 	_mirror.add_child(frame_view)
-	# The glass: a mirror's silvered face, a little dulled.
-	var face_mat := StandardMaterial3D.new()
-	face_mat.albedo_color = Color(0.72, 0.74, 0.72)
-	face_mat.metallic = 1.0
-	face_mat.roughness = 0.12
-	var glass_box := BoxMesh.new()
-	glass_box.size = Vector3(SIZE.x - 0.02, SIZE.y - 0.02, 0.01)
-	glass_box.material = face_mat
-	var panes := MeshInstance3D.new()
-	panes.mesh = glass_box
-	panes.position = Vector3(0, 0, 0.0)
-	_mirror.add_child(panes)
+	# The glass: a mirror's silvered face, a little dulled, pane by pane
+	# as it is now (`_show_panes`).
+	_silver = StandardMaterial3D.new()
+	_silver.vertex_color_use_as_albedo = true
+	_silver.albedo_color = Color(0.72, 0.74, 0.72)
+	_silver.metallic = 1.0
+	_silver.roughness = 0.12
+	_mirror.add_child(_glass_node)
+	add_child(_fallen)
+	_show_panes()
 	# The light it sends, faint in the open air.
 	_beam_mat = StandardMaterial3D.new()
 	_beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

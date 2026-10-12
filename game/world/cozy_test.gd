@@ -82,6 +82,7 @@ var hour := 10.0
 var day := 0
 var _hour_saved := -1.0
 var _mirror_saved: Array = []           # the heliostat's bearing and tilt, kept with the mill
+var _panes_saved: Array = []            # and its panes' states
 var _moon_note: Label
 var _eclipse_note: Label
 var _table_note: Label
@@ -163,6 +164,11 @@ func _ready() -> void:
 		house.heliostat.bearing = float(_mirror_saved[0])
 		house.heliostat.tilt = float(_mirror_saved[1])
 		house.heliostat.crank("bearing", 0.0, 0.0)
+	if not _panes_saved.is_empty():
+		var states: Array = []
+		for v: Variant in _panes_saved:
+			states.append(int(v))
+		house.heliostat.set_panes(states)
 	# An earthstone in a ball of glass, held in a pool on the grass
 	# south-west of the mill, short of the beach.
 	var pool := OrbPool.new(self)
@@ -307,6 +313,13 @@ func _build_panels() -> void:
 	_panel.slider(gauge, "Water in the column (%)", 0.0, 100.0, 1.0, 50.0, redraw)
 	_panel.note(gauge, "How full the glass column of dark water is, east of the mill; the water rises or falls to it over a few seconds. The needle on the balance's dial should follow it, whatever the sun.")
 	var table_panel := _panel.panel("Burning glass")
+	_panel.button(table_panel, "Mirror made whole", func() -> void:
+		var whole: Array = []
+		whole.resize(Heliostat.FOUND.size())
+		whole.fill(2)
+		house.heliostat.set_panes(whole))
+	_panel.button(table_panel, "Mirror as found", func() -> void: house.heliostat.set_panes(Heliostat.FOUND))
+	_panel.note(table_panel, "The heliostat's mirror as it was left: most panes fallen, some cracked, a few whole and tarnished. Made whole, every pane is back in place, for trying the burning glass at full strength.")
 	_panel.note(table_panel, "The table in the alchemist's workshop, under the burning glass in the roof, its crystals in a brass dish. The curtains are drawn by the cords hanging below the glass. The glass's bright spot crosses the dish toward noon and lies elsewhere the rest of the day.")
 	_panel.slider(table_panel, "Crystal size", CrystalTable.SMALLEST, CrystalTable.LARGEST, 0.01, CrystalTable.SMALLEST, func(v: float) -> void:
 		house.table.crystals[0].size = v
@@ -945,6 +958,7 @@ func _save_mill() -> void:
 		state["hour"] = hour
 		state["day"] = day
 		state["heliostat"] = [house.heliostat.bearing, house.heliostat.tilt]
+		state["mirror_panes"] = house.heliostat.panes
 		file.store_string(JSON.stringify(state))
 
 
@@ -963,3 +977,6 @@ func _load_mill() -> void:
 	var mirror: Variant = saved.get("heliostat", [])
 	if mirror is Array and (mirror as Array).size() == 2:
 		_mirror_saved = mirror
+	var kept: Variant = saved.get("mirror_panes", [])
+	if kept is Array and (kept as Array).size() == Heliostat.FOUND.size():
+		_panes_saved = kept
