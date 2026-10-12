@@ -16,8 +16,12 @@ extends DelayGate
 ## delay: B's sand from full down to DROP's length, (1 - DROP / (LENGTH -
 ## DROP)) of the whole run. A gets all of it below P, so the beam stays
 ## clear. When the light leaves, the glass turns back: A's sand, now
-## above, runs back into B, and the beam is stopped again only once B is
-## full to P: an off-delay of the sand that had run. T fits a glass with
+## above, lies at A's shoulder by the neck, where a wide glass tube
+## (RETURN) takes it round the glass's side, clear of the beam, to B's far
+## end, all of it in BYPASS_RUN seconds, so B is full to P again and the
+## beam stopped almost at once. While the glass is over, A's sand lies at
+## A's far end and B's at its neck, both clear of the tube's mouths, so
+## only the neck passes sand. T fits a glass with
 ## a narrower or wider neck (sand flows as the neck's width to the 2.5
 ## power), so the run suits the delay.
 
@@ -30,6 +34,11 @@ const TOP_S := 1.3963                   # rad: its upper peg, 80 degrees over, a
 const FRAME_X := 0.04                   # m: the glass's frame, either side of it
 const PULLEY_BIG := 0.04                # m: on the stone's axle
 const PULLEY_SMALL := 0.02              # m: on the glass's
+## The return tube in the glass's frame: a cubic's four points from A's
+## shoulder by the neck, out to the side across the ring (x) and a little
+## toward the ring's back, to B's far end.
+const RETURN := [Vector3(-0.02, DROP + 0.012, 0), Vector3(-0.078, DROP + 0.035, 0.02),
+		Vector3(-0.078, -FULL - 0.035, 0.02), Vector3(-0.016, -FULL + 0.008, 0)]
 
 var _run := 10.0                        # s: all the sand through the neck
 var _neck: MeshInstance3D
@@ -128,11 +137,32 @@ func _build_mechanism(brass: Material, stone_view: MeshInstance3D) -> void:
 		else:
 			_pile_b = pile_view
 	_stream = _bar(_glass, Vector3(0, -0.5, 0), Vector3(0, 0.5, 0), 0.0015, sand_mat)
+	var tube := CozyMesh.new()
+	for k in 20:
+		tube.rod(_return_at(k / 20.0), _return_at((k + 1) / 20.0), 0.0055, 8, Color.WHITE)
+	var tube_view := MeshInstance3D.new()
+	tube_view.mesh = tube.commit(_glass_mat)
+	tube_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_glass.add_child(tube_view)
+	var grain := SphereMesh.new()
+	grain.radius = 0.0045
+	grain.height = 0.008
+	grain.radial_segments = 6
+	grain.rings = 3
+	grain.material = sand_mat
+	for k in GRAINS:
+		var g := MeshInstance3D.new()
+		g.mesh = grain
+		g.visible = false
+		_glass.add_child(g)
+		_grains.append(g)
+		_grain_at.append(-1.0)
 	if closing:
 		_bead(Vector3(POST_X, 0.08, 0))
 
 
 func _physics_process(delta: float) -> void:
+	_step = delta
 	var frame := _head.global_basis
 	var pull := Photogyrite.pull(_watts, 0.0)
 	var h := delta / STEPS
@@ -150,7 +180,11 @@ func _physics_process(delta: float) -> void:
 			_rate = -_rate * BOUNCE if _rate > 0.0 else _rate
 		# Sand runs through the neck from the upper bulb to the lower.
 		var into_b := clampf(cos(_flip()) * 3.0, -1.0, 1.0)
-		_sand = clampf(_sand + into_b * h / _run, 0.0, 1.0)
+		var run := _run
+		if into_b > 0.0:
+			# A above: its sand pours round the return tube as well.
+			run = 1.0 / (1.0 / _run + 1.0 / BYPASS_RUN)
+		_sand = clampf(_sand + into_b * h / run, 0.0, 1.0)
 	open = not _covered()
 	_place()
 
@@ -201,7 +235,42 @@ func _place() -> void:
 		var top := DROP
 		var bottom := (b_from + b_dir * b_len) if b_low else (a_from + a_dir * a_len)
 		_set_bar(_stream, Vector3(0, top, 0), Vector3(0, bottom, 0))
+	_pour()
 	_stone_glow.emission_energy_multiplier = 0.1 + 0.9 * clampf(_watts / 60.0, 0.0, 1.0)
+
+
+## A point on the return tube, `u` 0 at A's shoulder to 1 at B's far end.
+func _return_at(u: float) -> Vector3:
+	var a: Vector3 = RETURN[0]
+	var b: Vector3 = RETURN[1]
+	var c: Vector3 = RETURN[2]
+	var d: Vector3 = RETURN[3]
+	var v := 1.0 - u
+	return a * v * v * v + b * 3.0 * v * v * u + c * 3.0 * v * u * u + d * u * u * u
+
+
+## The sand running round the return tube: while A is above with sand in
+## it, clumps leave its mouth one after another and run down to B; once A
+## is empty, those in the tube run on out and no more follow.
+func _pour() -> void:
+	var pouring := _sand < 1.0 and cos(_flip()) > 0.3
+	var last := 2.0
+	for k in GRAINS:
+		if _grain_at[k] >= 0.0:
+			last = minf(last, _grain_at[k])
+	for k in GRAINS:
+		var u := _grain_at[k]
+		if u >= 0.0:
+			u += GRAIN_SPEED * _step
+			if u > 1.0:
+				u = -1.0
+		if u < 0.0 and pouring and (last >= 1.0 / GRAINS or last > 1.5):
+			u = 0.0
+			last = 0.0
+		_grain_at[k] = u
+		_grains[k].visible = u >= 0.0
+		if u >= 0.0:
+			_grains[k].position = _return_at(u)
 
 
 func _set_bar(bar: MeshInstance3D, a: Vector3, b: Vector3) -> void:
