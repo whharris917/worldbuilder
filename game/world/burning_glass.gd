@@ -54,7 +54,6 @@ var _toggles: Array[Node3D] = []
 var _spot: SpotLight3D
 var _shaft: MeshInstance3D
 var _shaft_mat: StandardMaterial3D
-var _shaft_cone: CylinderMesh
 var _picture: Image
 var _pictures: Array[ImageTexture] = []
 var _shown := 0
@@ -220,17 +219,77 @@ func _aim_spot() -> void:
 	if _paint_left <= 0.0:
 		_paint_left = 0.25
 		_paint(frame, k, blur, reach)
-	# The shaft: the cone from the lens to the landing, the dust in the
-	# room's air lit faintly.
-	var wide := RADIUS * absf(k) + blur
-	if absf(_shaft_cone.bottom_radius - wide) > 0.01:
-		_shaft_cone.bottom_radius = wide
-	# Begun a little below the glass, so the lit air does not veil the
-	# lens seen from the room.
+		_shape_shaft(d, s)
+	_shaft_mat.albedo_color.a = 0.03 * clampf(light / 900.0, 0.0, 1.0)
+
+
+## The shaft: the dust in the room's air lit faintly by the light the
+## lens lets through, from a little below the glass (so the lit air does
+## not veil the lens seen from the room) to where it lands `s` along `d`.
+## Its shape is the lit part of the lens carried down every ray: the lens
+## sampled in columns across, the run of each column that the curtains
+## and the mirror leave lit, and its outline joined from the lens to its
+## image at the landing (each lens point's ray narrowing toward the
+## focus); a strip shut leaves its slice of the cone dark.
+func _shape_shaft(d: Vector3, s: float) -> void:
+	var cols := 40
+	var rows := 40
+	var step := RADIUS * 2.0 / rows
+	var bx := global_basis.x.normalized()
+	var bz := global_basis.z.normalized()
 	var start := minf(0.6, s * 0.5)
-	_shaft_cone.top_radius = RADIUS * absf(1.0 - start / FOCUS)
-	_shaft.global_transform = Transform3D(CozyMesh.aligned(-d).scaled_local(Vector3(1, s - start, 1)), global_position + d * (s + start) * 0.5)
-	_shaft_mat.albedo_color.a = 0.03 * _open_share * clampf(light / 900.0, 0.0, 1.0)
+	var pieces: Array = []
+	var piece: Array = []
+	for i in cols + 1:
+		var x := -RADIUS + RADIUS * 2.0 * i / cols
+		var lo := INF
+		var hi := -INF
+		for j in rows:
+			var z := -RADIUS + (j + 0.5) * step
+			if x * x + z * z > RADIUS * RADIUS or _uncovered(x, z, 0.001) < 0.5:
+				continue
+			if reaches.is_valid() and float(reaches.call(global_position + bx * x + bz * z)) < 0.5:
+				continue
+			lo = minf(lo, z - step * 0.5)
+			hi = maxf(hi, z + step * 0.5)
+		if lo < hi:
+			piece.append(Vector3(x, lo, hi))
+		elif not piece.is_empty():
+			pieces.append(piece)
+			piece = []
+	if not piece.is_empty():
+		pieces.append(piece)
+	var verts := PackedVector3Array()
+	var down := func(x: float, z: float, t: float) -> Vector3:
+		var w := bx * x + bz * z
+		return global_position + d * t + (w - d * w.dot(d)) * (1.0 - t / FOCUS)
+	for run: Array in pieces:
+		# Round the outline: along the lit runs' near edges, back along
+		# their far edges.
+		var ring: Array[Vector2] = []
+		for c: Vector3 in run:
+			ring.append(Vector2(c.x, c.y))
+		for n in range(run.size() - 1, -1, -1):
+			var c: Vector3 = run[n]
+			ring.append(Vector2(c.x, c.z))
+		for n in ring.size():
+			var a := ring[n]
+			var b := ring[(n + 1) % ring.size()]
+			var a0: Vector3 = down.call(a.x, a.y, start)
+			var b0: Vector3 = down.call(b.x, b.y, start)
+			var a1: Vector3 = down.call(a.x, a.y, s)
+			var b1: Vector3 = down.call(b.x, b.y, s)
+			verts.append_array([a0, b0, b1, a0, b1, a1])
+	if verts.is_empty():
+		_shaft.mesh = null
+		return
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.surface_set_material(0, _shaft_mat)
+	_shaft.mesh = mesh
 
 
 ## The spot light's picture: each texel the share of light the lens
@@ -392,16 +451,7 @@ func _build() -> void:
 	_shaft_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_shaft_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
 	_shaft_mat.albedo_color = Color(1.0, 0.92, 0.75, 0.0)
-	_shaft_cone = CylinderMesh.new()
-	_shaft_cone.top_radius = RADIUS
-	_shaft_cone.bottom_radius = 0.1
-	_shaft_cone.height = 1.0
-	_shaft_cone.radial_segments = 24
-	_shaft_cone.cap_top = false
-	_shaft_cone.cap_bottom = false
-	_shaft_cone.material = _shaft_mat
 	_shaft = MeshInstance3D.new()
-	_shaft.mesh = _shaft_cone
 	_shaft.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_shaft.top_level = true
 	_shaft.visible = false
