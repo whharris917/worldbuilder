@@ -1,9 +1,9 @@
 class_name AlchemistHouse
 extends Node3D
 ## The alchemist's house: a stone cottage of the 1600s, left empty and in
-## slight disrepair, of two rooms under one steep slate roof: the living
-## room at the west end round a great hearth, and the workshop at the east
-## end, with a furnace against its gable, a long bench of glassware, a
+## slight disrepair, one long room open to a steep slate roof: living
+## at the west end round a great hearth, the workshop at the east end,
+## with a furnace against its gable, a long bench of glassware, a
 ## writing desk, and in the middle of it a table of loose spinstones
 ## (CrystalTable) under a burning glass set in the roof (BurningGlass),
 ## its curtains drawn shut.
@@ -20,7 +20,7 @@ extends Node3D
 ##
 ## Disrepair: a patch of slates gone from the north slope, its battens
 ## bare, moss along the north eaves, a few slates slipped on the south
-## slope and one fallen by the door, a pane broken in the living room's
+## slope and one fallen by the door, a pane broken in the living end's
 ## front window, one chimney pot broken, a chair overturned, a flask
 ## broken on the bench.
 
@@ -32,8 +32,6 @@ const EAVE := 2.8                       # m: the roof's underside on the walls' 
 const PITCH := 50.0                     # degrees
 const ROOF_T := 0.22                    # m: rafters, boards and slates
 const OVER := 0.35                      # m: the eaves past the walls
-const PART_X := -1.4                    # m: the wall between the two rooms
-const PART_T := 0.5
 const GLASS_X := 2.4                    # m: the burning glass's middle, along the ridge
 const GLASS_Z := -2.0                   # m: and toward the front (in the north slope)
 const AXIS_UP := 55.0                   # degrees: its barrel's axis over level, toward the north
@@ -92,18 +90,11 @@ func _ready() -> void:
 		if not part[2]:
 			view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(view)
-	# The front door, hung at its west jamb, opening inward; the door
-	# between the rooms stood open.
+	# The front door, hung at its west jamb, opening inward.
 	var door := MillDoor.new(0.98, DOOR_H - 0.03, Color(0.38, 0.27, 0.18), outside,
 			"Door\nThe house's front door. A click opens and shuts it.")
 	door.position = Vector3(DOOR_X - 0.49, FLOOR, DEP * 0.5 - T * 0.5)
 	add_child(door)
-	var inner := MillDoor.new(0.88, DOOR_H - 0.03, Color(0.42, 0.3, 0.2), inside,
-			"Door\nBetween the living room and the workshop. A click opens and shuts it.")
-	inner.position = Vector3(PART_X, FLOOR, 0.75)
-	inner.rotation.y = -PI * 0.5
-	add_child(inner)
-	inner.set_open(true)
 	_burning_glass(inside)
 
 
@@ -261,7 +252,7 @@ func _wall_z(x: float, z0: float, z1: float, inward: float, openings: Array, thi
 
 ## A piece of a wall along x: from `corner` (its low x end, the ground,
 ## the wall's middle), `size` long, high and thick; mortar outside,
-## limewash on its inner face within the rooms.
+## limewash on its inner face within the house.
 func _wall_piece(corner: Vector3, size: Vector3, inward: float) -> void:
 	if size.x <= 0.001 or size.y <= 0.001:
 		return
@@ -414,12 +405,6 @@ func _walls() -> void:
 		var prism := Basis(Vector3(0, 0, side), Vector3.UP, Vector3(-side, 0, 0))
 		_out.add(head, CozyMesh.at(Vector3(0, EAVE + head_rise * 0.5, side * (DEP * 0.5 - T * 0.5)), prism), MORTAR)
 		_in.box(Vector3(LEN - T * 2.0, head_rise, 0.01), CozyMesh.at(Vector3(0, EAVE + head_rise * 0.5, side * (DEP * 0.5 - T - 0.005))), LIME)
-	# The wall between the rooms, its doorway near the front.
-	_wall_z(PART_X, -DEP * 0.5 + T, DEP * 0.5 - T, 1.0, [[1.2, 0.9, 0.0, DOOR_H]], PART_T, false)
-	_in.box(Vector3(0.12, 0.2, 1.14), CozyMesh.at(Vector3(PART_X, DOOR_H + 0.1, 1.2)), OAK)
-	var rise := (DEP * 0.5) * tan(deg_to_rad(PITCH))
-	var gable := Basis(Vector3(0, 0, 1), Vector3.UP, Vector3(-1, 0, 0))
-	_in.prism(Vector3(DEP, rise, PART_T), CozyMesh.at(Vector3(PART_X, EAVE + rise * 0.5, 0), gable), LIME)
 
 
 func _gables() -> void:
@@ -545,7 +530,7 @@ func _roof() -> void:
 	var ridge_top := _ridge_under + ROOF_T / _cos - 0.03
 	_out.cyl(0.12, 0.12, LEN + 0.1, 12, CozyMesh.at(Vector3(0, ridge_top, 0), Basis(Vector3.BACK, PI * 0.5)), SLATE.darkened(0.15))
 	_in.box(Vector3(LEN - T * 2.0, 0.24, 0.16), CozyMesh.at(Vector3(0, _ridge_under - 0.2, 0)), OAK)
-	# Tie beams across the rooms at the eaves, clear of the glass's light.
+	# Tie beams across the room at the eaves, clear of the glass's light.
 	for bx: float in [-4.0, 0.2, 4.9]:
 		_in.box(Vector3(0.22, 0.26, DEP - T * 2.0), CozyMesh.at(Vector3(bx, EAVE + 0.35, 0)), OAK)
 	# The opening closed round the barrel where it passes through the
@@ -607,7 +592,7 @@ func _floor() -> void:
 		_out.ball(_rng.randf_range(0.06, 0.13), 6, CozyMesh.at(at), Color(0.34, 0.48, 0.22).darkened(_rng.randf() * 0.25), true)
 
 
-## ---- the rooms ----------------------------------------------------------------
+## ---- the room ------------------------------------------------------------------
 
 func _living_room() -> void:
 	var x_wall := -LEN * 0.5 + T
@@ -647,7 +632,7 @@ func _living_room() -> void:
 		for lz: float in [-0.18, 0.18]:
 			_in.box(Vector3(0.04, 0.42, 0.04), chair * Transform3D(Basis.IDENTITY, Vector3(lx, -0.21, lz)), wood.darkened(0.15))
 	# A box bed in the north-east corner, its curtain rail empty, a chest
-	# at its foot; pewter on a shelf on the dividing wall.
+	# at its foot; pewter on a shelf on the front wall.
 	var bed := Vector3(-2.55, FLOOR, -2.2)
 	_in.box(Vector3(1.75, 0.45, 1.0), CozyMesh.at(bed + Vector3(0, 0.225, 0)), wood.darkened(0.1))
 	_in.box(Vector3(1.65, 0.12, 0.9), CozyMesh.at(bed + Vector3(0, 0.5, 0)), Color(0.66, 0.6, 0.48))
@@ -657,9 +642,10 @@ func _living_room() -> void:
 	_solid(Vector3(1.75, 0.6, 1.0), bed + Vector3(0, 0.3, 0))
 	_in.box(Vector3(0.9, 0.5, 0.5), CozyMesh.at(Vector3(-4.5, FLOOR + 0.25, -2.35)), wood.darkened(0.2))
 	_solid(Vector3(0.9, 0.5, 0.5), Vector3(-4.5, FLOOR + 0.25, -2.35))
-	_in.box(Vector3(0.22, 0.04, 1.4), CozyMesh.at(Vector3(PART_X - PART_T * 0.5 - 0.11, 1.75, -1.2)), wood)
+	var front := DEP * 0.5 - T
+	_in.box(Vector3(1.4, 0.04, 0.22), CozyMesh.at(Vector3(-1.05, 1.75, front - 0.11)), wood)
 	for k in 4:
-		_in.cyl(0.13, 0.13, 0.015, 14, CozyMesh.at(Vector3(PART_X - PART_T * 0.5 - 0.05, 1.9, -1.7 + k * 0.32), Basis(Vector3.BACK, PI * 0.5 - 0.15)), Color(0.62, 0.62, 0.6))
+		_in.cyl(0.13, 0.13, 0.015, 14, CozyMesh.at(Vector3(-1.53 + k * 0.32, 1.9, front - 0.05), Basis(Vector3.RIGHT, -(PI * 0.5 - 0.15))), Color(0.62, 0.62, 0.6))
 
 
 ## A plain table: top `size` at `high`, four legs.

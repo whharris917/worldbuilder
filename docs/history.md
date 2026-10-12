@@ -697,3 +697,5 @@ The director disliked the lens's shaft of light ending on the crystal's nearest 
 The director saw a half-round spot under a full round shaft with half the curtains drawn. The shaft is now shaped from the lens's lit part (sampled in columns, the run each column's curtain and the mirror leave lit) carried down every ray to the landing, so a strip shut leaves its slice of the cone dark; it is as bright where lit whatever the share open.
 
 The director could see the shaft's edges as lines, most of all with the spot on the floor: a glowing shell drawn flat shows its edges where it is seen edge-on, the reverse of lit air, which is brightest through its middle. A small shader (`light_shaft.gdshader`, custom; the engine's materials have no fade by viewing angle) counts each part of the shell by how squarely it faces the eye, its normals smoothed round the outline, as the lamps' `beam.gdshader` does.
+
+The director left the shaft's faint inner streaks for now and asked for the house as one room: the dividing wall and its door are gone, the pewter shelf moved to the front wall.
