@@ -4,8 +4,11 @@ extends SandShutter
 ## end to end, divided at its waist by a ring of PETALS hinged brass
 ## triangles in place of a neck: a check valve for sand.
 ##
-## Each petal hangs from a hinge round the glass's wall at the waist and
-## swings, by its own weight, toward whichever end is lower. With B (the
+## Each petal is a tapering plate hung from a hinge along a chord of the
+## wall at the waist (the eight hinges an octagon), swinging by its own
+## weight toward whichever end is lower; shut, the eight are the faces of
+## a regular eight-sided funnel, their edges meeting along its ridges, so
+## the only way through is the eight-sided hole at its point. With B (the
 ## bulb holding the beam's point, P) below, the petals hang flat against
 ## the wall on B's side and the glass is open its whole width: sand from A
 ## above falls straight through, all of it in BYPASS_RUN seconds. With B
@@ -28,6 +31,7 @@ const REPOSE := 0.57                    # the sine of sand's angle of repose, 35
 const WALL_R := 0.028                   # m: the glass's inside radius
 
 var _petals: Array[Node3D] = []
+var _plates: Array[MeshInstance3D] = []
 var _petal_turn := 0.0                  # rad: 0 against the wall on B's side, FUNNEL shut
 var _hole := 0.004                      # m: the hole's radius
 
@@ -44,8 +48,28 @@ func set_delay(seconds: float) -> void:
 	super(seconds)
 	_run = delay / (1.0 - DROP / FULL - LEAK)
 	_hole = 0.004 * pow(_run / 10.0, -0.4)
-	for p in _petals:
-		(p.get_child(0) as Node3D).scale = Vector3(1, (WALL_R - _hole) / sin(PI - FUNNEL), 1)
+	var plate := _plate()
+	for view in _plates:
+		view.mesh = plate
+
+
+## One petal: in its hinge's frame (x along the hinge, z outward), a plate
+## hanging toward -y, as wide as the octagon's side at the hinge and
+## narrowing so that, swung to FUNNEL, its edges run to the funnel's axis
+## and it ends at the hole's octagon.
+func _plate() -> ArrayMesh:
+	var half := tan(PI / PETALS)
+	var at_hinge := WALL_R * cos(PI / PETALS)          # the hinge's distance from the axis
+	var slant := (at_hinge - _hole) / sin(PI - FUNNEL)
+	var points := PackedVector3Array([Vector3(-at_hinge * half, 0, 0), Vector3(at_hinge * half, 0, 0),
+			Vector3(_hole * half, -slant, 0), Vector3(-_hole * half, -slant, 0)])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([points[0], points[1], points[2], points[0], points[2], points[3]])
+	arrays[Mesh.ARRAY_NORMAL] = PackedVector3Array([Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK])
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 ## The straight glass, its caps and frame, the ring of petals, the sand.
@@ -88,16 +112,10 @@ func _build_glass(brass: Material) -> void:
 	ring_view.mesh = ring
 	ring_view.position = Vector3(0, DROP, 0)
 	_glass.add_child(ring_view)
-	# The petals: each a brass triangle on its hinge, its frame x along the
-	# hinge, y along the glass toward A, z out through the wall; it hangs
+	# The petals: each on its hinge along a chord of the wall, its frame x
+	# along the hinge, y along the glass toward A, z outward; it hangs
 	# toward B (-y) at a turn of 0 and swings inward about x.
-	var plate := ArrayMesh.new()
-	var width := TAU * WALL_R / PETALS
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3(-width * 0.5, 0, 0), Vector3(0, -1.0, 0), Vector3(width * 0.5, 0, 0)])
-	arrays[Mesh.ARRAY_NORMAL] = PackedVector3Array([Vector3.BACK, Vector3.BACK, Vector3.BACK])
-	plate.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var plate := _plate()
 	var petal_mat: BaseMaterial3D = StandardMaterial3D.new()
 	if brass is BaseMaterial3D:
 		petal_mat = (brass as BaseMaterial3D).duplicate() as BaseMaterial3D
@@ -106,7 +124,7 @@ func _build_glass(brass: Material) -> void:
 		var a := TAU * (k + 0.5) / PETALS
 		var out := Vector3(cos(a), 0, sin(a))
 		var hinge := Node3D.new()
-		hinge.position = out * WALL_R + Vector3(0, DROP, 0)
+		hinge.position = out * WALL_R * cos(PI / PETALS) + Vector3(0, DROP, 0)
 		hinge.basis = Basis(Vector3.UP.cross(out).normalized(), Vector3.UP, out)
 		_glass.add_child(hinge)
 		var swing := Node3D.new()
@@ -115,6 +133,7 @@ func _build_glass(brass: Material) -> void:
 		view.mesh = plate
 		view.material_override = petal_mat
 		swing.add_child(view)
+		_plates.append(view)
 		_petals.append(hinge)
 	var sand_mat := StandardMaterial3D.new()
 	sand_mat.albedo_color = Color(0.86, 0.74, 0.5)
