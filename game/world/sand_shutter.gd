@@ -66,6 +66,15 @@ func set_delay(seconds: float) -> void:
 
 
 func _build_mechanism(brass: Material, stone_view: MeshInstance3D) -> void:
+	_build_drive(brass, stone_view)
+	_build_glass(brass)
+	if closing:
+		_bead(Vector3(POST_X, 0.08, 0))
+
+
+## The geotrope over the ring with its pegs, the pulleys and cord, the
+## glass's axle across the ring; the leaf put away.
+func _build_drive(brass: Material, stone_view: MeshInstance3D) -> void:
 	_leaf.visible = false
 	_mount_geotrope(brass, stone_view, POST_X, SIDE + 0.006)
 	_peg(brass, REST_S - 0.17)
@@ -85,6 +94,10 @@ func _build_mechanism(brass: Material, stone_view: MeshInstance3D) -> void:
 	# The glass's axle from the ring's sides to its frame, out to the pulley.
 	_bar(_head, Vector3(-0.14, 0, 0), Vector3(-FRAME_X, 0, 0), 0.005, brass)
 	_bar(_head, Vector3(FRAME_X, 0, 0), Vector3(SIDE + 0.006, 0, 0), 0.005, brass)
+
+
+## The glass with its return tube, in its own frame.
+func _build_glass(brass: Material) -> void:
 	# The glass, in its own frame: P at the origin, B from FULL below it
 	# to the neck DROP above, A from the neck to LENGTH beyond.
 	for k in 2:
@@ -157,8 +170,6 @@ func _build_mechanism(brass: Material, stone_view: MeshInstance3D) -> void:
 		_glass.add_child(g)
 		_grains.append(g)
 		_grain_at.append(-1.0)
-	if closing:
-		_bead(Vector3(POST_X, 0.08, 0))
 
 
 func _physics_process(delta: float) -> void:
@@ -178,15 +189,19 @@ func _physics_process(delta: float) -> void:
 		elif _turn > TOP_S:
 			_turn = TOP_S
 			_rate = -_rate * BOUNCE if _rate > 0.0 else _rate
-		# Sand runs through the neck from the upper bulb to the lower.
-		var into_b := clampf(cos(_flip()) * 3.0, -1.0, 1.0)
-		var run := _run
-		if into_b > 0.0:
-			# A above: its sand pours round the return tube as well.
-			run = 1.0 / (1.0 / _run + 1.0 / BYPASS_RUN)
-		_sand = clampf(_sand + into_b * h / run, 0.0, 1.0)
+		_run_sand(h)
 	open = not _covered()
 	_place()
+
+
+## The sand over one step: through the neck from the upper bulb to the
+## lower, and with A above round the return tube as well.
+func _run_sand(h: float) -> void:
+	var into_b := clampf(cos(_flip()) * 3.0, -1.0, 1.0)
+	var run := _run
+	if into_b > 0.0:
+		run = 1.0 / (1.0 / _run + 1.0 / BYPASS_RUN)
+	_sand = clampf(_sand + into_b * h / run, 0.0, 1.0)
 
 
 ## The glass's turn: twice the stone's from rest, 0 with B below.
@@ -253,6 +268,8 @@ func _return_at(u: float) -> Vector3:
 ## it, clumps leave its mouth one after another and run down to B; once A
 ## is empty, those in the tube run on out and no more follow.
 func _pour() -> void:
+	if _grains.is_empty():
+		return
 	var pouring := _sand < 1.0 and cos(_flip()) > 0.3
 	var last := 2.0
 	for k in GRAINS:
