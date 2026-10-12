@@ -32,7 +32,7 @@ const VIEWS := [
 	["workshop", 65.0, Vector3(15.2, 2.9, 4.7), Vector3(18.6, 2.1, 1.9), ""],
 	["burning_glass", 65.0, Vector3(18.0, 2.8, 3.5), Vector3(18.4, 5.8, 0.5), ""],
 	["heliostat", 60.0, Vector3(30.0, 7.2, -2.5), Vector3(18.4, 7.2, -0.5), ""],
-	["heliostat_cranks", 60.0, Vector3(20.2, 2.9, -3.1), Vector3(18.6, 2.4, -1.8), ""],
+	["heliostat_cranks", 60.0, Vector3(18.6, 2.9, 1.7), Vector3(18.4, 2.4, -0.2), ""],
 	["living_room", 65.0, Vector3(14.1, 2.9, 4.7), Vector3(10.4, 2.2, 2.3), ""],
 ]
 

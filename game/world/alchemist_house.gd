@@ -478,9 +478,18 @@ func _roof() -> void:
 		if side < 0.0:
 			pieces = [[-half, half, 0.0, t_glass - open_t], [-half, half, t_glass + open_t, end],
 					[-half, GLASS_X - open, t_glass - open_t, t_glass + open_t], [GLASS_X + open, half, t_glass - open_t, t_glass + open_t]]
-		# The boarding on the rafters, seen from inside.
+		# The boarding on the rafters, seen from inside; the roof a solid,
+		# so light and the player stop at it.
 		for p: Array in pieces:
 			_on_slope(_in, side, p[0], p[1], p[2], p[3], 0.06, 0.12, board)
+			var b := _slope_basis(side)
+			var size := Vector3(absf(p[1] - p[0]), ROOF_T, p[3] - p[2])
+			var shape := BoxShape3D.new()
+			shape.size = size
+			var c := CollisionShape3D.new()
+			c.shape = shape
+			c.transform = Transform3D(b, _under(side, (p[0] + p[1]) * 0.5, (p[2] + p[3]) * 0.5) + b.y * (ROOF_T * 0.5))
+			_body.add_child(c)
 		# Rafters under it, a purlin each side, and the ridge beam.
 		var x := -LEN * 0.5 + T + 0.3
 		while x < LEN * 0.5 - T:
@@ -537,10 +546,35 @@ func _roof() -> void:
 	# Tie beams across the rooms at the eaves, clear of the glass's light.
 	for bx: float in [-4.0, 0.2, 4.9]:
 		_in.box(Vector3(0.22, 0.26, DEP - T * 2.0), CozyMesh.at(Vector3(bx, EAVE + 0.35, 0)), OAK)
-	# The lead apron round the opening outside.
+	# The opening closed round the barrel where it passes through the
+	# roof: boarding under, lead over, from the opening's edges to the
+	# barrel's outline in the roof (an ellipse, the barrel crossing the
+	# roof a little aslant).
 	var b2 := _slope_basis(-1.0)
 	var middle := _under(-1.0, GLASS_X, t_glass)
-	_out.box(Vector3(open * 2.0 + 0.3, 0.012, open_t * 2.0 + 0.3), CozyMesh.at(middle + b2.y * (ROOF_T + 0.01), b2), Color(0.5, 0.52, 0.54))
+	var axis := _lens_basis().y
+	var lens_at := _lens_at()
+	var plane := middle + b2.y * (ROOF_T * 0.5)
+	var crossing := lens_at + axis * ((plane - lens_at).dot(b2.y) / axis.dot(b2.y))
+	var shift := (crossing - middle).dot(b2.z)
+	var r := Heliostat.BARREL_R + 0.06
+	var ry := r / absf(axis.dot(b2.y))
+	var sides := 32
+	for i in sides:
+		var a0 := TAU * i / sides
+		var a1 := TAU * (i + 1) / sides
+		var pts: Array[Vector3] = []
+		for a: float in [a0, a1]:
+			var dir := Vector2(cos(a), sin(a))
+			var reach := minf(open / maxf(absf(dir.x), 1e-4), (open_t - shift * signf(dir.y)) / maxf(absf(dir.y), 1e-4))
+			pts.append(Vector3(dir.x * r, 0, dir.y * ry))
+			pts.append(Vector3(dir.x * reach, 0, dir.y * reach))
+		for face: Array in [[_in, 0.0, Color(0.3, 0.22, 0.15), -1.0], [_out, ROOF_T, Color(0.5, 0.52, 0.54), 1.0]]:
+			var at := middle + b2.z * shift + b2.y * (face[1] as float)
+			var q: Array[Vector3] = []
+			for p in pts:
+				q.append(at + b2 * p)
+			(face[0] as CozyMesh).quad(q[0], q[2], q[3], q[1], b2.y * (face[3] as float), face[2])
 
 
 func _floor() -> void:
@@ -666,7 +700,7 @@ func _workshop() -> void:
 		_in.box(Vector3(0.08, 0.84, 0.6), CozyMesh.at(bench + Vector3(lx, 0.42, 0)), wood.darkened(0.15))
 	_in.box(Vector3(5.1, 0.04, 0.5), CozyMesh.at(bench + Vector3(0, 0.18, 0)), wood.darkened(0.1))
 	_solid(Vector3(5.2, 0.92, 0.66), bench + Vector3(0, 0.46, 0))
-	for span: Vector2 in [Vector2(0.2, 2.5), Vector2(3.9, 5.5)]:
+	for span: Vector2 in [Vector2(0.2, 1.85), Vector2(3.9, 5.5)]:
 		for y: float in [1.45, 1.9]:
 			_in.box(Vector3(span.y - span.x, 0.04, 0.26), CozyMesh.at(Vector3((span.x + span.y) * 0.5, y, z_back + 0.13)), wood)
 			var x := span.x + 0.12
@@ -687,7 +721,7 @@ func _workshop() -> void:
 	_in.ball(0.1, 12, CozyMesh.at(top + Vector3(-1.3, 0.1, 0.08)), glassware)
 	_in.cyl(0.025, 0.03, 0.12, 8, CozyMesh.at(top + Vector3(-1.3, 0.24, 0.08)), glassware)
 	# A pair of scales: a post, a beam, two pans.
-	var scales := top + Vector3(-0.4, 0, 0)
+	var scales := top + Vector3(0.65, 0, 0)
 	_in.cyl(0.08, 0.1, 0.03, 12, CozyMesh.at(scales + Vector3(0, 0.015, 0)), brass)
 	_in.cyl(0.012, 0.012, 0.42, 6, CozyMesh.at(scales + Vector3(0, 0.22, 0)), brass)
 	_in.box(Vector3(0.5, 0.015, 0.015), CozyMesh.at(scales + Vector3(0, 0.43, 0), Basis(Vector3.BACK, 0.06)), brass)
@@ -696,14 +730,14 @@ func _workshop() -> void:
 		_in.rod(hang, hang + Vector3(0, -0.25, 0), 0.003, 4, brass)
 		_in.cyl(0.08, 0.06, 0.02, 12, CozyMesh.at(hang + Vector3(0, -0.26, 0)), brass)
 	# A mortar and pestle, books, and a flask fallen and broken.
-	_in.cyl(0.08, 0.06, 0.1, 10, CozyMesh.at(top + Vector3(0.3, 0.05, 0.1)), Color(0.55, 0.53, 0.5))
-	_in.rod(top + Vector3(0.3, 0.06, 0.1), top + Vector3(0.38, 0.22, 0.04), 0.015, 6, Color(0.55, 0.53, 0.5))
+	_in.cyl(0.08, 0.06, 0.1, 10, CozyMesh.at(top + Vector3(-0.9, 0.05, 0.1)), Color(0.55, 0.53, 0.5))
+	_in.rod(top + Vector3(-0.9, 0.06, 0.1), top + Vector3(-0.82, 0.22, 0.04), 0.015, 6, Color(0.55, 0.53, 0.5))
 	for k in 3:
 		_in.box(Vector3(0.3, 0.05, 0.22), CozyMesh.at(top + Vector3(1.0, 0.025 + k * 0.05, 0.05), Basis(Vector3.UP, k * 0.2)), [Color(0.4, 0.2, 0.15), Color(0.3, 0.26, 0.2), Color(0.25, 0.3, 0.22)][k])
 	_in.ball(0.08, 10, CozyMesh.at(top + Vector3(1.7, 0.07, 0.15), Basis(Vector3.BACK, 1.3)), glassware, true)
 	for k in 6:
 		_in.box(Vector3(0.04, 0.004, 0.03), CozyMesh.at(top + Vector3(1.85 + _rng.randf_range(-0.12, 0.12), 0.003, 0.15 + _rng.randf_range(-0.1, 0.1)), Basis(Vector3.UP, _rng.randf() * TAU)), glassware)
-	_note(bench + Vector3(0, 0.6, 0), Vector3(5.2, 1.2, 0.66),
+	_note(bench + Vector3(0, 0.5, 0), Vector3(5.2, 1.0, 0.66),
 			"Bench\nGlassware, a still, a pair of scales, dust over all of it.")
 	# A mirror of polished metal on a stand at the bench's east end,
 	# tarnished, a crack across it.
@@ -741,6 +775,11 @@ func _workshop() -> void:
 	_solid(Vector3(0.56, 0.75, 0.56), Vector3(x_wall - 0.35, FLOOR + 0.375, 0.35))
 
 
+## The lens's middle, in the north slope near the roof's outer face.
+func _lens_at() -> Vector3:
+	return _under(-1.0, GLASS_X, absf(GLASS_Z) / _cos) + Vector3(0, ROOF_T / _cos * 0.8, 0)
+
+
 ## The lens's frame: its axis AXIS_UP over level toward the north.
 func _lens_basis() -> Basis:
 	var a := deg_to_rad(AXIS_UP)
@@ -762,7 +801,7 @@ func _burning_glass(inside: Material) -> void:
 	cloth.ao_light_affect = 0.0
 	glass = BurningGlass.new({"wood": inside, "cloth": cloth}, FLOOR)
 	var b := _lens_basis()
-	var lens_at := _under(-1.0, GLASS_X, absf(GLASS_Z) / _cos) + Vector3(0, ROOF_T / _cos * 0.8, 0)
+	var lens_at := _lens_at()
 	glass.transform = Transform3D(b, lens_at)
 	add_child(glass)
 	# The barrel: oak staves bound with iron hoops, from inside the roof up
@@ -796,6 +835,8 @@ func _burning_glass(inside: Material) -> void:
 	heliostat = Heliostat.new(glass, out_mat, out_mat)
 	var mirror_at := lens_at + axis * ((Heliostat.MAST_H - lens_at.y) / axis.y)
 	heliostat.position = Vector3(mirror_at.x, 0, mirror_at.z)
+	heliostat.wall_in = (-DEP * 0.5 + T) - mirror_at.z
+	heliostat.wall_out = -DEP * 0.5 - mirror_at.z
 	add_child(heliostat)
 	# The table where the lens's light lands, down the axis.
 	var drop := lens_at.y - (FLOOR + CrystalTable.TABLE_TOP)

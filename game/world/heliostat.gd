@@ -2,10 +2,12 @@ class_name Heliostat
 extends Node3D
 ## A heliostat for the burning glass (BurningGlass): a flat mirror of
 ## period glass panes, silvered with tin and mercury (REFLECT of the light
-## back), in a wooden frame on a fork at the top of a mast, turned by hand
-## from the mast's foot: one crank turns the fork round on its turntable
-## (the mirror's bearing), the other tilts the mirror in the fork, each by
-## its own shaft up the mast. Set right, the mirror throws the sun down
+## back), in a wooden frame on a fork at the top of a mast tied to the
+## house's wall, turned by hand from inside the workshop: two cranks on
+## the inside of the wall, their shafts out through it to bevel gears at
+## the mast's foot and up the mast; one turns the fork round on its
+## turntable (the mirror's bearing), the other tilts the mirror in the
+## fork. Set right, the mirror throws the sun down
 ## the axis of the lens's barrel; the sun moves on, so the player sets it
 ## again every minute or two.
 ##
@@ -33,12 +35,17 @@ const PIVOT := 1.7                      # m: its trunnions over the fork's foot,
 const TURN_RATE := 1.5                  # degrees a second, a crank held
 const BARREL := 1.0                     # m: the barrel's mouth from the lens, along its axis
 const BARREL_R := 0.63                  # m: inside
+const CRANK_Y := 1.22                   # m: the cranks over the ground, inside the wall
 
 ## The mirror's face: its bearing from north toward east and its tilt
 ## over level, degrees.
 var bearing := 180.0
 var tilt := 5.0
 var glass: BurningGlass
+## The house's wall south of the mast: its inner and outer faces, metres
+## along this node's z (set before it is added).
+var wall_in := 1.6
+var wall_out := 1.0
 
 var _to_sun := Vector3.UP
 var _sunlight := 0.0
@@ -155,6 +162,13 @@ func _show_beam() -> void:
 	var ray := PhysicsRayQueryParameters3D.create(from, from + going * 20.0, 1)
 	var hit := get_world_3d().direct_space_state.intersect_ray(ray)
 	var reach := 20.0 if hit.is_empty() else from.distance_to(hit["position"])
+	# Down the barrel it ends on the lens: what passes is the lens's light.
+	var axis := glass.global_basis.y.normalized()
+	var toward := going.dot(axis)
+	if toward < -0.01:
+		var t := (glass.global_position - from).dot(axis) / toward
+		if t > 0.0 and t < reach and (from + going * t).distance_to(glass.global_position) < BARREL_R + 0.3:
+			reach = t
 	_beam.visible = true
 	_beam.global_transform = Transform3D(CozyMesh.aligned(going).scaled_local(Vector3(1, reach, 1)), from + going * reach * 0.5)
 	_beam_mat.albedo_color.a = 0.02 * clampf(glass.light / 600.0, 0.0, 1.0)
@@ -166,15 +180,18 @@ func _build() -> void:
 	var iron := Color(0.22, 0.21, 0.2)
 	var brass := Color(0.76, 0.58, 0.3)
 	var top := MAST_H - PIVOT - 0.08
-	# The mast: a squared timber on a stone footing, four raking stays,
-	# rungs up its north face.
+	# The mast: a squared timber on a stone footing, raking stays east,
+	# west and north, two iron straps bolting it to the house's wall on
+	# the south, rungs up its north face.
 	m.box(Vector3(0.8, 0.3, 0.8), CozyMesh.at(Vector3(0, 0.15, 0)), Color(0.55, 0.52, 0.46))
 	m.box(Vector3(0.26, top, 0.26), CozyMesh.at(Vector3(0, top * 0.5, 0)), timber)
-	for k in 4:
-		var a := TAU * k / 4.0 + PI * 0.25
-		var foot := Vector3(cos(a), 0.05, sin(a)) * 1.6
+	for foot: Vector3 in [Vector3(1.6, 0.05, 0), Vector3(-1.6, 0.05, 0), Vector3(0, 0.05, -1.6)]:
 		m.rod(foot, Vector3(0, top * 0.45, 0), 0.06, 6, timber.darkened(0.1))
 		m.box(Vector3(0.3, 0.2, 0.3), CozyMesh.at(foot), Color(0.55, 0.52, 0.46))
+	for h: float in [1.9, 2.55]:
+		m.box(Vector3(0.06, 0.03, wall_out - 0.13), CozyMesh.at(Vector3(0, h, (wall_out + 0.13) * 0.5)), iron)
+		m.box(Vector3(0.3, 0.06, 0.02), CozyMesh.at(Vector3(0, h, 0.14)), iron)
+		m.box(Vector3(0.22, 0.22, 0.02), CozyMesh.at(Vector3(0, h, wall_out - 0.01)), iron)
 	var y := 0.6
 	while y < top - 0.2:
 		m.rod(Vector3(-0.22, y, -0.16), Vector3(0.22, y, -0.16), 0.02, 5, timber.darkened(0.2))
@@ -184,22 +201,27 @@ func _build() -> void:
 		m.rod(Vector3(side * 0.22, 0.4, -0.16), Vector3(side * 0.13, 0.4, -0.13), 0.025, 5, timber.darkened(0.2))
 	# The turntable at the top.
 	m.cyl(0.4, 0.4, 0.08, 20, CozyMesh.at(Vector3(0, top + 0.04, 0)), brass.darkened(0.2))
-	# The two shafts up its east face, from the cranks at its foot to the
-	# gearing at its top.
+	# The two shafts up its south face to the gearing at its top, each
+	# turned at its foot by bevel gears from a shaft out through the wall
+	# from its crank inside.
 	for k in 2:
+		var x := -0.07 if k == 0 else 0.07
 		var shaft := Node3D.new()
-		shaft.position = Vector3(0.18, 0, 0.06 - k * 0.12)
+		shaft.position = Vector3(x, 0, 0.17)
 		add_child(shaft)
 		var s := CozyMesh.new()
-		s.cyl(0.022, 0.022, top - 1.0, 6, CozyMesh.at(Vector3(0, 1.0 + (top - 1.0) * 0.5, 0)), iron)
+		s.cyl(0.022, 0.022, top - CRANK_Y, 6, CozyMesh.at(Vector3(0, CRANK_Y + (top - CRANK_Y) * 0.5, 0)), iron)
 		s.box(Vector3(0.03, 0.03, 0.09), CozyMesh.at(Vector3(0, top - 0.3, 0)), iron)
 		var view := MeshInstance3D.new()
 		view.mesh = s.commit(_out)
 		shaft.add_child(view)
 		_shafts.append(shaft)
-		for yb: float in [1.2, top * 0.5, top - 0.15]:
-			m.box(Vector3(0.1, 0.06, 0.06), CozyMesh.at(Vector3(0.15, yb, 0.06 - k * 0.12)), iron)
-	m.box(Vector3(0.2, 0.16, 0.3), CozyMesh.at(Vector3(0.18, top - 0.05, 0)), iron)
+		for yb: float in [top * 0.5, top - 0.15]:
+			m.box(Vector3(0.06, 0.06, 0.1), CozyMesh.at(Vector3(x, yb, 0.15)), iron)
+		var through := Vector3(-0.25 if k == 0 else 0.25, CRANK_Y, wall_in)
+		m.rod(through, Vector3(x, CRANK_Y, 0.2), 0.02, 6, iron)
+		m.box(Vector3(0.1, 0.12, 0.1), CozyMesh.at(Vector3(x, CRANK_Y, 0.2)), iron)
+	m.box(Vector3(0.3, 0.16, 0.2), CozyMesh.at(Vector3(0, top - 0.05, 0.14)), iron)
 	var view := MeshInstance3D.new()
 	view.mesh = m.commit(_out)
 	add_child(view)
@@ -263,9 +285,9 @@ func _build() -> void:
 	_beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_beam.visible = false
 	add_child(_beam)
-	# The cranks at its foot, on its east side.
+	# The cranks on the inside of the wall, facing into the workshop.
 	for k in 2:
 		var which := "bearing" if k == 0 else "tilt"
-		var handle := HeliostatCrank.new(self, which, _out, _shafts[k])
-		handle.position = Vector3(0.45, 1.0, 0.06 - k * 0.12 + (0.25 if k == 0 else -0.25))
+		var handle := HeliostatCrank.new(self, which, _out)
+		handle.position = Vector3(-0.25 if k == 0 else 0.25, CRANK_Y, wall_in)
 		add_child(handle)
