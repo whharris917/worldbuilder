@@ -11,11 +11,15 @@ extends LightGate
 ## upper peg, SAND_TOP; light too weak to hold it there leaves the glass
 ## short of the pan). Sand runs from whichever bulb is up into the lower at a
 ## steady rate, the whole of it in GLASS_RUN seconds (`_sand`, the share
-## in B). With the glass over, B's end rests on the pan of a lever; as
-## sand gathers in B it presses harder, and once the share passes the
-## counterweight's setting (delay over GLASS_RUN; the weight slides along
-## the lever) the lever tips and its far end lifts a link that turns the
-## leaf edge-on. When the light leaves, the spring swings the stone back,
+## in B). The glass turns on an axle NECK short of its neck on A's side,
+## so B's side always outweighs A's. With the glass over, B's end rests on
+## the pan of a lever, pressed by the glass's weight's moment about the
+## axle (`_pan_push`), which grows as sand moves into B; a counterweight
+## on the lever's far arm holds the pan up, set along the arm by the delay
+## (`_weight_d`: where it balances the push with the delay's share run).
+## Once the push wins the lever tips, and as it tips the counterweight's
+## hold lessens, so it goes over at once; its far end lifts a link that
+## turns the leaf edge-on. When the light leaves, the spring swings the stone back,
 ## the glass tips back, B's end leaves the pan and the leaf shuts. A wide
 ## glass tube down the glass's side joins B's shoulder, beside the neck,
 ## to A's far end: while B is down its sand lies at B's far end, clear of
@@ -62,7 +66,18 @@ const SAND_TOP := 1.3963                # rad: the hourglass stone's upper peg, 
 const GLASS_TURN := (PI - 2.0 * LEAN) / SAND_TOP     # the glass's turn for the stone's
 const GLASS_X := SIDE + 0.045           # m: the glass's middle, out to the side
 const GLASS_Y := STONE_UP - 0.069       # m: its axle, under the stone's
-const BULB := 0.085                     # m: the glass's middle to each end
+const BULB := 0.085                     # m: the glass's neck to each end
+const NECK := 0.02                      # m: the neck past the axle toward B, so B's side outweighs A's
+const GLASS_MASS := 0.12                # kg: the glass, caps and pillars, its middle at the neck
+const SAND_MASS := 0.08                 # kg
+const SAND_AT := 0.042                  # m: each bulb's sand from the neck
+const PAN_ARM := 0.046                  # m: the lever's pivot to its pan
+const ARM := 0.08                       # m: its pivot to its far end, the counterweight's arm
+const WEIGHT_MASS := 0.04               # kg: the counterweight
+const LEVER_DROP := 0.18                # rad: the lever's travel from rest to tipped
+const SWING_IN := 0.15                  # the counterweight's hold lost over that travel: it rides above the arm
+const LEVER_GIVE := 400.0               # rad/s per N m: the lever's pivot letting it move
+const SETTLE := 0.5                     # s: the glass tipping over before sand gathers in B, and the lever and leaf turning
 const LEAF_SNAP := 15.0                 # rad/s: the leaf turned by the lever's link
 
 var works := "sand"
@@ -74,7 +89,9 @@ var _swing := 0.0                       # rad: the pendulum's phase
 var _amp := 0.0                         # its swing, 0 to 1
 var _sand := 0.0                        # the share of the sand in bulb B
 var _leaf_turn := 0.0
-var _tripped := false
+var _tilt := 0.0                        # rad: the lever, 0 at rest to LEVER_DROP tipped
+var _weight_d := 0.03                   # m: the counterweight out along its arm
+var _body := Node3D.new()                # the glass's own parts, off its axle
 var _brass: Material
 var _glass_mat: Material
 var _low_peg: MeshInstance3D
@@ -114,8 +131,12 @@ func set_delay(seconds: float) -> void:
 		_low_peg = _peg(_brass, _rest - 0.17)
 		if _turn < _rest:
 			_turn = _rest
-	elif _weight != null:
-		_weight.position = Vector3(0, 0, -0.025 - 0.035 * delay / LONGEST)
+	else:
+		# Where the weight holds the pan against the glass with the delay's
+		# share of the sand run, less the glass's tipping over (SETTLE).
+		_weight_d = _pan_push(maxf(delay - SETTLE, 0.1) / GLASS_RUN) * PAN_ARM / (WEIGHT_MASS * 9.8)
+		if _weight != null:
+			_weight.position = Vector3(0, 0.014, -_weight_d)
 
 
 func _build_mechanism(brass: Material, stone_view: MeshInstance3D) -> void:
@@ -152,7 +173,10 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 	small.position = Vector3(SIDE, 0, 0)
 	_glass.add_child(small)
 	# The glass: two bulbs and a neck between brass caps and pillars, its
-	# axle through the neck; bulb A toward its -y end, B toward +y.
+	# axle NECK short of the neck on A's side; bulb A toward its -y end, B
+	# toward +y.
+	_body.position = Vector3(0, NECK, 0)
+	_glass.add_child(_body)
 	for side: float in [-1.0, 1.0]:
 		var bulb := SphereMesh.new()
 		bulb.radius = 0.028
@@ -162,7 +186,7 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 		bulb_view.mesh = bulb
 		bulb_view.position = Vector3(GLASS_X, side * 0.042, 0)
 		bulb_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_glass.add_child(bulb_view)
+		_body.add_child(bulb_view)
 		var cap := CylinderMesh.new()
 		cap.top_radius = 0.03
 		cap.bottom_radius = 0.03
@@ -171,9 +195,9 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 		var cap_view := MeshInstance3D.new()
 		cap_view.mesh = cap
 		cap_view.position = Vector3(GLASS_X, side * BULB, 0)
-		_glass.add_child(cap_view)
-		_bar(_glass, Vector3(GLASS_X + 0.026 * side, -BULB, 0.0), Vector3(GLASS_X + 0.026 * side, BULB, 0.0), 0.003, brass)
-	_bar(_glass, Vector3(GLASS_X, -0.012, 0), Vector3(GLASS_X, 0.012, 0), 0.006, _glass_mat)
+		_body.add_child(cap_view)
+		_bar(_body, Vector3(GLASS_X + 0.026 * side, -BULB, 0.0), Vector3(GLASS_X + 0.026 * side, BULB, 0.0), 0.003, brass)
+	_bar(_body, Vector3(GLASS_X, -0.012, 0), Vector3(GLASS_X, 0.012, 0), 0.006, _glass_mat)
 	# The side tube: out of B's shoulder beside the neck, bowing out down
 	# the side, into A's far end.
 	var tube := CozyMesh.new()
@@ -183,7 +207,7 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 	var tube_view := MeshInstance3D.new()
 	tube_view.mesh = tube.commit(_glass_mat)
 	tube_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_glass.add_child(tube_view)
+	_body.add_child(tube_view)
 	var sand_mat := StandardMaterial3D.new()
 	sand_mat.albedo_color = Color(0.86, 0.74, 0.5)
 	sand_mat.roughness = 0.95
@@ -196,7 +220,7 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 		pile.material = sand_mat
 		var pile_view := MeshInstance3D.new()
 		pile_view.mesh = pile
-		_glass.add_child(pile_view)
+		_body.add_child(pile_view)
 		if k == 0:
 			_sand_a = pile_view
 		else:
@@ -211,16 +235,17 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 		var g := MeshInstance3D.new()
 		g.mesh = grain
 		g.visible = false
-		_glass.add_child(g)
+		_body.add_child(g)
 		_grains.append(g)
 		_grain_at.append(-1.0)
 	# The lever: its pivot on a post from the bracket, the pan under B's
 	# end when the glass is over, the counterweight on the far arm.
-	var pivot := Vector3(GLASS_X, GLASS_Y - BULB - 0.02, -0.075)
+	var reach := NECK + BULB
+	var pivot := Vector3(GLASS_X, GLASS_Y - reach * cos(LEAN) - 0.021, -reach * sin(LEAN) - PAN_ARM)
 	_bar(_head, Vector3(SIDE + 0.085, 0.12, 0), Vector3(GLASS_X, pivot.y - 0.01, pivot.z), 0.005, brass)
 	_lever.position = pivot
 	_head.add_child(_lever)
-	_bar(_lever, Vector3(0, 0, -0.06), Vector3(0, 0, 0.06), 0.004, brass)
+	_bar(_lever, Vector3(0, 0, -ARM), Vector3(0, 0, 0.06), 0.004, brass)
 	var pan := CylinderMesh.new()
 	pan.top_radius = 0.022
 	pan.bottom_radius = 0.016
@@ -228,7 +253,7 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 	pan.material = brass
 	var pan_view := MeshInstance3D.new()
 	pan_view.mesh = pan
-	pan_view.position = Vector3(0, 0.006, 0.046)
+	pan_view.position = Vector3(0, 0.006, PAN_ARM)
 	_lever.add_child(pan_view)
 	var weight := CylinderMesh.new()
 	weight.top_radius = 0.012
@@ -336,8 +361,8 @@ func _physics_process(delta: float) -> void:
 	var target := 0.0
 	if works == "clock":
 		target = clampf((_turn - (TOP - TRIP)) / TRIP, 0.0, 1.0) * PI * 0.5
-	elif _tripped:
-		target = PI * 0.5
+	else:
+		target = _tilt / LEVER_DROP * PI * 0.5
 	_leaf_turn = move_toward(_leaf_turn, target, LEAF_SNAP * delta)
 	open = _leaf_turn > PI * 0.5 - CLEAR
 	_place()
@@ -389,12 +414,22 @@ func _sand_step(lift: float, h: float) -> void:
 		# B up: its sand pours down the side tube as well as the neck.
 		run = 1.0 / (1.0 / GLASS_RUN + 1.0 / BYPASS_RUN)
 	_sand = clampf(_sand + into_b * h / run, 0.0, 1.0)
-	var on_pan := tilt > PI - LEAN - 0.03
-	var needed := delay / GLASS_RUN
-	if _tripped:
-		_tripped = on_pan and _sand > needed - 0.01
-	else:
-		_tripped = on_pan and _sand >= needed
+	# The lever: the glass's push on its pan against the counterweight,
+	# whose hold lessens as the lever tips (it rides above the arm and
+	# swings in over the pivot), so once past balance it goes over.
+	var push := _pan_push(_sand) if tilt > PI - LEAN - 0.03 else 0.0
+	var hold := WEIGHT_MASS * 9.8 * _weight_d * (1.0 - SWING_IN * _tilt / LEVER_DROP)
+	_tilt = clampf(_tilt + clampf((push * PAN_ARM - hold) * LEVER_GIVE, -4.0, 4.0) * h, 0.0, LEVER_DROP)
+
+
+## The glass's push on the pan under B's end, N, with `share` of the sand
+## in B: its weight's moment about the axle (the glass's own middle NECK
+## out toward B, each bulb's sand SAND_AT either side of the neck) over
+## B's end's reach. The lean cancels: it sets both the moment's arm and
+## the pan's.
+func _pan_push(share: float) -> float:
+	var moment := GLASS_MASS * NECK + SAND_MASS * ((1.0 - share) * (NECK - SAND_AT) + share * (NECK + SAND_AT))
+	return 9.8 * moment / (NECK + BULB)
 
 
 ## A point on the side tube, `u` 0 at B's shoulder to 1 at A's far end.
@@ -449,11 +484,11 @@ func _place() -> void:
 	else:
 		# The gears turn the glass against the stone.
 		_glass.rotation.x = -_glass_angle()
-		_lever.rotation.x = 0.18 if _tripped else 0.0
+		_lever.rotation.x = _tilt
 		_place_sand()
 		_run_grains()
 		if _link != null:
-			var far := _lever.position + _lever.basis * Vector3(0, 0, -0.06)
+			var far := _lever.position + _lever.basis * Vector3(0, 0, -ARM)
 			_set_link(Vector3(GLASS_X, 0, 0) + pin, far)
 	_stone_glow.emission_energy_multiplier = 0.1 + 0.9 * clampf(_watts / 60.0, 0.0, 1.0)
 
