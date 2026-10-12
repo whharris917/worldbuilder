@@ -204,6 +204,25 @@ func _run_sand(h: float) -> void:
 	_sand = clampf(_sand + into_b * h / run, 0.0, 1.0)
 
 
+## The glass's proportions in its own frame, P at the origin: the waist
+## (the neck) above P, B's far end below it, A's far end, and B's sand at
+## full, from B's far end. A design with other proportions gives its own.
+func _waist() -> float:
+	return DROP
+
+
+func _b_end() -> float:
+	return -FULL
+
+
+func _a_end() -> float:
+	return DROP + LENGTH
+
+
+func _full_len() -> float:
+	return FULL
+
+
 ## The glass's turn: twice the stone's from rest, 0 with B below.
 func _flip() -> float:
 	return 2.0 * (_turn - REST_S)
@@ -228,17 +247,17 @@ func _place() -> void:
 	if _pile_a == null:
 		return
 	var b_low := cos(_flip()) > 0.0
-	# B's sand from its lower end: its far end (-FULL) or its neck (DROP).
-	var b_len := _sand * FULL
+	# B's sand from its lower end: its far end or its neck.
+	var b_len := _sand * _full_len()
 	_pile_b.visible = b_len > 0.001
-	var b_from := -FULL if b_low else DROP
+	var b_from := _b_end() if b_low else _waist()
 	var b_dir := 1.0 if b_low else -1.0
 	_pile_b.scale = Vector3(1, maxf(b_len, 0.001), 1)
 	_pile_b.position = Vector3(0, b_from + b_dir * b_len * 0.5, 0)
 	# A's from its lower end: its neck when B is below, else its far end.
-	var a_len := (1.0 - _sand) * FULL
+	var a_len := (1.0 - _sand) * _full_len()
 	_pile_a.visible = a_len > 0.001
-	var a_from := DROP if b_low else DROP + LENGTH
+	var a_from := _waist() if b_low else _a_end()
 	var a_dir := 1.0 if b_low else -1.0
 	_pile_a.scale = Vector3(1, maxf(a_len, 0.001), 1)
 	_pile_a.position = Vector3(0, a_from + a_dir * a_len * 0.5, 0)
@@ -247,7 +266,7 @@ func _place() -> void:
 	var running := absf(cos(_flip())) > 0.3 and (_sand > 0.0 if not b_low else _sand < 1.0)
 	_stream.visible = running
 	if running:
-		var top := DROP
+		var top := _waist()
 		var bottom := (b_from + b_dir * b_len) if b_low else (a_from + a_dir * a_len)
 		_set_bar(_stream, Vector3(0, top, 0), Vector3(0, bottom, 0))
 	_pour()

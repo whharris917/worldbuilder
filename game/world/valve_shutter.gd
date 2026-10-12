@@ -77,17 +77,17 @@ func _build_glass(brass: Material) -> void:
 	var tube := CylinderMesh.new()
 	tube.top_radius = WALL_R + 0.002
 	tube.bottom_radius = WALL_R + 0.002
-	tube.height = FULL + DROP + LENGTH
+	tube.height = _a_end() - _b_end()
 	tube.radial_segments = 20
 	tube.cap_top = false
 	tube.cap_bottom = false
 	tube.material = _glass_mat
 	var tube_view := MeshInstance3D.new()
 	tube_view.mesh = tube
-	tube_view.position = Vector3(0, (DROP + LENGTH - FULL) * 0.5, 0)
+	tube_view.position = Vector3(0, (_a_end() + _b_end()) * 0.5, 0)
 	tube_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_glass.add_child(tube_view)
-	for y: float in [-FULL, DROP + LENGTH]:
+	for y: float in [_b_end(), _a_end()]:
 		var cap := CylinderMesh.new()
 		cap.top_radius = WALL_R + 0.005
 		cap.bottom_radius = WALL_R + 0.005
@@ -98,9 +98,9 @@ func _build_glass(brass: Material) -> void:
 		cap_view.position = Vector3(0, y, 0)
 		_glass.add_child(cap_view)
 	for x: float in [-FRAME_X, FRAME_X]:
-		_bar(_glass, Vector3(x, -FULL, 0), Vector3(x, DROP + LENGTH, 0), 0.003, brass)
-		_bar(_glass, Vector3(x, -FULL, 0), Vector3(0, -FULL, 0), 0.003, brass)
-		_bar(_glass, Vector3(x, DROP + LENGTH, 0), Vector3(0, DROP + LENGTH, 0), 0.003, brass)
+		_bar(_glass, Vector3(x, _b_end(), 0), Vector3(x, _a_end(), 0), 0.003, brass)
+		_bar(_glass, Vector3(x, _b_end(), 0), Vector3(0, _b_end(), 0), 0.003, brass)
+		_bar(_glass, Vector3(x, _a_end(), 0), Vector3(0, _a_end(), 0), 0.003, brass)
 	# The hinge ring round the waist.
 	var ring := TorusMesh.new()
 	ring.inner_radius = WALL_R - 0.002
@@ -110,7 +110,7 @@ func _build_glass(brass: Material) -> void:
 	ring.material = brass
 	var ring_view := MeshInstance3D.new()
 	ring_view.mesh = ring
-	ring_view.position = Vector3(0, DROP, 0)
+	ring_view.position = Vector3(0, _waist(), 0)
 	_glass.add_child(ring_view)
 	# The petals: each on its hinge along a chord of the wall, its frame x
 	# along the hinge, y along the glass toward A, z outward; it hangs
@@ -124,7 +124,7 @@ func _build_glass(brass: Material) -> void:
 		var a := TAU * (k + 0.5) / PETALS
 		var out := Vector3(cos(a), 0, sin(a))
 		var hinge := Node3D.new()
-		hinge.position = out * WALL_R * cos(PI / PETALS) + Vector3(0, DROP, 0)
+		hinge.position = out * WALL_R * cos(PI / PETALS) + Vector3(0, _waist(), 0)
 		hinge.basis = Basis(Vector3.UP.cross(out).normalized(), Vector3.UP, out)
 		_glass.add_child(hinge)
 		var swing := Node3D.new()
