@@ -99,6 +99,7 @@ func _ready() -> void:
 	_furnishings()
 	_weathering()
 	_overgrowth()
+	_yard()
 	var stain_mat := StandardMaterial3D.new()
 	stain_mat.vertex_color_use_as_albedo = true
 	stain_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -861,6 +862,69 @@ func _overgrowth() -> void:
 				var lean := Vector3(_wear.randf_range(-0.12, 0.12), _wear.randf_range(0.25, 0.55), _wear.randf_range(-0.12, 0.12))
 				var foot := at + Vector3(_wear.randf_range(-0.05, 0.05), 0, _wear.randf_range(-0.05, 0.05))
 				_out.prism(Vector3(0.025, lean.length(), 0.006), CozyMesh.at(foot + lean * 0.5, CozyMesh.aligned(lean)), Color(0.42, 0.56, 0.26).lerp(Color(0.66, 0.62, 0.36), _wear.randf() * 0.5))
+
+
+## The yard's leavings: path stones to the door sunk in the turf, a
+## stone trough cracked through, a water butt at the front's east corner
+## rotted to its last staves and hoops; up top, a fern and grass rooted in
+## the great chimney's head, moss along the gables' copings and the
+## ridge; swallows' nests under the front eaves.
+func _yard() -> void:
+	var half := LEN * 0.5
+	var flag := Color(0.58, 0.56, 0.5)
+	for k in 5:
+		var at := Vector3(DOOR_X + _wear.randf_range(-0.12, 0.12), 0.005, DEP * 0.5 + 0.75 + k * 0.62)
+		_out.box(Vector3(_wear.randf_range(0.45, 0.6), 0.04, _wear.randf_range(0.4, 0.5)), CozyMesh.at(at, Basis(Vector3.UP, _wear.randf_range(-0.25, 0.25))), flag.darkened(_wear.randf() * 0.12))
+		for j in 4:
+			var blade := at + Vector3(_wear.randf_range(-0.35, 0.35), 0, _wear.randf_range(-0.3, 0.3))
+			_out.prism(Vector3(0.02, 0.18, 0.005), CozyMesh.at(blade + Vector3(0, 0.09, 0)), Color(0.42, 0.56, 0.26))
+	# The trough, west of the door, split across one end.
+	var trough := Vector3(DOOR_X - 1.6, 0.0, DEP * 0.5 + 0.9)
+	var stone := Color(0.56, 0.54, 0.48)
+	_out.box(Vector3(1.0, 0.08, 0.5), CozyMesh.at(trough + Vector3(0, 0.04, 0)), stone)
+	for side: float in [-1.0, 1.0]:
+		_out.box(Vector3(1.0, 0.36, 0.08), CozyMesh.at(trough + Vector3(0, 0.22, side * 0.21)), stone.darkened(0.05))
+	_out.box(Vector3(0.08, 0.36, 0.34), CozyMesh.at(trough + Vector3(-0.46, 0.22, 0)), stone.darkened(0.05))
+	_out.box(Vector3(0.08, 0.3, 0.34), CozyMesh.at(trough + Vector3(0.52, 0.12, 0.02), Basis(Vector3.BACK, -0.5)), stone.darkened(0.1))
+	_out.box(Vector3(0.84, 0.03, 0.34), CozyMesh.at(trough + Vector3(-0.04, 0.1, 0)), Color(0.3, 0.38, 0.22))
+	_solid(Vector3(1.0, 0.4, 0.5), trough + Vector3(0, 0.2, 0))
+	# The water butt, its staves fallen outward, hoops rusted on the turf.
+	var butt := Vector3(half + 0.5, 0.0, DEP * 0.5 + 0.5)
+	var stave := Color(0.4, 0.36, 0.3)
+	for k in 14:
+		var a := TAU * k / 14.0
+		if k % 5 == 2:
+			var lie := butt + Vector3(cos(a), 0, sin(a)) * 0.75
+			_out.box(Vector3(0.09, 0.025, 0.8), CozyMesh.at(lie + Vector3(0, 0.015, 0), Basis(Vector3.UP, -a)), stave.darkened(0.1))
+			continue
+		var tall := _wear.randf_range(0.35, 0.8)
+		var lean := Basis(Vector3(-sin(a), 0, cos(a)), _wear.randf_range(0.0, 0.18))
+		_out.box(Vector3(0.1, tall, 0.025), CozyMesh.at(butt + Vector3(cos(a), 0, sin(a)) * 0.3 + Vector3(0, tall * 0.5, 0), lean * Basis(Vector3.UP, -a + PI * 0.5)), stave.darkened(_wear.randf() * 0.15))
+	_out.torus(0.29, 0.32, 18, 4, CozyMesh.at(butt + Vector3(0, 0.2, 0)), Color(0.4, 0.24, 0.16))
+	_out.torus(0.3, 0.33, 18, 4, CozyMesh.at(butt + Vector3(0.25, 0.02, 0.45), Basis(Vector3.RIGHT, 0.05)), Color(0.4, 0.24, 0.16))
+	# The great chimney's head: a fern and grass rooted in its mortar.
+	var head := Vector3(-half + 0.1, _ridge_under + ROOF_T / _cos + 1.1, 0)
+	for k in 6:
+		var a := TAU * k / 6.0
+		var frond := Vector3(cos(a) * 0.3, 0.25, sin(a) * 0.3)
+		_out.prism(Vector3(0.1, frond.length(), 0.01), CozyMesh.at(head + Vector3(0.25, 0.0, 0.45) + frond * 0.5, CozyMesh.aligned(frond)), Color(0.3, 0.5, 0.22))
+	for k in 5:
+		_out.prism(Vector3(0.02, 0.2, 0.005), CozyMesh.at(head + Vector3(-0.3 + k * 0.05, 0.1, -0.5), Basis(Vector3.BACK, _wear.randf_range(-0.3, 0.3))), Color(0.5, 0.58, 0.3))
+	# Moss along the gables' copings and the ridge.
+	for side: float in [-1.0, 1.0]:
+		for gx: float in [-half + 0.3, half - 0.3]:
+			for k in 6:
+				var t := _wear.randf_range(0.3, DEP * 0.5 / _cos)
+				var b := _slope_basis(side)
+				_out.ball(_wear.randf_range(0.06, 0.12), 6, CozyMesh.at(_under(side, gx + _wear.randf_range(-0.25, 0.25), t) + b.y * (ROOF_T + 0.17), b * Basis.from_scale(Vector3(1.0, 0.35, 1.0))), Color(0.34, 0.46, 0.22).darkened(_wear.randf() * 0.2))
+	var ridge_top := _ridge_under + ROOF_T / _cos + 0.08
+	for k in 10:
+		_out.ball(_wear.randf_range(0.05, 0.1), 6, CozyMesh.at(Vector3(_wear.randf_range(-half, half), ridge_top, _wear.randf_range(-0.05, 0.05)), Basis.from_scale(Vector3(1.0, 0.4, 1.0))), Color(0.36, 0.48, 0.24).darkened(_wear.randf() * 0.2))
+	# Swallows' nests of mud under the front eaves.
+	for x: float in [1.9, 3.4]:
+		var nest := Vector3(x, EAVE - 0.12, DEP * 0.5 + 0.07)
+		_out.ball(0.09, 8, CozyMesh.at(nest, Basis.from_scale(Vector3(1.0, 0.8, 0.7))), Color(0.5, 0.42, 0.32), true)
+		_out.ball(0.09, 8, CozyMesh.at(nest, Basis(Vector3.RIGHT, PI) * Basis.from_scale(Vector3(1.0, 0.8, 0.7))), Color(0.46, 0.38, 0.28), true)
 
 
 ## Ivy from `foot` up a face (`along` its way, `out` from it) to `top`:
