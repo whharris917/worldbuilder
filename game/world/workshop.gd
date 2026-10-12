@@ -135,7 +135,7 @@ const ITEMS := [["floor", "Floor"], ["lantern", "Lantern"], ["gate", "Opening ga
 		["radiometer", "Luminous rotor"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"],
 		["push_lamp", "Push lamp"], ["pull_lamp", "Pull lamp"], ["track", "Track and cart"],
 		["collector", "Sun collector"], ["oil_bullseye", "Bullseye lantern"], ["oil_globe", "Globe lamp"],
-		["spin_gate", "Spun opening gate"], ["closing_spin_gate", "Spun closing gate"], ["clock_delay", "Clockwork delay"], ["sand_shutter", "Sand shutter"], ["valve_shutter", "Flap sandglass"]]
+		["spin_gate", "Spun opening gate"], ["closing_spin_gate", "Spun closing gate"], ["clock_delay", "Clockwork delay"], ["sand_shutter", "Sand shutter"], ["valve_shutter", "Flap sandglass"], ["retentive", "Retentive timer"]]
 ## The oil lanterns' designs (LanternLook), by key.
 const LANTERN_STYLES := {"oil_bullseye": "bullseye", "oil_globe": "globe"}
 ## Oil lanterns of designs since let go, kept in old saves: built as these.
@@ -151,7 +151,7 @@ const GATES := {"gate": false, "closing_gate": true, "spin_gate": false, "closin
 ## Gates worked by an earthstone spinning on end rather than a geotrope pointing.
 const SPIN_GATES := ["spin_gate", "closing_spin_gate"]
 ## Gates that open once their stone has been lit a while (DelayGate), by key: how they time it.
-const DELAY_GATES := {"on_delay": "sand", "clock_delay": "clock", "sand_shutter": "shutter", "valve_shutter": "valve"}
+const DELAY_GATES := {"on_delay": "sand", "clock_delay": "clock", "sand_shutter": "shutter", "valve_shutter": "valve", "retentive": "retentive"}
 const GATE_COLOUR := Color(0.92, 0.72, 0.34)
 const KINDS := {"lantern": LumenPart.Kind.LANTERN, "and": LumenPart.Kind.AND, "or": LumenPart.Kind.OR,
 		"not": LumenPart.Kind.NOT, "latch": LumenPart.Kind.LATCH,
@@ -188,6 +188,7 @@ const NOTES := {
 	"clock_delay": "Clockwork delay, %s s\nLets a beam through its ring once a lit beam has struck its geotrope that long. T: change the time.",
 	"sand_shutter": "Sand shutter, %s s\nAn hourglass in the ring: lets a beam through once its geotrope has been lit long enough for the sand to run below the beam. T: change the glass.",
 	"valve_shutter": "Flap sandglass, %s s\nA straight sandglass in the ring, a ring of hinged flaps at its waist: lets a beam through once its geotrope has been lit long enough for the sand to run below the beam. T: change the flaps.",
+	"retentive": "Retentive timer, %s s\nAdds up how long a lit beam strikes its lower geotrope, keeping the count through the dark; lets a beam through its ring once the count reaches its time, until a lit beam strikes its reset stone above. T: change the time.",
 	"off_delay": "Afterglow crystal, %s s\nShines while a beam striking it is lit, and that long after. T: change the time.",
 	"rise": "Rising spark\nOne flash when a beam striking it lights.",
 	"fall": "Falling spark\nOne flash when a beam striking it goes dark.",
@@ -207,7 +208,7 @@ const NOTES := {
 ## each. Drafts.
 const GROUPS := [[["Floors", ["floor"]], ["Lamps", ["collector", "oil_bullseye", "oil_globe", "lantern", "push_lamp", "pull_lamp"]]],
 		[["Crystals", ["and", "or", "not", "latch", "off_delay", "rise", "fall"]]],
-		[["Gates", ["gate", "closing_gate", "spin_gate", "closing_spin_gate", "on_delay", "clock_delay", "sand_shutter", "valve_shutter"]], ["Glass", ["mirror", "splitter", "lens"]]],
+		[["Gates", ["gate", "closing_gate", "spin_gate", "closing_spin_gate", "on_delay", "clock_delay", "sand_shutter", "valve_shutter", "retentive"]], ["Glass", ["mirror", "splitter", "lens"]]],
 		[["Machines", ["radiometer", "track"]]]]
 const MENU_NOTES := {
 	"floor": "boards two metres square, to build on.",
@@ -222,6 +223,7 @@ const MENU_NOTES := {
 	"clock_delay": "lets a beam through once its geotrope has been lit a while, timed by a pendulum.",
 	"sand_shutter": "an hourglass in the ring: the beam passes once the sand has run below it.",
 	"valve_shutter": "a straight sandglass in the ring whose hinged flaps make a funnel one way up and fall open the other.",
+	"retentive": "counts the time its geotrope is lit, keeps it through the dark, and opens at its time; a second stone resets it.",
 	"off_delay": "shines while a beam striking it is lit, and a while after.",
 	"rise": "one flash when a beam striking it lights.",
 	"fall": "one flash when a beam striking it goes dark.",
@@ -249,6 +251,7 @@ const DETAILS := {
 	"clock_delay": "A gate with clockwork. Light on its geotrope drives the stone up one tooth at a time, as a small pendulum lets the escape wheel turn, so it climbs at the same pace in any light strong enough to drive it; at the top a finger on its axle turns the leaf edge-on. When the light leaves, a ratchet lets the spring drop the stone at once and the leaf shuts. T moves the stone's lower stop, so it has farther or less far to climb: 1 to 13 seconds.",
 	"sand_shutter": "An hourglass standing in the ring itself, its sand stopping the beam. Light on its geotrope turns the glass end over end about the beam's point; the sand still covers that point, and runs down through the neck until it no longer reaches it, and the beam passes. When the light leaves, the glass turns back, the sand pours round a wide tube on its side back into the lower bulb, and the beam is stopped again within about a second. T fits a glass with a narrower or wider neck: 1 to 13 seconds.",
 	"valve_shutter": "A straight glass tube of sand standing in the ring itself, divided at its waist by a ring of hinged brass flaps that swing toward whichever end is lower. Light on its geotrope turns the glass end over end; the flaps fall into a funnel with a small hole at its point, the sand still covers the beam's point and runs down through the hole until it no longer reaches it, and the beam passes. When the light leaves, the glass turns back, the flaps fall flat against the wall, and the sand drops straight back down the open tube, stopping the beam again almost at once. T fits a ring with a smaller or larger hole: 1 to 13 seconds.",
+	"retentive": "A clockwork timer that keeps its count. Light on its geotrope drives the stone up one tooth at a time as a small pendulum lets the escape wheel turn; when the light leaves, a pawl on a ratchet holds the stone where it has climbed to, and it climbs on from there when lit again. At the top it turns the leaf in the ring edge-on, and stays there. Light on the reset stone above swings it up, sliding a brass can over the timing stone to shut out its light and lifting the pawl, so the timing stone drops back to its start and the leaf shuts; while the reset stone is lit the timer cannot count. T moves the timing stone's lower stop: 1 to 13 seconds.",
 	"off_delay": "A crystal that lights the moment a beam striking it lights, and stays lit for its time after the beam goes dark. T changes the time, from 1 to 13 seconds. It keeps a short gap from stopping anything.",
 	"rise": "One short flash the moment a beam striking it lights, then dark however long the beam stays lit: for counting, or for starting something once.",
 	"fall": "One short flash the moment a beam striking it goes dark.",
@@ -297,6 +300,7 @@ const SUN_TEXTS := {
 	"clock_delay": {"details": "A gate with clockwork. Light on its geotrope drives the stone up one tooth each half second, as the pendulum lets the escape wheel turn, so it climbs at the same pace in any light strong enough to drive it (about eight watts); with less it stalls. At its top a finger on its axle turns the leaf edge-on. When the light leaves, a ratchet lets the spring drop the stone to its stop at once and the leaf shuts. T moves the lower stop: 1 to 13 seconds."},
 	"sand_shutter": {"details": "An hourglass standing in the ring itself, turning end over end on an axle through the beam's point, the top of its full bulb's sand. Light on its geotrope (about twenty watts or more, to hold the stone up) turns the glass over by a cord and pulleys; the sand, now above, still covers the point, and runs down through the neck until it no longer reaches it, and the beam passes. When the light leaves, the glass turns back; the sand, now above, lies at the mouth of a wide tube round the glass's side (clear of the beam) and pours through it back into the lower bulb, so the beam is stopped again within about a second. T fits a glass with a narrower or wider neck: 1 to 13 seconds."},
 	"valve_shutter": {"details": "A straight glass tube of sand standing in the ring itself, turning end over end on an axle through the beam's point, divided at its waist by a ring of hinged brass flaps that swing by their own weight toward whichever end is lower: one way up they hang flat against the wall and the tube is open its whole width, the other they fall into a funnel with a small hole at its point, a valve for sand. Light on its geotrope (about twenty watts or more) turns the glass over; the flaps fall shut, the sand still covers the beam's point and runs through the hole until it no longer reaches it, and the beam passes. When the light leaves, the glass turns back, the flaps fall open and the sand drops straight back, stopping the beam again almost at once. T fits a ring with a smaller or larger hole: 1 to 13 seconds."},
+	"retentive": {"details": "A clockwork timer that keeps its count. Light on its geotrope (about eight watts or more) drives the stone up one tooth each half second as the pendulum lets the escape wheel turn; when the light leaves, a pawl on a ratchet holds it where it has climbed to, and it climbs on from there when lit again. At the top a finger turns the leaf edge-on, and it stays there. Light on the reset stone above (about ten watts or more) slides a brass can over the timing stone, shutting out its light, and lifts the pawl, so the timing stone drops back to its start and the leaf shuts; while the reset stone is lit the timer cannot count. Aim a beam at each stone. T moves the lower stop: 1 to 13 seconds."},
 	"off_delay": {"menu": "glows while a beam is lit and a while after; sends no light.",
 		"details": "A crystal that glows the moment a beam striking it lights and stays lit for its time after it goes dark (T changes it). It sends no light."},
 	"rise": {"menu": "one flash when a beam striking it lights; sends no light."},
@@ -512,6 +516,8 @@ func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0,
 func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 	if key == "track":
 		return BeamCart.new(at, wood, timber, brass, copper)
+	if DELAY_GATES.has(key) and DELAY_GATES[key] == "retentive":
+		return RetentiveTimer.new(at, brass, brass, glass, delay)
 	if DELAY_GATES.has(key) and DELAY_GATES[key] == "valve":
 		return ValveShutter.new(at, brass, brass, glass, delay)
 	if DELAY_GATES.has(key) and DELAY_GATES[key] == "shutter":
@@ -949,6 +955,7 @@ func _look_hit(exclude: Array[RID] = []) -> Dictionary:
 	q.exclude = skip
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	if not hit.is_empty() and (hit["collider"] as Node).has_meta("part_of"):
+		hit["input"] = str((hit["collider"] as Node).get_meta("input", ""))
 		hit["collider"] = (hit["collider"] as Node).get_meta("part_of")
 		hit["sensor"] = true
 	elif not hit.is_empty() and (hit["collider"] as Node).has_meta("refill_of"):
@@ -1227,7 +1234,8 @@ func _target_of(piece: Node3D) -> Dictionary:
 		return {"point": origin + dir * 20.0}
 	var c: Object = hit["collider"]
 	if (c as Node).has_meta("part_of"):
-		return {"piece": (c as Node).get_meta("part_of"), "sensor": true, "point": hit["position"]}
+		return {"piece": (c as Node).get_meta("part_of"), "sensor": true, "input": str((c as Node).get_meta("input", "")),
+				"point": hit["position"]}
 	if is_piece(c):
 		return {"piece": c, "point": hit["position"]}
 	return _point_target(c, hit["position"])
@@ -1245,6 +1253,8 @@ func _target_point(target: Dictionary) -> Vector3:
 	var piece: Variant = target.get("piece")
 	if piece != null and is_instance_valid(piece) and pieces.has(piece):
 		if target.get("sensor", false):
+			if str(target.get("input", "")) == "reset":
+				return (piece as Node3D).call("reset_point")
 			return (piece as Node3D).call("sensor_point")
 		return (piece as Node3D).global_position
 	var tile: Variant = target.get("tile")
@@ -1416,8 +1426,9 @@ func _follow_aim() -> void:
 		var c: Object = hit["collider"]
 		_aim_target = _point_target(c, point)
 		if hit.get("sensor", false):
-			point = (c as Node3D).call("sensor_point")
-			_aim_target = {"piece": c, "sensor": true, "point": point}
+			var input := str(hit.get("input", ""))
+			point = (c as Node3D).call("reset_point" if input == "reset" else "sensor_point")
+			_aim_target = {"piece": c, "sensor": true, "input": input, "point": point}
 		elif is_piece(c):
 			point = (c as Node3D).global_position
 			_aim_target = {"piece": c, "point": point}
@@ -2294,6 +2305,8 @@ func _save() -> void:
 			if l.get("piece") != null and pieces.has(l["piece"]):
 				link["to"] = pieces.find(l["piece"])
 				link["sensor"] = l.get("sensor", false)
+				if str(l.get("input", "")) != "":
+					link["input"] = l["input"]
 			elif l.get("tile") != null and tiles.has(l["tile"]):
 				var local: Vector3 = l["local"]
 				link["tile"] = tiles.find(l["tile"])
@@ -2371,6 +2384,8 @@ func _load() -> void:
 			if to >= 0 and to < pieces.size():
 				target["piece"] = pieces[to]
 				target["sensor"] = bool(l.get("sensor", false)) and (pieces[to] is LightGate or pieces[to] is BeamCart)
+				if str(l.get("input", "")) == "reset" and pieces[to].has_method("reset_point"):
+					target["input"] = "reset"
 			elif tile_at >= 0 and tile_at < tiles.size() and local is Array and (local as Array).size() >= 3:
 				target["tile"] = tiles[tile_at]
 				target["local"] = Vector3(float(local[0]), float(local[1]), float(local[2]))

@@ -108,6 +108,7 @@ var hours_per_second := 0.0
 var _clock := 0.0
 var _history := {}                      # part -> Array of [time, out]
 var _landed := {}                       # part -> Array of OpticArrival, this step
+var _landed_reset := {}                 # gate -> its reset stone's OpticArrivals, this step
 var _forces := {}                       # cart -> the push and pull on its handle, this step
 var _segments: Array = []               # [a, b, s at a, s at b, reach at a, source, held's]
 var _mesh := ImmediateMesh.new()
@@ -193,7 +194,16 @@ func step(dt: float) -> void:
 			elif h.delivered:
 				watts += LAMP_POWER
 		g.sense(watts)
+		if g.has_method("sense_reset"):
+			var reset := 0.0
+			for h: OpticArrival in _landed_reset.get(g, []):
+				if h.power >= 0.0:
+					reset += h.power
+				elif h.delivered:
+					reset += LAMP_POWER
+			g.call("sense_reset", reset)
 	_landed.clear()
+	_landed_reset.clear()
 	for cart in carts:
 		cart.drive(float(_forces.get(cart, 0.0)), dt)
 	_forces.clear()
@@ -360,9 +370,10 @@ func _trace_sun(source: LumenPart, origin: Vector3, dir: Vector3, gain: float, f
 		if c is StaticBody3D and (c as Node).has_meta("part_of"):
 			var gate: Object = (c as Node).get_meta("part_of")
 			if gates.has(gate):
-				if not _landed.has(gate):
-					_landed[gate] = []
-				(_landed[gate] as Array).append(OpticArrival.new(power >= THRESHOLD, false, power))
+				var into: Dictionary = _landed_reset if str((c as Node).get_meta("input", "")) == "reset" else _landed
+				if not into.has(gate):
+					into[gate] = []
+				(into[gate] as Array).append(OpticArrival.new(power >= THRESHOLD, false, power))
 			return
 		if not (c is OpticElement and elements.has(c)):
 			return
@@ -495,9 +506,10 @@ func _trace(source: LumenPart, origin: Vector3, dir: Vector3, reach: float, excl
 				return
 			var gate: Object = owner_part
 			if kind == "light" and gates.has(gate):
-				if not _landed.has(gate):
-					_landed[gate] = []
-				(_landed[gate] as Array).append(OpticArrival.new(_shown(source, _clock - s / SPEED), false))
+				var into: Dictionary = _landed_reset if str((c as Node).get_meta("input", "")) == "reset" else _landed
+				if not into.has(gate):
+					into[gate] = []
+				(into[gate] as Array).append(OpticArrival.new(_shown(source, _clock - s / SPEED), false))
 			return
 		if not (c is OpticElement and elements.has(c)):
 			return
