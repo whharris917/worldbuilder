@@ -48,7 +48,13 @@ const TRIP := 0.0873                    # rad: the last 5 degrees of the climb t
 const CLOCK_INERTIA := 3.0e-4           # kg m²: the stone and its wheel, falling free
 const CLOCK_PRELOAD := 0.008            # N m: its spring at the lowest peg
 const GLASS_RUN := 14.4                 # s: all the sand from one bulb to the other
-const BYPASS_RUN := 0.4                 # s: all of it back down the side tube
+const BYPASS_RUN := 0.6                 # s: all of it back down the side tube
+const GRAINS := 16                      # clumps of sand shown running down the tube
+const GRAIN_SPEED := 3.0                # the tube's length a second, falling sand
+## The side tube's curve in the glass's frame (z out to its side), from
+## B's shoulder by the neck, bowing out, to A's far end: a cubic's four
+## points.
+const TUBE := [Vector3(0, 0.022, -0.02), Vector3(0, 0.05, -0.075), Vector3(0, -0.105, -0.075), Vector3(0, -0.074, -0.014)]
 const GLASS_INERTIA := 3.0e-3           # kg m²: the stone with the glass geared to it
 const LEAN := 0.35                      # rad: the glass's lean either side
 const SAND_TOP := 1.3963                # rad: the hourglass stone's upper peg, 80 degrees over level, short
@@ -75,7 +81,9 @@ var _low_peg: MeshInstance3D
 var _glass := Node3D.new()
 var _sand_a: MeshInstance3D
 var _sand_b: MeshInstance3D
-var _pour: MeshInstance3D               # sand pouring down the side tube
+var _grains: Array[MeshInstance3D] = []   # sand running down the side tube
+var _grain_at: Array[float] = []        # each one's way along it, 0 to 1; below 0 not in it
+var _step := 0.0                        # s: the last physics step, for the grains
 var _lever := Node3D.new()
 var _weight: MeshInstance3D
 var _link: MeshInstance3D
@@ -166,12 +174,16 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 		_glass.add_child(cap_view)
 		_bar(_glass, Vector3(GLASS_X + 0.026 * side, -BULB, 0.0), Vector3(GLASS_X + 0.026 * side, BULB, 0.0), 0.003, brass)
 	_bar(_glass, Vector3(GLASS_X, -0.012, 0), Vector3(GLASS_X, 0.012, 0), 0.006, _glass_mat)
-	# The side tube: out of B's shoulder beside the neck, down the side,
-	# into A's far end.
-	var bend: Array[Vector3] = [Vector3(GLASS_X, 0.022, -0.02), Vector3(GLASS_X, 0.03, -0.04),
-			Vector3(GLASS_X, -0.07, -0.04), Vector3(GLASS_X, -0.075, -0.016)]
-	for k in 3:
-		_bar(_glass, bend[k], bend[k + 1], 0.0055, _glass_mat)
+	# The side tube: out of B's shoulder beside the neck, bowing out down
+	# the side, into A's far end.
+	var tube := CozyMesh.new()
+	var n := 20
+	for k in n:
+		tube.rod(_tube_at(float(k) / n), _tube_at(float(k + 1) / n), 0.0055, 8, Color.WHITE)
+	var tube_view := MeshInstance3D.new()
+	tube_view.mesh = tube.commit(_glass_mat)
+	tube_view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_glass.add_child(tube_view)
 	var sand_mat := StandardMaterial3D.new()
 	sand_mat.albedo_color = Color(0.86, 0.74, 0.5)
 	sand_mat.roughness = 0.95
@@ -189,8 +201,19 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 			_sand_a = pile_view
 		else:
 			_sand_b = pile_view
-	_pour = _bar(_glass, Vector3(GLASS_X, 0.026, -0.04), Vector3(GLASS_X, -0.07, -0.04), 0.0035, sand_mat)
-	_pour.visible = false
+	var grain := SphereMesh.new()
+	grain.radius = 0.0045
+	grain.height = 0.008
+	grain.radial_segments = 6
+	grain.rings = 3
+	grain.material = sand_mat
+	for k in GRAINS:
+		var g := MeshInstance3D.new()
+		g.mesh = grain
+		g.visible = false
+		_glass.add_child(g)
+		_grains.append(g)
+		_grain_at.append(-1.0)
 	# The lever: its pivot on a post from the bracket, the pan under B's
 	# end when the glass is over, the counterweight on the far arm.
 	var pivot := Vector3(GLASS_X, GLASS_Y - BULB - 0.02, -0.075)
@@ -299,6 +322,7 @@ func _wheel(brass: Material, r: float, teeth: int, sharp := false) -> Node3D:
 
 
 func _physics_process(delta: float) -> void:
+	_step = delta
 	var frame := _head.global_basis
 	var pull := Photogyrite.pull(_watts, 0.0)
 	var h := delta / STEPS
@@ -373,6 +397,41 @@ func _sand_step(lift: float, h: float) -> void:
 		_tripped = on_pan and _sand >= needed
 
 
+## A point on the side tube, `u` 0 at B's shoulder to 1 at A's far end.
+func _tube_at(u: float) -> Vector3:
+	var a: Vector3 = TUBE[0]
+	var b: Vector3 = TUBE[1]
+	var c: Vector3 = TUBE[2]
+	var d: Vector3 = TUBE[3]
+	var v := 1.0 - u
+	return Vector3(GLASS_X, 0, 0) + a * v * v * v + b * 3.0 * v * v * u + c * 3.0 * v * u * u + d * u * u * u
+
+
+## The sand running down the side tube: while B is up with sand in it,
+## clumps leave its mouth one after another and fall along the tube to A;
+## once B is empty, those in the tube run on out and no more follow.
+func _run_grains() -> void:
+	var pouring := _sand > 0.0 and cos(_glass_angle()) > 0.3
+	var spacing := 1.0 / GRAINS
+	var last := 2.0
+	for k in GRAINS:
+		if _grain_at[k] >= 0.0:
+			last = minf(last, _grain_at[k])
+	for k in GRAINS:
+		var u := _grain_at[k]
+		if u >= 0.0:
+			u += GRAIN_SPEED * _step
+			if u > 1.0:
+				u = -1.0
+		if u < 0.0 and pouring and (last >= spacing or last > 1.5):
+			u = 0.0
+			last = 0.0
+		_grain_at[k] = u
+		_grains[k].visible = u >= 0.0
+		if u >= 0.0:
+			_grains[k].position = _tube_at(u)
+
+
 func _glass_angle() -> float:
 	return LEAN + _turn * GLASS_TURN
 
@@ -392,7 +451,7 @@ func _place() -> void:
 		_glass.rotation.x = -_glass_angle()
 		_lever.rotation.x = 0.18 if _tripped else 0.0
 		_place_sand()
-		_pour.visible = _sand > 0.0 and cos(_glass_angle()) > 0.3
+		_run_grains()
 		if _link != null:
 			var far := _lever.position + _lever.basis * Vector3(0, 0, -0.06)
 			_set_link(Vector3(GLASS_X, 0, 0) + pin, far)
