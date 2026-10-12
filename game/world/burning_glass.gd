@@ -53,7 +53,7 @@ var _cloth: Array[MeshInstance3D] = []
 var _toggles: Array[Node3D] = []
 var _spot: SpotLight3D
 var _shaft: MeshInstance3D
-var _shaft_mat: StandardMaterial3D
+var _shaft_mat: ShaderMaterial
 var _picture: Image
 var _pictures: Array[ImageTexture] = []
 var _shown := 0
@@ -220,7 +220,7 @@ func _aim_spot() -> void:
 		_paint_left = 0.25
 		_paint(frame, k, blur, reach)
 		_shape_shaft(d, s)
-	_shaft_mat.albedo_color.a = 0.03 * clampf(light / 900.0, 0.0, 1.0)
+	_shaft_mat.set_shader_parameter("strength", 0.06 * clampf(light / 900.0, 0.0, 1.0))
 
 
 ## The shaft: the dust in the room's air lit faintly by the light the
@@ -259,7 +259,11 @@ func _shape_shaft(d: Vector3, s: float) -> void:
 			piece = []
 	if not piece.is_empty():
 		pieces.append(piece)
-	var verts := PackedVector3Array()
+	# One surface, its corners shared, so its normals are smoothed round
+	# the outline (the shader fades it by them).
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var base := 0
 	var down := func(x: float, z: float, t: float) -> Vector3:
 		var w := bx * x + bz * z
 		return global_position + d * t + (w - d * w.dot(d)) * (1.0 - t / FOCUS)
@@ -272,22 +276,21 @@ func _shape_shaft(d: Vector3, s: float) -> void:
 		for n in range(run.size() - 1, -1, -1):
 			var c: Vector3 = run[n]
 			ring.append(Vector2(c.x, c.z))
-		for n in ring.size():
-			var a := ring[n]
-			var b := ring[(n + 1) % ring.size()]
-			var a0: Vector3 = down.call(a.x, a.y, start)
-			var b0: Vector3 = down.call(b.x, b.y, start)
-			var a1: Vector3 = down.call(a.x, a.y, s)
-			var b1: Vector3 = down.call(b.x, b.y, s)
-			verts.append_array([a0, b0, b1, a0, b1, a1])
-	if verts.is_empty():
+		for p in ring:
+			st.add_vertex(down.call(p.x, p.y, start))
+			st.add_vertex(down.call(p.x, p.y, s))
+		var count := ring.size()
+		for n in count:
+			var a := base + n * 2
+			var b := base + ((n + 1) % count) * 2
+			for i: int in [a, b, b + 1, a, b + 1, a + 1]:
+				st.add_index(i)
+		base += count * 2
+	if base == 0:
 		_shaft.mesh = null
 		return
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	st.generate_normals()
+	var mesh := st.commit()
 	mesh.surface_set_material(0, _shaft_mat)
 	_shaft.mesh = mesh
 
@@ -444,13 +447,8 @@ func _build() -> void:
 	_spot.light_projector = _pictures[0]
 	_spot.visible = false
 	add_child(_spot)
-	_shaft_mat = StandardMaterial3D.new()
-	_shaft_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_shaft_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_shaft_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	_shaft_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_shaft_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
-	_shaft_mat.albedo_color = Color(1.0, 0.92, 0.75, 0.0)
+	_shaft_mat = ShaderMaterial.new()
+	_shaft_mat.shader = load("res://world/light_shaft.gdshader") as Shader
 	_shaft = MeshInstance3D.new()
 	_shaft.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_shaft.top_level = true
