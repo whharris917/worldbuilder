@@ -95,6 +95,8 @@ func _ready() -> void:
 	_floor()
 	_living_room()
 	_workshop()
+	_decay()
+	_furnishings()
 	_weathering()
 	_overgrowth()
 	var stain_mat := StandardMaterial3D.new()
@@ -879,6 +881,238 @@ func _ivy(foot: Vector3, along: Vector3, out: Vector3, top: float, spread: float
 			p = next
 
 
+## Inside, two centuries empty: the limewash flaked off in patches to the
+## stone, a damp tide-mark along the walls' feet, water's tracks down the
+## back wall under the roof's hole, cracks, cobwebs in the corners and
+## the window reveals, flakes of limewash fallen along the walls, leaves
+## blown in at the door.
+func _decay() -> void:
+	var x_in := LEN * 0.5 - T
+	var z_in := DEP * 0.5 - T
+	# The inner faces: [a point at the floor at its start, along, inward].
+	var faces: Array = [
+		[Vector3(-x_in, 0, z_in), Vector3.RIGHT, Vector3.FORWARD, x_in * 2.0, SOUTH_OPEN],
+		[Vector3(x_in, 0, -z_in), Vector3.LEFT, Vector3.BACK, x_in * 2.0, NORTH_OPEN],
+		[Vector3(-x_in, 0, -z_in), Vector3.BACK, Vector3.RIGHT, z_in * 2.0, []],
+		[Vector3(x_in, 0, z_in), Vector3.FORWARD, Vector3.LEFT, z_in * 2.0, EAST_OPEN],
+	]
+	var damp := LIME.darkened(0.1).lerp(Color(0.62, 0.62, 0.5), 0.3)
+	for face: Array in faces:
+		var start: Vector3 = face[0]
+		var along: Vector3 = face[1]
+		var inward: Vector3 = face[2]
+		var width: float = face[3]
+		var flat := Basis(along, Vector3.UP, along.cross(Vector3.UP))
+		var at := func(u: float, y: float, proud: float) -> Vector3:
+			return start + along * u + Vector3.UP * y + inward * proud
+		# The tide-mark: damp risen up the wall's foot, its top ragged.
+		var u := 0.0
+		while u < width:
+			var w := minf(_wear.randf_range(0.25, 0.6), width - u)
+			var h := _wear.randf_range(0.36, 0.5)
+			_in.box(Vector3(w, h, 0.004), CozyMesh.at(at.call(u + w * 0.5, FLOOR + h * 0.5, 0.012), flat), damp.darkened(_wear.randf() * 0.04))
+			u += w
+		# Limewash fallen away in patches, the stone and mortar behind.
+		for k in 9:
+			var pu := _wear.randf_range(0.3, width - 0.3)
+			var py := _wear.randf_range(0.7, EAVE - 0.3)
+			var clear := true
+			for o: Array in face[4]:
+				var ou := (float(o[0]) - start.x) * along.x if absf(along.x) > 0.5 else (float(o[0]) - start.z) * along.z
+				if absf(pu - ou) < float(o[1]) * 0.5 + 0.35 and py > float(o[2]) - 0.3 and py < float(o[3]) + 0.3:
+					clear = false
+			if not clear:
+				continue
+			var turn := Basis(along, inward, along.cross(inward)).orthonormalized()
+			for j in _wear.randi_range(2, 5):
+				var r := _wear.randf_range(0.06, 0.18)
+				var spot: Vector3 = at.call(pu + _wear.randf_range(-0.15, 0.15), py + _wear.randf_range(-0.12, 0.12), 0.014)
+				_in.ball(r, 16, CozyMesh.at(spot, turn * Basis.from_scale(Vector3(1.0, 1.0, _wear.randf_range(0.5, 0.9)))), LIME.lerp(Color(0.66, 0.6, 0.5), _wear.randf_range(0.45, 0.8)), false, 0.004)
+			# Its flakes fallen below.
+			for j in 6:
+				var chip: Vector3 = at.call(pu + _wear.randf_range(-0.3, 0.3), FLOOR + 0.005, _wear.randf_range(0.04, 0.35))
+				_in.box(Vector3(0.04, 0.004, 0.03) * _wear.randf_range(0.6, 1.6), CozyMesh.at(chip, Basis(Vector3.UP, _wear.randf() * TAU)), LIME.darkened(_wear.randf() * 0.1))
+		# A crack or two, wandering down from the wall's head.
+		for k in 2:
+			var cu := _wear.randf_range(0.5, width - 0.5)
+			var cy := EAVE + _wear.randf_range(-0.2, 0.3)
+			for j in _wear.randi_range(5, 9):
+				var nu := cu + _wear.randf_range(-0.12, 0.12)
+				var ny := cy - _wear.randf_range(0.1, 0.22)
+				_in.rod(at.call(cu, cy, 0.016), at.call(nu, ny, 0.016), 0.004, 3, Color(0.3, 0.28, 0.25))
+				cu = nu
+				cy = ny
+	# The water's tracks down the back wall under the hole in the roof.
+	var hole_x := (float(HOLE[0]) + float(HOLE[1])) * 0.5
+	for k in 4:
+		var x := hole_x + _wear.randf_range(-0.6, 0.6)
+		var l := _wear.randf_range(1.2, 2.6)
+		var w := _wear.randf_range(0.08, 0.2)
+		for j in 3:
+			var f := j / 3.0
+			var lj := l * (1.0 - f * 0.4)
+			_in.box(Vector3(w * (1.0 - f * 0.5), lj, 0.004), CozyMesh.at(Vector3(x, EAVE + 0.4 - lj * 0.5, -z_in + 0.017 + j * 0.002)), LIME.lerp(Color(0.6, 0.5, 0.36), 0.25 + f * 0.2))
+	# Cobwebs: grey sheets slung across the corners under the roof and
+	# in the windows' reveals.
+	for corner: Vector3 in [Vector3(-x_in, EAVE + 0.6, -z_in), Vector3(-x_in, EAVE + 0.6, z_in), Vector3(x_in, EAVE + 0.6, -z_in), Vector3(x_in, EAVE + 0.6, z_in)]:
+		_web(corner + Vector3(-signf(corner.x), 0, -signf(corner.z)) * 0.02, Vector3(-signf(corner.x), 0, 0), Vector3(0, 0, -signf(corner.z)), Vector3.DOWN, 0.55)
+	for bx: float in [-4.0, 4.9]:
+		_web(Vector3(bx + 0.11, EAVE + 0.22, _wear.randf_range(-1.5, 1.5)), Vector3.RIGHT, Vector3.BACK, Vector3.DOWN, 0.35)
+	for face: Array in [[SOUTH_OPEN, z_in, -1.0], [NORTH_OPEN, -z_in, 1.0]]:
+		for o: Array in face[0]:
+			if float(o[2]) <= 0.0:
+				continue
+			var top := Vector3(float(o[0]) - float(o[1]) * 0.5 + 0.01, float(o[3]) - 0.01, float(face[1]) + float(face[2]) * 0.03)
+			_web(top, Vector3.RIGHT, Vector3.DOWN, Vector3(0, 0, float(face[2])), 0.22)
+	# Leaves blown in under the door and drifted into the corner by it.
+	_leaves(Vector3(DOOR_X, FLOOR, z_in - 0.4), 0.6, 40)
+	_leaves(Vector3(-x_in + 0.4, FLOOR, z_in - 0.4), 0.4, 25)
+
+
+## A cobweb in a corner at `at`: threads out along `u` and `v` and the
+## way between them, crossed by sagging rings of thread, `size` out;
+## `_normal` the side it faces.
+func _web(at: Vector3, u: Vector3, v: Vector3, _normal: Vector3, size: float) -> void:
+	var thread := Color(0.82, 0.82, 0.8)
+	var spokes: Array[Vector3] = []
+	for k in 5:
+		var f := k / 4.0
+		spokes.append((u * (1.0 - f) + v * f).normalized() * size * _wear.randf_range(0.8, 1.0))
+	for sp in spokes:
+		_in.rod(at, at + sp, 0.0015, 3, thread)
+	for ring in 4:
+		var r := (ring + 1) / 5.0
+		for k in 4:
+			var a := at + spokes[k] * r
+			var b := at + spokes[k + 1] * r
+			var sag := (a + b) * 0.5 - (a + b - at * 2.0).normalized() * 0.015 * r
+			_in.rod(a, sag, 0.0012, 3, thread)
+			_in.rod(sag, b, 0.0012, 3, thread)
+
+
+## The alchemist's belongings, left as they were: a dresser of crockery,
+## some of it fallen and broken; herbs hung to dry from the living end's
+## tie beam, long since dust; a woodpile gone soft by the hearth; a cloak
+## mouldering on its peg by the door; a candlestick on the table; at the
+## workshop end, bellows and tongs by the furnace, a bin of charcoal, an
+## armillary sphere of brass rings on a stand, a chart of the sun's and
+## moon's circles pinned to the front wall, a candle-end on the desk; a
+## bird's nest on the middle tie beam.
+func _furnishings() -> void:
+	var x_in := LEN * 0.5 - T
+	var z_in := DEP * 0.5 - T
+	var wood := Color(0.46, 0.33, 0.22)
+	var brass := Color(0.62, 0.5, 0.28)
+	var crock := Color(0.82, 0.78, 0.68)
+	# The dresser against the back wall in the middle of the room.
+	var d := Vector3(-0.85, FLOOR, -z_in + 0.25)
+	_in.box(Vector3(1.3, 0.85, 0.5), CozyMesh.at(d + Vector3(0, 0.425, 0)), wood.darkened(0.1))
+	_in.box(Vector3(1.36, 0.05, 0.55), CozyMesh.at(d + Vector3(0, 0.875, 0.02)), wood)
+	_in.box(Vector3(1.3, 1.0, 0.04), CozyMesh.at(d + Vector3(0, 1.4, -0.23)), wood.darkened(0.15))
+	for y: float in [1.2, 1.55, 1.88]:
+		_in.box(Vector3(1.3, 0.03, 0.2), CozyMesh.at(d + Vector3(0, y, -0.13)), wood)
+	for side: float in [-1.0, 1.0]:
+		_in.box(Vector3(0.04, 1.0, 0.24), CozyMesh.at(d + Vector3(side * 0.63, 1.4, -0.12)), wood)
+	# One cupboard door hanging open on a broken hinge.
+	_in.box(Vector3(0.6, 0.7, 0.03), CozyMesh.at(d + Vector3(-0.85, 0.38, 0.32), Basis(Vector3.UP, -1.1) * Basis(Vector3.BACK, 0.08)), wood.darkened(0.05))
+	_solid(Vector3(1.3, 0.9, 0.5), d + Vector3(0, 0.45, 0))
+	for k in 5:
+		if k == 2:
+			continue
+		_in.cyl(0.11, 0.11, 0.012, 14, CozyMesh.at(d + Vector3(-0.5 + k * 0.25, 1.33, -0.17), Basis(Vector3.RIGHT, PI * 0.5 - 0.2)), crock.darkened(_wear.randf() * 0.1))
+	for k in 3:
+		_in.cyl(0.05, 0.06, 0.16, 10, CozyMesh.at(d + Vector3(-0.4 + k * 0.4, 1.65, -0.12)), crock.darkened(0.1 + _wear.randf() * 0.1))
+	# A plate and a jug fallen and broken on the floor before it.
+	for k in 7:
+		_in.box(Vector3(0.06, 0.008, 0.05) * _wear.randf_range(0.6, 1.5), CozyMesh.at(d + Vector3(_wear.randf_range(-0.5, 0.4), 0.006, 0.45 + _wear.randf_range(0.0, 0.35)), Basis(Vector3.UP, _wear.randf() * TAU)), crock)
+	_in.cyl(0.05, 0.06, 0.12, 10, CozyMesh.at(d + Vector3(0.3, 0.06, 0.6), Basis(Vector3.BACK, PI * 0.5) * Basis(Vector3.UP, 0.7)), crock.darkened(0.15))
+	# Herbs hung to dry from the living end's tie beam.
+	for k in 6:
+		var at := Vector3(-4.0, EAVE + 0.22, -1.6 + k * 0.55 + _wear.randf_range(-0.1, 0.1))
+		var drop := _wear.randf_range(0.3, 0.55)
+		_in.rod(at, at - Vector3(0, drop, 0), 0.004, 3, Color(0.5, 0.42, 0.3))
+		var hang := at - Vector3(0, drop, 0)
+		var dried := Color(0.72, 0.68, 0.5).lerp(Color(0.6, 0.56, 0.36), _wear.randf())
+		_in.cyl(0.012, 0.012, 0.04, 5, CozyMesh.at(hang - Vector3(0, 0.02, 0)), Color(0.5, 0.42, 0.3))
+		for j in 7:
+			var a := TAU * j / 7.0 + _wear.randf_range(-0.3, 0.3)
+			var tip := hang + Vector3(cos(a) * 0.07, -_wear.randf_range(0.22, 0.32), sin(a) * 0.07)
+			_in.rod(hang - Vector3(0, 0.03, 0), tip, 0.006, 3, dried.darkened(0.2))
+			_in.ball(0.03, 5, CozyMesh.at(tip + Vector3(0, 0.04, 0), Basis.from_scale(Vector3(0.7, 1.4, 0.7))), dried)
+	# The woodpile by the hearth, its logs gone soft and grey.
+	for k in 9:
+		var row := k / 4
+		var at := Vector3(-x_in + 0.25, FLOOR + 0.07 + row * 0.12, 1.25 + (k % 4) * 0.13 + row * 0.06)
+		_in.cyl(0.06, 0.06, 0.45, 7, CozyMesh.at(at, Basis(Vector3.BACK, PI * 0.5)), Color(0.42, 0.38, 0.32).darkened(_wear.randf() * 0.2))
+	# A cloak mouldering on its peg west of the door.
+	var peg := Vector3(DOOR_X - 0.95, 1.75, z_in - 0.06)
+	_in.rod(peg + Vector3(0, 0, 0.06), peg, 0.015, 5, wood.darkened(0.2))
+	var wool := Color(0.5, 0.44, 0.34)
+	_in.cyl(0.08, 0.24, 1.15, 12, CozyMesh.at(peg + Vector3(0, -0.6, -0.08), Basis.from_scale(Vector3(1.0, 1.0, 0.45))), wool)
+	for j in 4:
+		_in.cyl(0.015, 0.03, 1.0, 5, CozyMesh.at(peg + Vector3(-0.15 + j * 0.1, -0.65, -0.14)), wool.darkened(0.15))
+	_in.ball(0.1, 8, CozyMesh.at(peg + Vector3(0, -0.02, -0.08), Basis.from_scale(Vector3(1.0, 0.6, 0.6))), wool.darkened(0.08))
+	# A candlestick on the table, its candle burned down.
+	var stick := Vector3(-3.3, FLOOR + 0.74, 0.3)
+	_in.cyl(0.05, 0.06, 0.02, 10, CozyMesh.at(stick + Vector3(0, 0.01, 0)), brass)
+	_in.cyl(0.012, 0.015, 0.12, 6, CozyMesh.at(stick + Vector3(0, 0.08, 0)), brass)
+	_in.cyl(0.018, 0.018, 0.04, 6, CozyMesh.at(stick + Vector3(0, 0.16, 0)), Color(0.86, 0.82, 0.66))
+	# At the furnace: bellows on the floor, tongs leaned on it, a bin of
+	# charcoal.
+	var furnace := Vector3(x_in - 0.55, FLOOR, -1.2)
+	var bellows := furnace + Vector3(-0.85, 0.05, 0.55)
+	var lean := Basis(Vector3.UP, 0.6)
+	_in.box(Vector3(0.35, 0.05, 0.25), CozyMesh.at(bellows, lean), wood)
+	_in.box(Vector3(0.3, 0.06, 0.22), CozyMesh.at(bellows + Vector3(0, 0.06, 0), lean), Color(0.36, 0.26, 0.18))
+	_in.rod(bellows + lean * Vector3(0.17, 0.03, 0), bellows + lean * Vector3(0.38, 0.03, 0), 0.015, 5, brass.darkened(0.3))
+	for side: float in [-1.0, 1.0]:
+		_in.rod(furnace + Vector3(-0.45, 0.02, 0.55 + side * 0.02), furnace + Vector3(-0.42, 0.85, 0.38), 0.01, 4, Color(0.18, 0.17, 0.16))
+	var bin := furnace + Vector3(0.0, 0.0, 0.85)
+	_in.box(Vector3(0.45, 0.4, 0.4), CozyMesh.at(bin + Vector3(0, 0.2, 0)), wood.darkened(0.25))
+	for k in 12:
+		_in.ball(_wear.randf_range(0.03, 0.06), 5, CozyMesh.at(bin + Vector3(_wear.randf_range(-0.17, 0.17), 0.4 + _wear.randf_range(0.0, 0.05), _wear.randf_range(-0.15, 0.15))), Color(0.12, 0.11, 0.11))
+	_solid(Vector3(0.45, 0.4, 0.4), bin + Vector3(0, 0.2, 0))
+	# The armillary sphere: brass rings round a small ball, on a turned
+	# stand, near the front wall.
+	var arm := Vector3(-0.15, FLOOR, z_in - 0.45)
+	_in.cyl(0.18, 0.22, 0.05, 12, CozyMesh.at(arm + Vector3(0, 0.025, 0)), wood.darkened(0.1))
+	_in.cyl(0.03, 0.04, 0.9, 8, CozyMesh.at(arm + Vector3(0, 0.47, 0)), wood)
+	var c := arm + Vector3(0, 1.15, 0)
+	var tilt := Basis(Vector3.RIGHT, deg_to_rad(44.0))
+	_in.torus(0.2, 0.215, 24, 4, CozyMesh.at(c, Basis(Vector3.BACK, PI * 0.5)), brass)
+	_in.torus(0.2, 0.215, 24, 4, CozyMesh.at(c, tilt * Basis(Vector3.RIGHT, PI * 0.5)), brass)
+	_in.torus(0.2, 0.215, 24, 4, CozyMesh.at(c, tilt), brass.lightened(0.1))
+	_in.torus(0.19, 0.205, 24, 4, CozyMesh.at(c, tilt * Basis(Vector3.BACK, 0.41)), brass.darkened(0.1))
+	_in.rod(c - tilt.y * 0.26, c + tilt.y * 0.26, 0.006, 4, brass.darkened(0.2))
+	_in.ball(0.045, 10, CozyMesh.at(c), Color(0.4, 0.46, 0.5))
+	_in.box(Vector3(0.05, 0.25, 0.04), CozyMesh.at(arm + Vector3(0, 0.98, 0)), wood)
+	_solid(Vector3(0.36, 1.4, 0.36), arm + Vector3(0, 0.7, 0))
+	# The chart on the front wall between the workshop's windows: a sheet
+	# gone brown at its edges, the sun's circle and the moon's drawn on it,
+	# one corner come away.
+	var chart := Vector3(2.6, 1.55, z_in - 0.02)
+	_in.box(Vector3(0.7, 0.55, 0.005), CozyMesh.at(chart), Color(0.78, 0.72, 0.56))
+	_in.box(Vector3(0.74, 0.59, 0.003), CozyMesh.at(chart + Vector3(0, 0, 0.003)), Color(0.58, 0.5, 0.36))
+	var ink := Color(0.25, 0.2, 0.16)
+	var face_on := Basis(Vector3.RIGHT, PI * 0.5)
+	_in.torus(0.2, 0.208, 32, 3, CozyMesh.at(chart + Vector3(0, 0, -0.004), face_on), ink)
+	_in.torus(0.12, 0.127, 24, 3, CozyMesh.at(chart + Vector3(0.07, 0.02, -0.004), face_on * Basis(Vector3.UP, 0.4)), ink)
+	_in.ball(0.025, 8, CozyMesh.at(chart + Vector3(0, 0, -0.004)), Color(0.7, 0.5, 0.2))
+	_in.ball(0.016, 6, CozyMesh.at(chart + Vector3(0.19, 0.02, -0.004)), Color(0.4, 0.4, 0.42))
+	_in.box(Vector3(0.16, 0.13, 0.004), CozyMesh.at(chart + Vector3(0.29, -0.23, -0.03), Basis(Vector3.RIGHT, -0.5)), Color(0.74, 0.68, 0.52))
+	for corner: Vector2 in [Vector2(-0.33, 0.25), Vector2(0.33, 0.25), Vector2(-0.33, -0.25)]:
+		_in.ball(0.01, 5, CozyMesh.at(chart + Vector3(corner.x, corner.y, -0.006)), Color(0.3, 0.3, 0.3))
+	# A candle-end on the desk.
+	var desk := Vector3(4.6, FLOOR, z_in - 0.35)
+	_in.cyl(0.035, 0.04, 0.015, 8, CozyMesh.at(desk + Vector3(0.48, 0.77, -0.15)), brass)
+	_in.cyl(0.016, 0.016, 0.03, 6, CozyMesh.at(desk + Vector3(0.48, 0.79, -0.15)), Color(0.86, 0.82, 0.66))
+	# A bird's nest on the middle tie beam, droppings under it.
+	var nest := Vector3(0.2, EAVE + 0.5, 1.6)
+	_in.torus(0.06, 0.13, 12, 6, CozyMesh.at(nest, Basis.from_scale(Vector3(1.0, 0.6, 1.0))), Color(0.45, 0.36, 0.24))
+	for k in 10:
+		_in.ball(0.008, 4, CozyMesh.at(Vector3(0.2 + _wear.randf_range(-0.25, 0.25), FLOOR + 0.003, 1.6 + _wear.randf_range(-0.25, 0.25))), Color(0.88, 0.88, 0.84))
+
+
 ## ---- the room ------------------------------------------------------------------
 
 func _living_room() -> void:
@@ -991,6 +1225,10 @@ func _workshop() -> void:
 	_in.ball(0.42, 16, CozyMesh.at(furnace + Vector3(0, 1.55, 0)), brick, true)
 	_in.cyl(0.24, 0.2, 0.1, 14, CozyMesh.at(furnace + Vector3(0, 1.97, 0)), Color(0.3, 0.3, 0.3))
 	_in.box(Vector3(0.05, 0.36, 0.3), CozyMesh.at(furnace + Vector3(-0.43, 0.62, 0)), Color(0.14, 0.13, 0.12))
+	for k in 9:
+		_in.torus(0.445, 0.462, 18, 3, CozyMesh.at(furnace + Vector3(0, 0.36 + k * 0.13, 0)), brick.darkened(0.3))
+	_in.box(Vector3(0.03, 0.38, 0.33), CozyMesh.at(furnace + Vector3(-0.47, 0.62, 0)), Color(0.2, 0.18, 0.17))
+	_in.rod(furnace + Vector3(-0.5, 0.62, 0.08), furnace + Vector3(-0.56, 0.62, 0.08), 0.012, 4, Color(0.2, 0.18, 0.17))
 	_in.box(Vector3(0.05, 0.22, 0.26), CozyMesh.at(furnace + Vector3(-0.42, 1.2, 0)), Color(0.18, 0.16, 0.14))
 	_in.rod(furnace + Vector3(0.25, 1.75, 0), Vector3(x_wall, FLOOR + 2.0, -1.2), 0.09, 10, Color(0.2, 0.19, 0.18))
 	_solid(Vector3(1.0, 1.9, 1.0), furnace + Vector3(0, 0.95, 0))
