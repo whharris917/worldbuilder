@@ -44,6 +44,14 @@ const MORTAR := Color(0.66, 0.63, 0.56)
 const LIME := Color(0.86, 0.83, 0.74)
 const OAK := Color(0.4, 0.29, 0.19)
 const SLATE := Color(0.29, 0.31, 0.35)
+# The hole rotted through the north slope over the living end, [x0, x1,
+# t0, t1] (t down the slope from the ridge); its battens stay.
+const HOLE := [-3.25, -2.45, 1.5, 2.2]
+# The openings, [middle along the wall, width, sill, head]: the front's,
+# the back's, the east gable's (along z).
+const SOUTH_OPEN := [[DOOR_X, 1.0, 0.0, DOOR_H], [-4.6, 0.8, 0.85, 1.85], [0.6, 0.8, 0.85, 1.85], [4.6, 0.8, 0.85, 1.85]]
+const NORTH_OPEN := [[-4.8, 0.7, 1.0, 1.85], [3.2, 0.8, 1.15, 1.95]]
+const EAST_OPEN := [[1.3, 0.7, 1.0, 1.85]]
 
 var glass: BurningGlass
 var table: CrystalTable
@@ -51,6 +59,7 @@ var heliostat: Heliostat
 
 var _world: Node
 var _rng := RandomNumberGenerator.new()
+var _wear := RandomNumberGenerator.new()  # the two centuries' weathering, apart from the building's own draws
 var _out := CozyMesh.new()             # outside: stone, slates
 var _in := CozyMesh.new()              # inside: limewash, timber, furniture
 var _panes := CozyMesh.new()           # window glass
@@ -65,6 +74,7 @@ func _init(world: Node) -> void:
 	name = "AlchemistHouse"
 	_world = world
 	_rng.seed = 1661
+	_wear.seed = 1805
 
 
 func _ready() -> void:
@@ -133,6 +143,42 @@ func _solid(extent: Vector3, at: Vector3) -> void:
 	_body.add_child(c)
 
 
+## The rectangle [x0, x1, t0, t1] less the `holes` (each the same), as
+## rectangles: in bands between the holes' edges down the slope, each band
+## the stretches across it no hole covers.
+func _cut(whole: Array, holes: Array) -> Array:
+	var cuts: Array[float] = [whole[2], whole[3]]
+	for h: Array in holes:
+		for t: float in [h[2], h[3]]:
+			if t > whole[2] and t < whole[3]:
+				cuts.append(t)
+	cuts.sort()
+	var out: Array = []
+	for i in cuts.size() - 1:
+		var ta: float = cuts[i]
+		var tb: float = cuts[i + 1]
+		if tb - ta < 0.001:
+			continue
+		var mid := (ta + tb) * 0.5
+		var spans: Array = [[whole[0], whole[1]]]
+		for h: Array in holes:
+			if mid <= h[2] or mid >= h[3]:
+				continue
+			var kept: Array = []
+			for sp: Array in spans:
+				if h[1] <= sp[0] or h[0] >= sp[1]:
+					kept.append(sp)
+					continue
+				if h[0] > sp[0]:
+					kept.append([sp[0], h[0]])
+				if h[1] < sp[1]:
+					kept.append([h[1], sp[1]])
+			spans = kept
+		for sp: Array in spans:
+			out.append([sp[0], sp[1], ta, tb])
+	return out
+
+
 ## A point on the roof's underside: `side` 1 the south slope, -1 the
 ## north; `t` metres down the slope from the ridge.
 func _under(side: float, x: float, t: float) -> Vector3:
@@ -182,9 +228,38 @@ func _rubble(a: Vector3, across: Vector3, width: float, high: float, holes: Arra
 				var colour := Color(STONE.r + tint, STONE.g + tint, STONE.b + tint * 0.8)
 				if _rng.randf() < 0.12:
 					colour = colour.lerp(Color(0.56, 0.5, 0.36), 0.5)
-				_out.box(Vector3(u1 - u0, y1 - y0, proud * 2.0), CozyMesh.at(a + dir * mid.x + Vector3.UP * mid.y, basis), colour)
+				var at := a + dir * mid.x + Vector3.UP * mid.y
+				var size := Vector3(u1 - u0, y1 - y0, proud * 2.0)
+				var weathered: Variant = _weather_stone(colour, at.y, -basis.z.z)
+				if weathered == null:
+					# Fallen out: the hollow it left, dark, its mortar bed
+					# showing at its back.
+					_out.box(Vector3(size.x - 0.02, size.y - 0.02, 0.012), CozyMesh.at(at, basis), Color(0.2, 0.19, 0.17))
+				else:
+					_out.box(size, CozyMesh.at(at, basis), weathered as Color)
 			u += long
 		y += course
+
+
+## Two centuries on a stone of `colour`, `high` over the ground, on a face
+## turned `north` (1 due north, -1 due south): lichen, more on the shaded
+## north; damp rising in the lowest courses, green on the north; now and
+## then a stone fallen out of the face (null).
+func _weather_stone(colour: Color, high: float, north: float) -> Variant:
+	var shade := clampf(north, 0.0, 1.0)
+	if high < 2.3 and _wear.randf() < 0.025:
+		return null
+	var c := colour
+	if high < 0.7:
+		var damp := (0.7 - high) / 0.7
+		c = c.darkened(0.25 * damp)
+		c = c.lerp(Color(0.3, 0.38, 0.24), 0.35 * damp * (0.3 + shade))
+	if _wear.randf() < 0.05 + 0.12 * shade:
+		var lichen := Color(0.68, 0.68, 0.46) if _wear.randf() < 0.6 else Color(0.74, 0.74, 0.68)
+		c = c.lerp(lichen, _wear.randf_range(0.4, 0.75))
+	elif _wear.randf() < 0.3:
+		c = c.darkened(_wear.randf_range(0.05, 0.15))
+	return c
 
 
 ## A wall running along x at `z` (its middle), from x0 to x1, its inside
@@ -313,7 +388,7 @@ func _window_or_door(at: Vector3, along: Vector3, width: float, sill: float, hea
 		var pane_h := high - 0.12
 		for s: float in [-1.0, 1.0]:
 			var middle := set + along * s * (pane_w * 0.5 + 0.025) + Vector3.UP * (sill + 0.06 + pane_h * 0.5)
-			var broken := s < 0.0 and absf(at.x - (-4.6)) < 0.01 and out.z > 0.0
+			var broken := (s < 0.0 and absf(at.x - (-4.6)) < 0.01 and out.z > 0.0) or _wear.randf() < 0.3
 			_pane(middle, along, pane_w, pane_h, broken)
 
 
@@ -323,11 +398,17 @@ func _pane(middle: Vector3, along: Vector3, w: float, h: float, broken: bool) ->
 	var b := Basis(along, Vector3.UP, normal)
 	var glass := Color(0.78, 0.86, 0.8, 0.32)
 	if broken:
-		# A quarry and a half gone at the lower outer corner.
-		var hole := Rect2(-w * 0.5, -h * 0.5, w * 0.45, h * 0.28)
-		for piece in [Rect2(-w * 0.5, hole.end.y, w, h * 0.5 - hole.end.y), Rect2(hole.end.x, -h * 0.5, w * 0.5 - hole.end.x, hole.size.y)]:
-			var r: Rect2 = piece
-			_panes.box(Vector3(r.size.x, r.size.y, 0.004), CozyMesh.at(middle + along * r.get_center().x + Vector3.UP * r.get_center().y, b), glass)
+		# Quarries gone at one corner: the glass left round the hole.
+		var hw := w * _wear.randf_range(0.3, 0.6)
+		var hh := h * _wear.randf_range(0.2, 0.45)
+		var hx := -w * 0.5 if _wear.randf() < 0.5 else w * 0.5 - hw
+		var hy := -h * 0.5 if _wear.randf() < 0.6 else h * 0.5 - hh
+		var hole := Rect2(hx, hy, hw, hh)
+		var pieces: Array[Rect2] = [Rect2(-w * 0.5, -h * 0.5, w, hole.position.y + h * 0.5), Rect2(-w * 0.5, hole.end.y, w, h * 0.5 - hole.end.y),
+				Rect2(-w * 0.5, hole.position.y, hole.position.x + w * 0.5, hh), Rect2(hole.end.x, hole.position.y, w * 0.5 - hole.end.x, hh)]
+		for r in pieces:
+			if r.size.x > 0.005 and r.size.y > 0.005:
+				_panes.box(Vector3(r.size.x, r.size.y, 0.004), CozyMesh.at(middle + along * r.get_center().x + Vector3.UP * r.get_center().y, b), glass)
 	else:
 		_panes.box(Vector3(w, h, 0.004), CozyMesh.at(middle, b), glass)
 	# The leads, two ways on the diagonal.
@@ -373,12 +454,11 @@ func _clip(p: Vector2, dir: Vector2, w: float, h: float) -> Array:
 func _walls() -> void:
 	var z_mid := DEP * 0.5 - T * 0.5
 	# Front (south) and back (north), between the gables' outer faces.
-	_wall_x(z_mid, -LEN * 0.5, LEN * 0.5, -1.0, [[DOOR_X, 1.0, 0.0, DOOR_H], [-4.6, 0.8, 0.85, 1.85],
-			[0.6, 0.8, 0.85, 1.85], [4.6, 0.8, 0.85, 1.85]])
-	_wall_x(-z_mid, -LEN * 0.5, LEN * 0.5, 1.0, [[-4.8, 0.7, 1.0, 1.85], [3.2, 0.8, 1.15, 1.95]])
+	_wall_x(z_mid, -LEN * 0.5, LEN * 0.5, -1.0, SOUTH_OPEN)
+	_wall_x(-z_mid, -LEN * 0.5, LEN * 0.5, 1.0, NORTH_OPEN)
 	# The gables' walls to the eaves, between the front and back walls.
 	_wall_z(-LEN * 0.5 + T * 0.5, -DEP * 0.5 + T, DEP * 0.5 - T, 1.0, [])
-	_wall_z(LEN * 0.5 - T * 0.5, -DEP * 0.5 + T, DEP * 0.5 - T, -1.0, [[1.3, 0.7, 1.0, 1.85]])
+	_wall_z(LEN * 0.5 - T * 0.5, -DEP * 0.5 + T, DEP * 0.5 - T, -1.0, EAST_OPEN)
 	# The rubble on the gables' ends of the long walls' corners: quoins.
 	var quoin := Color(0.6, 0.56, 0.48)
 	for sx: float in [-1.0, 1.0]:
@@ -461,10 +541,12 @@ func _roof() -> void:
 	var open_t := 0.95
 	var board := Color(0.3, 0.22, 0.15)
 	for side: float in [-1.0, 1.0]:
-		var pieces: Array = [[-half, half, 0.0, end]]
+		# On the north slope the glass's opening and the hole where the
+		# slates went and the boards under them rotted through.
+		var holes: Array = []
 		if side < 0.0:
-			pieces = [[-half, half, 0.0, t_glass - open_t], [-half, half, t_glass + open_t, end],
-					[-half, GLASS_X - open, t_glass - open_t, t_glass + open_t], [GLASS_X + open, half, t_glass - open_t, t_glass + open_t]]
+			holes = [[GLASS_X - open, GLASS_X + open, t_glass - open_t, t_glass + open_t], HOLE]
+		var pieces := _cut([-half, half, 0.0, end], holes)
 		# The boarding on the rafters, seen from inside; the roof a solid,
 		# so light and the player stop at it.
 		for p: Array in pieces:
@@ -635,8 +717,12 @@ func _living_room() -> void:
 	# at its foot; pewter on a shelf on the front wall.
 	var bed := Vector3(-2.55, FLOOR, -2.2)
 	_in.box(Vector3(1.75, 0.45, 1.0), CozyMesh.at(bed + Vector3(0, 0.225, 0)), wood.darkened(0.1))
-	_in.box(Vector3(1.65, 0.12, 0.9), CozyMesh.at(bed + Vector3(0, 0.5, 0)), Color(0.66, 0.6, 0.48))
-	_in.box(Vector3(0.5, 0.1, 0.35), CozyMesh.at(bed + Vector3(-0.5, 0.6, 0)), Color(0.72, 0.68, 0.58))
+	# The bedding mouldered under two centuries of the roof's drips.
+	_in.box(Vector3(1.65, 0.12, 0.9), CozyMesh.at(bed + Vector3(0, 0.5, 0)), Color(0.46, 0.44, 0.34))
+	_in.box(Vector3(0.5, 0.1, 0.35), CozyMesh.at(bed + Vector3(-0.5, 0.6, 0)), Color(0.5, 0.48, 0.38))
+	for k in 5:
+		_in.box(Vector3(_wear.randf_range(0.15, 0.35), 0.005, _wear.randf_range(0.1, 0.3)), CozyMesh.at(bed + Vector3(_wear.randf_range(-0.6, 0.6), 0.563, _wear.randf_range(-0.3, 0.3))), Color(0.3, 0.34, 0.24))
+	_under_hole()
 	for end: float in [-1.0, 1.0]:
 		_in.box(Vector3(0.06, 0.95 if end < 0.0 else 0.7, 1.0), CozyMesh.at(bed + Vector3(end * 0.9, 0.475 if end < 0.0 else 0.35, 0)), wood.darkened(0.15))
 	_solid(Vector3(1.75, 0.6, 1.0), bed + Vector3(0, 0.3, 0))
@@ -646,6 +732,33 @@ func _living_room() -> void:
 	_in.box(Vector3(1.4, 0.04, 0.22), CozyMesh.at(Vector3(-1.05, 1.75, front - 0.11)), wood)
 	for k in 4:
 		_in.cyl(0.13, 0.13, 0.015, 14, CozyMesh.at(Vector3(-1.53 + k * 0.32, 1.9, front - 0.05), Basis(Vector3.RIGHT, -(PI * 0.5 - 0.15))), Color(0.62, 0.62, 0.6))
+
+
+## Under the hole in the roof: two centuries of rain and leaves come in.
+## A dark wet stain on the flags and a green skin of moss in its middle,
+## slates and a rotted board fallen through, leaf litter drifted.
+func _under_hole() -> void:
+	var mid_t := (HOLE[2] + HOLE[3]) * 0.5
+	var over := _under(-1.0, (HOLE[0] + HOLE[1]) * 0.5, mid_t)
+	var at := Vector3(over.x, FLOOR, over.z)
+	_in.cyl(0.75, 0.8, 0.004, 14, CozyMesh.at(at + Vector3(0, 0.002, 0), Basis.from_scale(Vector3(1.0, 1.0, 0.7))), Color(0.26, 0.25, 0.22))
+	for k in 9:
+		var off := Vector3(_wear.randf_range(-0.45, 0.45), 0.006, _wear.randf_range(-0.3, 0.3))
+		_in.ball(_wear.randf_range(0.08, 0.18), 7, CozyMesh.at(at + off, Basis.from_scale(Vector3(1.0, 0.18, 1.0))), Color(0.3, 0.42, 0.2).darkened(_wear.randf() * 0.2), true)
+	for k in 4:
+		var b := Basis(Vector3.UP, _wear.randf() * TAU) * Basis(Vector3.RIGHT, _wear.randf_range(-0.2, 0.2))
+		_in.box(Vector3(0.28, 0.02, 0.4) * _wear.randf_range(0.5, 1.0), CozyMesh.at(at + Vector3(_wear.randf_range(-0.6, 0.6), 0.03, _wear.randf_range(-0.4, 0.4)), b), SLATE.lightened(0.05))
+	_in.box(Vector3(0.9, 0.025, 0.14), CozyMesh.at(at + Vector3(0.3, 0.05, 0.35), Basis(Vector3.UP, 0.5) * Basis(Vector3.BACK, 0.06)), Color(0.32, 0.25, 0.18))
+	_leaves(at, 0.9, 50)
+
+
+## Dead leaves drifted round `at`, `count` of them within `reach`.
+func _leaves(at: Vector3, reach: float, count: int) -> void:
+	for k in count:
+		var r := sqrt(_wear.randf()) * reach
+		var a := _wear.randf() * TAU
+		var colour := [Color(0.55, 0.36, 0.18), Color(0.45, 0.3, 0.16), Color(0.62, 0.5, 0.26), Color(0.35, 0.26, 0.16)][_wear.randi() % 4] as Color
+		_in.box(Vector3(0.05, 0.004, 0.08), CozyMesh.at(at + Vector3(cos(a) * r, 0.008 + _wear.randf() * 0.01, sin(a) * r), Basis(Vector3.UP, _wear.randf() * TAU) * Basis(Vector3.RIGHT, _wear.randf_range(-0.3, 0.3))), colour)
 
 
 ## A plain table: top `size` at `high`, four legs.
