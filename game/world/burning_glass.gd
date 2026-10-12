@@ -187,8 +187,15 @@ func _aim_spot() -> void:
 		return
 	var d := -source
 	var from := global_position + d * 0.15
+	# The light runs on past loose things in it (the crystals) to the
+	# surface they lie on: they stand in the light and cast their shadows.
 	var ray := PhysicsRayQueryParameters3D.create(from, from + d * 14.0, 1)
 	var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+	var passed: Array[RID] = []
+	while not hit.is_empty() and hit["collider"] is RigidBody3D and passed.size() < 4:
+		passed.append((hit["collider"] as RigidBody3D).get_rid())
+		ray.exclude = passed
+		hit = get_world_3d().direct_space_state.intersect_ray(ray)
 	if hit.is_empty():
 		_spot.visible = false
 		_shaft.visible = false
