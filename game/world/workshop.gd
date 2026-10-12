@@ -135,7 +135,7 @@ const ITEMS := [["floor", "Floor"], ["lantern", "Lantern"], ["gate", "Opening ga
 		["radiometer", "Luminous rotor"], ["mirror", "Mirror"], ["splitter", "Splitter"], ["lens", "Lens"],
 		["push_lamp", "Push lamp"], ["pull_lamp", "Pull lamp"], ["track", "Track and cart"],
 		["collector", "Sun collector"], ["oil_bullseye", "Bullseye lantern"], ["oil_globe", "Globe lamp"],
-		["spin_gate", "Spun opening gate"], ["closing_spin_gate", "Spun closing gate"], ["clock_delay", "Clockwork delay"]]
+		["spin_gate", "Spun opening gate"], ["closing_spin_gate", "Spun closing gate"], ["clock_delay", "Clockwork delay"], ["sand_shutter", "Sand shutter"]]
 ## The oil lanterns' designs (LanternLook), by key.
 const LANTERN_STYLES := {"oil_bullseye": "bullseye", "oil_globe": "globe"}
 ## Oil lanterns of designs since let go, kept in old saves: built as these.
@@ -151,7 +151,7 @@ const GATES := {"gate": false, "closing_gate": true, "spin_gate": false, "closin
 ## Gates worked by an earthstone spinning on end rather than a geotrope pointing.
 const SPIN_GATES := ["spin_gate", "closing_spin_gate"]
 ## Gates that open once their stone has been lit a while (DelayGate), by key: how they time it.
-const DELAY_GATES := {"on_delay": "sand", "clock_delay": "clock"}
+const DELAY_GATES := {"on_delay": "sand", "clock_delay": "clock", "sand_shutter": "shutter"}
 const GATE_COLOUR := Color(0.92, 0.72, 0.34)
 const KINDS := {"lantern": LumenPart.Kind.LANTERN, "and": LumenPart.Kind.AND, "or": LumenPart.Kind.OR,
 		"not": LumenPart.Kind.NOT, "latch": LumenPart.Kind.LATCH,
@@ -186,6 +186,7 @@ const NOTES := {
 	"latch": "Latch crystal\nA lit beam striking its left side lights it, one striking its right side puts it out; between, it remembers.",
 	"on_delay": "Hourglass, %s s\nLets a beam through its ring once a lit beam has struck its geotrope that long. T: change the time.",
 	"clock_delay": "Clockwork delay, %s s\nLets a beam through its ring once a lit beam has struck its geotrope that long. T: change the time.",
+	"sand_shutter": "Sand shutter, %s s\nAn hourglass in the ring: lets a beam through once its geotrope has been lit long enough for the sand to run below the beam. T: change the glass.",
 	"off_delay": "Afterglow crystal, %s s\nShines while a beam striking it is lit, and that long after. T: change the time.",
 	"rise": "Rising spark\nOne flash when a beam striking it lights.",
 	"fall": "Falling spark\nOne flash when a beam striking it goes dark.",
@@ -205,7 +206,7 @@ const NOTES := {
 ## each. Drafts.
 const GROUPS := [[["Floors", ["floor"]], ["Lamps", ["collector", "oil_bullseye", "oil_globe", "lantern", "push_lamp", "pull_lamp"]]],
 		[["Crystals", ["and", "or", "not", "latch", "off_delay", "rise", "fall"]]],
-		[["Gates", ["gate", "closing_gate", "spin_gate", "closing_spin_gate", "on_delay", "clock_delay"]], ["Glass", ["mirror", "splitter", "lens"]]],
+		[["Gates", ["gate", "closing_gate", "spin_gate", "closing_spin_gate", "on_delay", "clock_delay", "sand_shutter"]], ["Glass", ["mirror", "splitter", "lens"]]],
 		[["Machines", ["radiometer", "track"]]]]
 const MENU_NOTES := {
 	"floor": "boards two metres square, to build on.",
@@ -218,6 +219,7 @@ const MENU_NOTES := {
 	"latch": "lit by a beam on its left, put out by one on its right; remembers between.",
 	"on_delay": "lets a beam through once its geotrope has been lit a while, timed by sand.",
 	"clock_delay": "lets a beam through once its geotrope has been lit a while, timed by a pendulum.",
+	"sand_shutter": "an hourglass in the ring: the beam passes once the sand has run below it.",
 	"off_delay": "shines while a beam striking it is lit, and a while after.",
 	"rise": "one flash when a beam striking it lights.",
 	"fall": "one flash when a beam striking it goes dark.",
@@ -243,6 +245,7 @@ const DETAILS := {
 	"latch": "A crystal that remembers. A lit beam striking its left side lights it, one striking its right side puts it out, and with neither lit it stays as it was. While aiming a beam at it, the line under the view says which side the beam will strike.",
 	"on_delay": "A gate with an hourglass. Light on its geotrope swings the stone up against its spring, which tips a sand glass over; the sand runs into the lower bulb, which rests on the pan of a lever, and once enough has run the lever tips and turns the leaf in the ring edge-on, letting the beam through. When the light leaves, the glass tips back and the leaf shuts, and the sand pours back down a wide tube on the glass's side, so it is ready again almost at once. T moves the lever's counterweight: 1 to 13 seconds.",
 	"clock_delay": "A gate with clockwork. Light on its geotrope drives the stone up one tooth at a time, as a small pendulum lets the escape wheel turn, so it climbs at the same pace in any light strong enough to drive it; at the top a finger on its axle turns the leaf edge-on. When the light leaves, a ratchet lets the spring drop the stone at once and the leaf shuts. T moves the stone's lower stop, so it has farther or less far to climb: 1 to 13 seconds.",
+	"sand_shutter": "An hourglass standing in the ring itself, its sand stopping the beam. Light on its geotrope turns the glass end over end about the beam's point; the sand still covers that point, and runs down through the neck until it no longer reaches it, and the beam passes. When the light leaves, the glass turns back and the beam is stopped again only once all the sand that ran has run back. T fits a glass with a narrower or wider neck: 1 to 13 seconds.",
 	"off_delay": "A crystal that lights the moment a beam striking it lights, and stays lit for its time after the beam goes dark. T changes the time, from 1 to 13 seconds. It keeps a short gap from stopping anything.",
 	"rise": "One short flash the moment a beam striking it lights, then dark however long the beam stays lit: for counting, or for starting something once.",
 	"fall": "One short flash the moment a beam striking it goes dark.",
@@ -289,6 +292,7 @@ const SUN_TEXTS := {
 		"details": "A crystal that remembers: a lit beam on its left lights it, one on its right puts it out, and with neither it stays as it was. It shows a state and sends no light."},
 	"on_delay": {"details": "A gate with an hourglass. Light on its geotrope (about three watts or more) swings the stone up against its spring, which tips a sand glass over through a pair of gears; the sand runs into the lower bulb, whose end rests on the pan of a lever, and once enough has run the lever tips and turns the leaf edge-on. The glass runs out in about 14 seconds. When the light leaves, the glass tips back and the leaf shuts at once; the sand pours back down a wide tube on the glass's side, whose mouth lies clear of the sand while the glass is timing and under it once the glass tips back, so the glass is ready again in under a second. T moves the lever's counterweight: 1 to 13 seconds."},
 	"clock_delay": {"details": "A gate with clockwork. Light on its geotrope drives the stone up one tooth each half second, as the pendulum lets the escape wheel turn, so it climbs at the same pace in any light strong enough to drive it (about eight watts); with less it stalls. At its top a finger on its axle turns the leaf edge-on. When the light leaves, a ratchet lets the spring drop the stone to its stop at once and the leaf shuts. T moves the lower stop: 1 to 13 seconds."},
+	"sand_shutter": {"details": "An hourglass standing in the ring itself, turning end over end on an axle through the beam's point, the top of its full bulb's sand. Light on its geotrope (about twenty watts or more, to hold the stone up) turns the glass over by a cord and pulleys; the sand, now above, still covers the point, and runs down through the neck until it no longer reaches it, and the beam passes. When the light leaves, the glass turns back, and the beam is stopped again only once the sand has run back, as long as it had run. T fits a glass with a narrower or wider neck: 1 to 13 seconds."},
 	"off_delay": {"menu": "glows while a beam is lit and a while after; sends no light.",
 		"details": "A crystal that glows the moment a beam striking it lights and stays lit for its time after it goes dark (T changes it). It sends no light."},
 	"rise": {"menu": "one flash when a beam striking it lights; sends no light."},
@@ -504,6 +508,8 @@ func add_piece(key: String, at: Vector3, yaw: float, pitch: float, delay := 2.0,
 func _make(key: String, at: Vector3, delay := 2.0) -> Node3D:
 	if key == "track":
 		return BeamCart.new(at, wood, timber, brass, copper)
+	if DELAY_GATES.has(key) and DELAY_GATES[key] == "shutter":
+		return SandShutter.new(at, brass, brass, glass, delay)
 	if DELAY_GATES.has(key):
 		return DelayGate.new(at, brass, brass, glass, DELAY_GATES[key], delay)
 	if GATES.has(key):
