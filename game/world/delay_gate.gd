@@ -16,9 +16,12 @@ extends LightGate
 ## counterweight's setting (delay over GLASS_RUN; the weight slides along
 ## the lever) the lever tips and its far end lifts a link that turns the
 ## leaf edge-on. When the light leaves, the spring swings the stone back,
-## the glass tips back, B's end leaves the pan and the leaf shuts; the
-## sand then runs back into A, so a light coming again soon finds some
-## still in B and opens sooner.
+## the glass tips back, B's end leaves the pan and the leaf shuts. A wide
+## glass tube down the glass's side joins B's shoulder, beside the neck,
+## to A's far end: while B is down its sand lies at B's far end, clear of
+## the tube's mouth, and only the neck passes sand; once B is up its sand
+## lies at that shoulder and pours down the tube into A, all of it in
+## BYPASS_RUN seconds, so the glass is ready again almost at once.
 ##
 ## "clock", the clockwork: the stone's axle carries a wheel driving an
 ## escape wheel through a pinion, governed by an anchor on a pendulum
@@ -45,6 +48,7 @@ const TRIP := 0.0873                    # rad: the last 5 degrees of the climb t
 const CLOCK_INERTIA := 3.0e-4           # kg m²: the stone and its wheel, falling free
 const CLOCK_PRELOAD := 0.008            # N m: its spring at the lowest peg
 const GLASS_RUN := 14.4                 # s: all the sand from one bulb to the other
+const BYPASS_RUN := 0.4                 # s: all of it back down the side tube
 const GLASS_INERTIA := 3.0e-3           # kg m²: the stone with the glass geared to it
 const LEAN := 0.35                      # rad: the glass's lean either side
 const SAND_TOP := 1.3963                # rad: the hourglass stone's upper peg, 80 degrees over level, short
@@ -71,6 +75,7 @@ var _low_peg: MeshInstance3D
 var _glass := Node3D.new()
 var _sand_a: MeshInstance3D
 var _sand_b: MeshInstance3D
+var _pour: MeshInstance3D               # sand pouring down the side tube
 var _lever := Node3D.new()
 var _weight: MeshInstance3D
 var _link: MeshInstance3D
@@ -161,6 +166,12 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 		_glass.add_child(cap_view)
 		_bar(_glass, Vector3(GLASS_X + 0.026 * side, -BULB, 0.0), Vector3(GLASS_X + 0.026 * side, BULB, 0.0), 0.003, brass)
 	_bar(_glass, Vector3(GLASS_X, -0.012, 0), Vector3(GLASS_X, 0.012, 0), 0.006, _glass_mat)
+	# The side tube: out of B's shoulder beside the neck, down the side,
+	# into A's far end.
+	var bend: Array[Vector3] = [Vector3(GLASS_X, 0.022, -0.02), Vector3(GLASS_X, 0.03, -0.04),
+			Vector3(GLASS_X, -0.07, -0.04), Vector3(GLASS_X, -0.075, -0.016)]
+	for k in 3:
+		_bar(_glass, bend[k], bend[k + 1], 0.0055, _glass_mat)
 	var sand_mat := StandardMaterial3D.new()
 	sand_mat.albedo_color = Color(0.86, 0.74, 0.5)
 	sand_mat.roughness = 0.95
@@ -178,6 +189,8 @@ func _build_sand(brass: Material, stone_view: MeshInstance3D) -> void:
 			_sand_a = pile_view
 		else:
 			_sand_b = pile_view
+	_pour = _bar(_glass, Vector3(GLASS_X, 0.026, -0.04), Vector3(GLASS_X, -0.07, -0.04), 0.0035, sand_mat)
+	_pour.visible = false
 	# The lever: its pivot on a post from the bracket, the pan under B's
 	# end when the glass is over, the counterweight on the far arm.
 	var pivot := Vector3(GLASS_X, GLASS_Y - BULB - 0.02, -0.075)
@@ -347,7 +360,11 @@ func _sand_step(lift: float, h: float) -> void:
 	# lies near level.
 	var tilt := _glass_angle()
 	var into_b := clampf(-cos(tilt) * 3.0, -1.0, 1.0)
-	_sand = clampf(_sand + into_b * h / GLASS_RUN, 0.0, 1.0)
+	var run := GLASS_RUN
+	if into_b < 0.0:
+		# B up: its sand pours down the side tube as well as the neck.
+		run = 1.0 / (1.0 / GLASS_RUN + 1.0 / BYPASS_RUN)
+	_sand = clampf(_sand + into_b * h / run, 0.0, 1.0)
 	var on_pan := tilt > PI - LEAN - 0.03
 	var needed := delay / GLASS_RUN
 	if _tripped:
@@ -375,6 +392,7 @@ func _place() -> void:
 		_glass.rotation.x = -_glass_angle()
 		_lever.rotation.x = 0.18 if _tripped else 0.0
 		_place_sand()
+		_pour.visible = _sand > 0.0 and cos(_glass_angle()) > 0.3
 		if _link != null:
 			var far := _lever.position + _lever.basis * Vector3(0, 0, -0.06)
 			_set_link(Vector3(GLASS_X, 0, 0) + pin, far)
