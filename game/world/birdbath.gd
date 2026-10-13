@@ -14,12 +14,16 @@ extends Node3D
 ## teaser's licence); the air drags on its spin. So in the sun it rises
 ## onto its point, spins and wanders about the bowl as a top does; when a
 ## sail's shadow takes its light nothing holds it up, it topples, and its
-## spin is spent rubbing on the stone. It is lit while nothing stands
-## between it and the sun: the house and the mill's tower by a ray toward
-## the sun, the turning sails by their own reckoning
-## (Windmill.sail_shades). It glows the brighter the faster it turns,
-## brighter than the game's stones (also the teaser's licence), with a
-## small violet light of its own.
+## spin is spent rubbing on the stone. Its light is the share of the
+## sun's disc it sees (five points of the disc, its middle and four on its
+## edge, so a shadow's edge passes over it by degrees, as the drawn
+## shadows' soft edges do), each seen while nothing stands between: the
+## house and the mill's tower by a ray, the turning sails by their own
+## reckoning (Windmill.sail_shades). It glows the brighter the more it is
+## lit and the faster it turns, brighter than the game's stones (also the
+## teaser's licence), with a small violet light of its own; the glow
+## follows over about a fifth of a second, as a glowing crystal's would
+## not flick on and off.
 ##
 ## Built at the bath's foot on the ground.
 
@@ -32,22 +36,24 @@ const STONE_LONG := 0.1                 # m
 const RIM_Y := 0.92                     # m: the bowl's rim over the ground
 const BOWL_R := 0.32                    # m: the bowl across its rim, half
 const DEEP := 0.07                      # m: the bowl's depth
+const EASE := 5.0                       # 1/s: how quickly its glow follows
 
 ## Toward the sun and its direct light, W/m², set by the teaser.
 var to_sun := Vector3.UP
 var sunlight := 0.0
 var mill: Windmill
-## Turns a second now, how far it leans from upright (rad), and whether
-## it is lit.
+## Turns a second now, how far it leans from upright (rad), and the
+## share of the sun's disc it sees.
 var rate := 0.0
 var lean := PI * 0.5
-var lit := false
+var lit := 0.0
 
 var _stone: RigidBody3D
 var _glow: StandardMaterial3D
 var _light: OmniLight3D
 var _mat: Material
 var _half := 0.0                        # m: half its length
+var _shine := 0.0                       # its glow, 0 to 1, eased
 
 
 func _init(world_mat: Material, windmill: Windmill) -> void:
@@ -61,17 +67,11 @@ func _ready() -> void:
 	_make_stone()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	var axis := _stone.global_basis.y.normalized()
 	var middle := _stone.global_position
-	lit = sunlight > 0.0 and to_sun.y > 0.0
-	if lit:
-		var ray := PhysicsRayQueryParameters3D.create(middle, middle + to_sun * 80.0, 1)
-		ray.exclude = [_stone.get_rid()]
-		lit = get_world_3d().direct_space_state.intersect_ray(ray).is_empty()
-	if lit and mill != null:
-		lit = not mill.sail_shades(middle, to_sun)
-	var watts := sunlight * AREA if lit else 0.0
+	lit = _seen(middle)
+	var watts := sunlight * AREA * lit
 	var w := _stone.angular_velocity
 	var omega := w.dot(axis)
 	var twist := axis.cross(Vector3.UP) * PULL * Photogyrite.pull(watts, 0.0) \
@@ -79,10 +79,30 @@ func _physics_process(_delta: float) -> void:
 	_stone.apply_torque(twist)
 	rate = omega / TAU
 	lean = acos(clampf(axis.y, -1.0, 1.0))
-	var bright := clampf(absf(omega) / 12.0, 0.0, 1.0) * 0.7 + (0.3 if lit else 0.0)
-	_glow.emission_energy_multiplier = 0.05 + 6.0 * bright
-	_light.light_energy = 2.0 * bright
+	var bright := clampf(absf(omega) / 12.0, 0.0, 1.0) * 0.7 + 0.3 * lit
+	_shine = lerpf(_shine, bright, 1.0 - exp(-EASE * delta))
+	_glow.emission_energy_multiplier = 0.05 + 6.0 * _shine
+	_light.light_energy = 2.0 * _shine
 	_light.global_position = middle + Vector3(0, 0.08, 0)
+
+
+## The share of the sun's disc seen from `at`: its middle and four points
+## round its edge.
+func _seen(at: Vector3) -> float:
+	if sunlight <= 0.0 or to_sun.y <= 0.0:
+		return 0.0
+	var side := to_sun.cross(Vector3.UP).normalized()
+	var up := side.cross(to_sun).normalized()
+	var r := deg_to_rad(IslandSky.SUN_ACROSS * 0.5)
+	var space := get_world_3d().direct_space_state
+	var seen := 0
+	for d: Vector3 in [to_sun, to_sun + side * r, to_sun - side * r, to_sun + up * r, to_sun - up * r]:
+		var dir := d.normalized()
+		var ray := PhysicsRayQueryParameters3D.create(at, at + dir * 80.0, 1)
+		ray.exclude = [_stone.get_rid()]
+		if space.intersect_ray(ray).is_empty() and (mill == null or not mill.sail_shades(at, dir)):
+			seen += 1
+	return seen / 5.0
 
 
 func _build() -> void:
