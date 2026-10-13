@@ -79,9 +79,9 @@ func _physics_process(_delta: float) -> void:
 	_stone.apply_torque(twist)
 	rate = omega / TAU
 	lean = acos(clampf(axis.y, -1.0, 1.0))
-	var bright := clampf(absf(omega) / 12.0, 0.0, 1.0) * 0.8 + (0.2 if lit else 0.0)
-	_glow.emission_energy_multiplier = 0.3 + 5.0 * bright
-	_light.light_energy = 0.1 + 1.6 * bright
+	var bright := clampf(absf(omega) / 12.0, 0.0, 1.0) * 0.7 + (0.3 if lit else 0.0)
+	_glow.emission_energy_multiplier = 0.05 + 6.0 * bright
+	_light.light_energy = 2.0 * bright
 	_light.global_position = middle + Vector3(0, 0.08, 0)
 
 

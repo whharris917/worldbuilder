@@ -11,10 +11,13 @@ extends Node
 ## one, else a close framing of the bath, low over its bowl, the gable's
 ## ivy and stones behind.
 
-const LENGTH := 24.0                    # s of film
+const LENGTH := 30.0                    # s of film
 const SETTLE := 3.0                     # s run before filming starts, the sails got going
 const HOUR := 16.25                     # the sun 32 degrees up in the west, the sails' shadows on the bath
-const WIND := 1.6                       # m/s: the sails about 8 turns a minute
+const WIND := 1.6                       # m/s: the wind heard
+const SAILS := 2.0                      # turns a minute, held: a sail's shadow every 7.5 s, about 2 s of it dark
+const SHADE := 0.3                      # the sky's light on the shade, of the game's
+const CONTRAST := 1.12
 const BATH := Vector3(-8.1, 0.0, 0.3)   # in the house's frame: west of the gable, before the chimney
 
 var _world: CozyTest
@@ -47,7 +50,11 @@ func _run() -> void:
 	var mill := _world.windmill
 	mill.cap_facing = sun.y
 	mill.brake_on = false
-	mill.omega = WIND * 4.5 / Windmill.SAIL_R * 0.9
+	mill.omega = SAILS * TAU / 60.0
+	# The shade deepened: less of the sky's light, more contrast.
+	_world._env.ambient_light_energy = SHADE
+	_world._env.ssao_intensity = 3.0
+	_world._env.adjustment_contrast = CONTRAST
 	for layer: Node in get_tree().root.find_children("*", "CanvasLayer", true, false):
 		(layer as CanvasLayer).visible = false
 	_bath = Birdbath.new(_world.material(true, false), mill)
@@ -81,6 +88,8 @@ func _physics_process(delta: float) -> void:
 		return
 	_bath.to_sun = _world.workshop.light.sun
 	_bath.sunlight = _world.workshop.light.sunlight
+	# The sails held at their pace, whatever the wind would make of them.
+	_world.windmill.omega = SAILS * TAU / 60.0
 	_time += delta
 	if _time > SETTLE + LENGTH:
 		get_tree().quit()
