@@ -59,8 +59,6 @@ Writes to game/audio/:
   cart_clack_1..3.wav  a cart wheel crossing a rail joint
   cart_buffer.wav a cart striking the wooden buffer at a track's end
   radiometer_whir_loop.wav  2 s seamless whir of a radiometer's vanes
-  crystal_tap_1..4.wav  a stone knocking on a wooden table: a dull knock
-  crystal_clink_1..4.wav  two hard crystals striking: a glassy clink
 
 Loops are made seamless by quantizing every sustained frequency to an
 integer number of cycles per loop and forcing envelopes to zero at the
@@ -1547,57 +1545,6 @@ def make_radiometer_whir() -> None:
     write_wav(OUT_DIR / "radiometer_whir_loop.wav", [out], normalize_to=0.35)
 
 
-def make_crystal_tap(path: Path, r: random.Random, ring_hz: float) -> None:
-    """A stone knocking on a wooden table: a dull knock, noise between 150
-    and 900 Hz dying in about 15 ms over a soft thud below it, and no ring
-    (a ringing partial made it sound like a struck glass, too musical).
-    `ring_hz` only shifts the knock's band a little from one to the next."""
-    dur = 0.18
-    n = int(dur * SR)
-    shift = ring_hz / 3000.0
-    knock = _band(_noise_r(r, n), 150.0 * shift, 900.0 * shift)
-    thud = _band(_noise_r(r, n), 50.0, 220.0)
-    out = [0.0] * n
-    for i in range(n):
-        t = i / SR
-        rise = min(1.0, t / 0.0015)
-        out[i] = (knock[i] * 2.0 * math.exp(-t * 65.0) + thud[i] * 1.6 * math.exp(-t * 40.0)) * rise
-    write_wav(path, [out], normalize_to=0.5)
-
-
-def make_crystal_clink(path: Path, r: random.Random, f0: float) -> None:
-    """Two hard crystals striking: a glassy clink. A sharp tick at the touch
-    (noise from 2 to 9 kHz over a millisecond or two), then the stones'
-    own ring, five inharmonic partials of a small hard solid (ratios
-    about 1, 1.6, 2.4, 3.3 and 4.4 of `f0`, each a little off), bright and
-    brief: 60 to 200 ms, the higher dying faster, a slight beat in each
-    from two stones not quite alike."""
-    dur = 0.35
-    n = int(dur * SR)
-    tick = _band(_noise_r(r, n), 2000.0, 9000.0)
-    ratios = [1.0, 1.59, 2.41, 3.32, 4.43]
-    amps = [1.0, 0.7, 0.5, 0.35, 0.22]
-    decays = [16.0, 22.0, 30.0, 40.0, 55.0]
-    partials = [(f0 * q * r.uniform(0.98, 1.02), a, d, r.uniform(2.0, 7.0)) for q, a, d in zip(ratios, amps, decays)]
-    out = [0.0] * n
-    for i in range(n):
-        t = i / SR
-        v = tick[i] * 1.6 * math.exp(-t * 900.0)
-        for f, a, d, beat in partials:
-            v += a * 0.25 * math.sin(2.0 * math.pi * f * t) * math.exp(-t * d) * (0.8 + 0.2 * math.cos(2.0 * math.pi * beat * t))
-        out[i] = v * min(1.0, t / 0.0003)
-    write_wav(path, [out], normalize_to=0.5)
-
-
-def make_crystal_sounds() -> None:
-    r = random.Random(20261012)
-    for idx, ring in enumerate([2900.0, 3300.0, 2600.0, 3700.0], start=1):
-        make_crystal_tap(OUT_DIR / f"crystal_tap_{idx}.wav", r, ring)
-    rc = random.Random(20261014)
-    for idx, f0 in enumerate([2350.0, 2780.0, 2120.0, 3050.0], start=1):
-        make_crystal_clink(OUT_DIR / f"crystal_clink_{idx}.wav", rc, f0)
-
-
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     print("generating audio ->", OUT_DIR)
@@ -1631,7 +1578,6 @@ def main() -> None:
     make_crackle()
     make_cart_sounds()
     make_radiometer_whir()
-    make_crystal_sounds()
     print("done")
 
 
